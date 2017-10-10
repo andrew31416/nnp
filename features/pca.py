@@ -2,8 +2,9 @@
 routines for performing principal component analysis on 
 atomic environment features
 """
+import numpy as np
 
-def perform_pca(X,q)
+def perform_pca(X,q):
     """
     Input
     -----
@@ -16,7 +17,7 @@ def perform_pca(X,q)
     (N,D) = X.shape
 
 
-    tmp = (X - np.tile(np.average(X,axis=0),(D,1))) 
+    tmp = (X - np.tile(np.average(X,axis=0),(N,1))) 
 
     # covariance matrix
     cov_matrix = np.inner(tmp,tmp) / float(N)
