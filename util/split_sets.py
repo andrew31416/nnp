@@ -13,9 +13,12 @@ def seperate_gips(gip,train_fraction):
 
     train = parsers.GeneralInputParser()
     test = parsers.GeneralInputParser()
+    train.supercells = []
+    test.supercells = []
 
     # pick randomly
-    train_idx = np.random.choice(np.arange(num_structures),size=round(train_frac*num_structures),replace=False)
+    train_idx = np.random.choice(np.arange(num_structures),size=round(train_fraction*num_structures),\
+            replace=False)
     test_idx = set(np.arange(num_structures)).difference(set(train_idx))
 
     for ii,_s in enumerate(gip.supercells):

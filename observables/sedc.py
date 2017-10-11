@@ -9,4 +9,4 @@ def vdw_radius(gips):
     for _gip in gips:
         for _s in _gip:
             obs = np.hstack((obs, _s["vdw_radius"]["environment"] - _s["vdw_radius"]["vacuum"] ))
-    return obs
+    return np.reshape(obs,(-1,1))

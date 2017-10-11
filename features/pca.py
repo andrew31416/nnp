@@ -43,7 +43,7 @@ def perform_pca(X,q):
     return principal_X,W
 
 
-def project_into_pc(X,W)
+def project_into_pc(X,W):
     """
     project the data points X into their principal components
     """

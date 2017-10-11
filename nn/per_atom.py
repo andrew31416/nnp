@@ -54,14 +54,15 @@ def train(train_x,train_y,test_x,test_y,num_nodes,output_ypred,opt_method,activa
     for ii,_width in enumerate(num_nodes):
         if ii==0:
             continue
-        hidden_weights[ii] = tf.Variable(tf.random_normal([num_nodes[ii-1],_width],dtype=tf.float64))
-        hidden_biases[ii] = tf.Variable(tf.zeros([_width],dtype=tf.float64))
+        hidden_weights.append( tf.Variable(tf.random_normal([num_nodes[ii-1],_width],dtype=tf.float64)) )
+        hidden_biases.append( tf.Variable(tf.zeros([_width],dtype=tf.float64)) )
         
         if activation == 'sigmoid':
-            hidden_output[ii] = tf.nn.sigmoid(tf.matmul(hidden_output[ii-1], hidden_weights[ii]) + \
-                    hidden_biases[ii])
+            hidden_output.append( tf.nn.sigmoid(tf.matmul(hidden_output[ii-1], hidden_weights[ii]) + \
+                    hidden_biases[ii]) )
         elif activation == 'tanh':
-            hidden_output[ii] = tf.nn.tanh(tf.matmul(hidden_output[ii-1], hidden_weights[ii]) + hidden_biases[ii])
+            hidden_output.append( tf.nn.tanh(tf.matmul(hidden_output[ii-1], hidden_weights[ii]) + \
+                    hidden_biases[ii]) )
 
     #--------------#
     # output layer #
