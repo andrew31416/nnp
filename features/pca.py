@@ -19,8 +19,8 @@ def perform_pca(X,q):
 
     tmp = (X - np.tile(np.average(X,axis=0),(N,1))) 
 
-    # covariance matrix
-    cov_matrix = np.inner(tmp,tmp) / float(N)
+    # sample covariance matrix
+    cov_matrix = np.dot(tmp.T,tmp) / float(N)
 
     # find eigen values and vectors
     eigen_values,eigen_vectors = np.linalg.eig(cov_matrix)
@@ -28,5 +28,16 @@ def perform_pca(X,q):
     # sort into ascending list of eigen values
     idx = np.argsort(eigen_values)[::-1]
 
-    for ii in range(q):
-        print(eigen_values[ii])
+    eigen_values = eigen_values[idx]
+    eigen_vectors = eigen_vectors[idx]
+
+    # principal projections
+    W_transpose = np.asarray(eigen_vectors[0,:])
+
+    for ii in range(1,q):
+        W_transpose = np.vstack((W_transpose,eigen_vectors[ii,:]))
+    W = W_transpose.T
+
+    principal_X = np.dot(W_transpose,X.T).T 
+    
+    return principal_X,W
