@@ -41,3 +41,11 @@ def perform_pca(X,q):
     principal_X = np.dot(W_transpose,X.T).T 
     
     return principal_X,W
+
+
+def project_into_pc(X,W)
+    """
+    project the data points X into their principal components
+    """
+
+    return np.dot(W.T,X.T).T
