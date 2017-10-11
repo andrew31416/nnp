@@ -387,7 +387,7 @@ def design_matrixf90(gips,rcuts,gammaks,Zks,basis,phi_type,multithreading=True):
 def gamma_featuref90(gips,rcut,gammak=None,Zk=None,precision=None,mean=None,normal_zk=None):
     if gammak!=None and Zk!=None:
         parameters = np.asarray([gammak,Zk],dtype=np.float64)
-    elif precision!=None and mean!=None:
+    elif precision is not None and mean is not None:
         parameters = np.asarray([mean,precision,normal_zk[0],normal_zk[1]],dtype=np.float64)
 
     # need to write to disk for i/o

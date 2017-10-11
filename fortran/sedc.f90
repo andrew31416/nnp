@@ -74,7 +74,7 @@ module sedc
                 gammavalue = gammavalue + ((Zultra(ii)+1.0d0)**zj_pow_const)*&
                         &sqrt(0.5d0*normal_precision/3.141592653589793d0)&
                         &*exp(-0.5d0*(tmp-mean)**2 * normal_precision)*&
-                        &wrapped_smooth(1.0d0,rcut,.true.,tmp)
+                        &wrapped_smooth(0.2d0,rcut,.true.,tmp)
             
             end do
             
@@ -1220,9 +1220,9 @@ module sedc
                         &((aniso_info(6,bond)+1.0d0)**zj_pow_const)
 
                 !* tapering function product
-                tmp_taper = wrapped_smooth(1.0d0,rcut,.true.,aniso_info(2,bond))*& 
-                        &wrapped_smooth(1.0d0,rcut,.true.,aniso_info(3,bond))*& 
-                        &wrapped_smooth(1.0d0,rcut,.true.,aniso_info(7,bond)) 
+                tmp_taper = wrapped_smooth(0.2d0,rcut,.true.,aniso_info(2,bond))*& 
+                        &wrapped_smooth(0.2d0,rcut,.true.,aniso_info(3,bond))*& 
+                        &wrapped_smooth(0.2d0,rcut,.true.,aniso_info(7,bond)) 
 
                 do kk=1,num_components,1
                     !* exponent
