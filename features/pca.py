@@ -17,7 +17,11 @@ def perform_pca(X,q):
     (N,D) = X.shape
 
 
+    print('shape of average : {}'.format(np.average(X,axis=0).shape))
+
     tmp = (X - np.tile(np.average(X,axis=0),(N,1))) 
+
+    print('shape of tmp : {}'.format(tmp.shape))
 
     # sample covariance matrix
     cov_matrix = np.dot(tmp.T,tmp) / float(N)
@@ -29,7 +33,7 @@ def perform_pca(X,q):
     idx = np.argsort(eigen_values)[::-1]
 
     eigen_values = eigen_values[idx]
-    eigen_vectors = eigen_vectors[idx]
+    eigen_vectors = eigen_vectors.T[idx]
 
     # principal projections
     W_transpose = np.asarray(eigen_vectors[0,:])
@@ -38,14 +42,26 @@ def perform_pca(X,q):
         W_transpose = np.vstack((W_transpose,eigen_vectors[ii,:]))
     W = W_transpose.T
 
-    principal_X = np.dot(W_transpose,X.T).T 
-    
-    return principal_X,W
+    principal_X = np.dot(W_transpose,tmp.T).T 
+
+    #if True:
+    #    tmp = (principal_X - np.tile(np.average(principal_X,axis=0),(N,1))) 
+    #    
+    #    new_cov = np.dot(tmp.T,tmp)/float(N)
+    #    
+    #    for ii in range(new_cov.shape[0]):
+    #        print(new_cov[ii,:])
+    #    print('\neigenvalues : ')
+    #    for ii in range(q):
+    #        print(eigen_values[ii])
+    return principal_X,W,np.average(X,axis=0)
 
 
-def project_into_pc(X,W):
+def project_into_pc(X,W,average_x):
     """
     project the data points X into their principal components
     """
+  
+    tmp = X - np.tile(average_x,(X.shape[0],1)) 
 
-    return np.dot(W.T,X.T).T
+    return np.dot(W.T,tmp.T).T
