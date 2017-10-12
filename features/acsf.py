@@ -14,6 +14,7 @@ from nn_potential.util.pbc import get_ultracell
 from nn_potential.fortran import interface
 from scipy import spatial
 import numpy as np
+from sklearn import mixture
 
 def acsf(gips,functional,form,rcut,parameters,usefortran=True):
     """
@@ -118,16 +119,71 @@ def acsf(gips,functional,form,rcut,parameters,usefortran=True):
                         structure_feature[atom] *= 2**(1.0-xi)
 
                     feature += list(structure_feature)
-
     return np.asarray(feature)
 
 def acsf_info(gips,rcut,form):
+    """
+    return atom-atom distances or 3-body information
+    """
+
     if form == 'isotropic':
         info = interface.atomatomdistances(gips=gips,rcut=rcut)
-    elif form == 'anisotorpic':
+    elif form == 'anisotropic':
         info = interface.angular_infof90(gips=gips,rcut=rcut)
 
     return info
+
+def mixture_components(gips,rcut,form,K):
+    """
+    return GMM components to 1-D atom-atom distance distribution
+    or the 3-D angle,distance,distance distribution from 3-body
+    term
+    """
+
+    info = acsf_info(gips=gips,rcut=rcut,form=form)
+
+    if form == 'isotropic':
+        cov_type = 'diag'
+        info = np.reshape(info,(-1,1))
+    else:
+        cov_type = 'full'
+        info = info[:,0:3]
+
+        # if 3-body, may need to take a sub sample of data
+        idx = np.random.choice(info.shape[0],min([info.shape[0],int(1e5)]),replace=False)
+
+        info = info[idx]
+
+    gmm = mixture.GaussianMixture(n_components=K,covariance_type=cov_type)
+    gmm.fit(X=info)
+
+    mean = gmm.means_
+    precision = gmm.precisions_
+
+    if form == 'isotropic':
+        mean = mean.flatten()
+        precision = precision.flatten()
+    else:
+        # need to remove duplicate components
+
+        round_mean = np.round(mean,decimals=3)
+
+        keep = []
+        for ii in range(mean.shape[0]):
+            keepme = True
+            for jj in range(mean.shape[0]):
+                if ii==jj:
+                    continue
+                if np.isclose(round_mean[ii,0],round_mean[jj,0]):
+                    if any(np.asarray(sorted(round_mean[ii,1:])) - np.asarray(sorted(round_mean[jj,1:]))) != True:
+                        keepme = False
+            if keepme:
+                keep.append(ii)
+        keep = np.asarray(keep,dtype=int)
+        mean = mean[keep]
+        precision = precision[keep]
+
+    return mean,precision
 
 class Behler_usererror(Exception):
     pass
