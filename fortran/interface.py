@@ -473,7 +473,10 @@ def anisotropic_featuref90(gips,rcut,means,precisions,normal_zk):
 
     num_components = precisions.shape[0]
 
-    aniso_features = np.zeros((num_components,np.sum(np.array(nfiles))),dtype=np.float64,order='F')
+    if num_components == 1:
+        aniso_features = np.zeros(np.sum(np.array(nfiles)),dtype=np.float64,order='F')
+    else:
+        aniso_features = np.zeros((num_components,np.sum(np.array(nfiles))),dtype=np.float64,order='F')
 
     # Please Don't change this!
     chararray = np.array(files,dtype='c').T
