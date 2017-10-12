@@ -16,6 +16,9 @@ def perform_pca(X,q):
 
     (N,D) = X.shape
 
+    # catch silly mistakes
+    q = min([D,q])
+
     tmp = (X - np.tile(np.average(X,axis=0),(N,1))) 
 
     # sample covariance matrix
