@@ -48,7 +48,8 @@ module init
           
             !* scratch
             integer :: ii,natm,idx1,idx2
-
+write(*,*) 'expecting ntot = ',ntot
+write(*,*) 'slices = ',slice_idxs
             if (set_type.eq.1) then
                 allocate(train_set(nconf))
             else if (set_type.eq.2) then
@@ -64,7 +65,7 @@ module init
 
                 !* initial and final atoms
                 idx1 = slice_idxs(1,ii)
-                idx2 = slice_idxs(1,ii)
+                idx2 = slice_idxs(2,ii)
 
                 if (set_type.eq.1) then
                     train_set(ii)%n = natm
@@ -115,11 +116,10 @@ module init
 
             integer :: seed
 
+            !* random seed
             call system_clock(seed)
-
-            write(*,*) 'seeding with',seed
             
-            !* seed
+            !* initialise
             call srand(seed)
           
             !* feature weights
