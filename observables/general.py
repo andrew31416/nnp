@@ -1,0 +1,12 @@
+def energies(gip):
+    """
+    return np.ndarray of energies for all structures in gip
+    """
+    return np.asarray([_s["energy"] for _s in gip.supercells],dtype=np.float64)
+
+def forces(gip):
+    forces = []
+    for _s in gip:
+        forces += _s["forces"]
+    forces = np.asarray(forces)
+    print('forces shape : {}'.format(forces.shape))
