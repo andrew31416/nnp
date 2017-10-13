@@ -4,9 +4,19 @@ networks for per-atom attributes
 
 import tensorflow as tf
 import numpy as np
+from nn_potential.nn import fortran
 
 
-def train(train_x,train_y,test_x,test_y,train_lim,test_lim,num_nodes,output_ypred,opt_method,\
+def train(features,forces,energies,slice_indices,num_nodes,nlf_type):
+    """
+    use f95 NN
+    """
+
+    fortran.interface.train(features=features,energies=energies,slice_indices=slice_indices,\
+            num_nodes=num_nodes,nlf_type=nlf_type,forces=forces)
+
+
+def tmp_train(train_x,train_y,test_x,test_y,train_lim,test_lim,num_nodes,output_ypred,opt_method,\
         activation='sigmoid',reg_const=0.001):
     """
     Input
@@ -86,7 +96,19 @@ def train(train_x,train_y,test_x,test_y,train_lim,test_lim,num_nodes,output_ypre
     #Etot_out = tf.Variable(tf.zeros([Nconf,1],dtype=tf.float64))
     Etot_out = tf.zeros([Nconf,1],dtype=tf.float64)
 
+    def body(ii,slice_lim,output_y,Etot_out):
+        tf.scatter_add(ref=Etot_out,indices=[ii],\
+                updates=tf.reduce_sum( tf.slice(output_y,begin=slice_lim[ii,0],size=slice_lim[ii,1]) ) )
+        return ii+1,Etot_out 
+        
+
+    idxs = tf.constant([0,1,2,3])
+    tf.nn.embedding_lookup(output_y,idxs).eval()
+    
     for ii in range(Nconf):
+
+
+
         tf.scatter_add(ref=Etot_out,indices=[ii],\
                 updates=tf.reduce_sum( tf.slice(output_y,begin=slice_lim[ii,0],size=slice_lim[ii,1]) ) )
 

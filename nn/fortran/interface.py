@@ -1,4 +1,5 @@
-import nn_f95 as f90
+import nn_potential.nn.fortran.nn_f95 as f95
+import numpy as np
 
 def train(features,energies,forces,slice_indices,num_nodes,nlf_type):
     if nlf_type.lower() == 'sigmoid':
@@ -9,6 +10,6 @@ def train(features,energies,forces,slice_indices,num_nodes,nlf_type):
         raise NotImplementedError
 
     # feature dimension
-    D = features.shape[1]
+    D = features["test"].shape[1]
 
-    f90.initialise_net(np.asarray(num_nodes,dtype=np.int32),nlf,D)
+    f95.f90wrap_initialise_net(np.asarray(num_nodes,dtype=np.int32),nlf,D)

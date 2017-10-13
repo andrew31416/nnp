@@ -1,3 +1,5 @@
+import numpy as np
+
 def energies(gip):
     """
     return np.ndarray of energies for all structures in gip
@@ -7,6 +9,6 @@ def energies(gip):
 def forces(gip):
     forces = []
     for _s in gip:
-        forces += _s["forces"]
+        forces += list(_s["forces"])
     forces = np.asarray(forces)
     print('forces shape : {}'.format(forces.shape))
