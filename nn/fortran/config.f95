@@ -24,6 +24,7 @@ module config
 
     type,public :: units
         type(unit_),public :: a
+        type(unit_),public :: z
         type(unit_),public :: delta
     end type units
 

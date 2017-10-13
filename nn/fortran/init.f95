@@ -19,14 +19,18 @@ module init
             !* type of nonlinear activation func
             nlf = nlf_type
 
-            !* include bias 
+            !* include bias in weights
             allocate(net_weights%hl1(D+1,net_dim%hl1))
             allocate(net_weights%hl2(net_dim%hl1+1,net_dim%hl2))
             allocate(net_weights%hl3(net_dim%hl2+1))
 
-            !* include bias in activation
-            allocate(net_units%a%hl1(net_dim%hl1+1))
-            allocate(net_units%a%hl2(net_dim%hl2+1))
+            allocate(net_units%a%hl1(net_dim%hl1))
+            allocate(net_units%a%hl2(net_dim%hl2))
+
+            !* include null value for bias
+            allocate(net_units%z%hl1(net_dim%hl1+1))
+            allocate(net_units%z%hl2(net_dim%hl2+1))
+            
             allocate(net_units%delta%hl1(net_dim%hl1))
             allocate(net_units%delta%hl2(net_dim%hl2))
 
@@ -48,8 +52,7 @@ module init
           
             !* scratch
             integer :: ii,natm,idx1,idx2
-write(*,*) 'expecting ntot = ',ntot
-write(*,*) 'slices = ',slice_idxs
+            
             if (set_type.eq.1) then
                 allocate(train_set(nconf))
             else if (set_type.eq.2) then
@@ -153,6 +156,8 @@ write(*,*) 'slices = ',slice_idxs
             deallocate(net_weights%hl3)
             deallocate(net_units%a%hl1)
             deallocate(net_units%a%hl2)
+            deallocate(net_units%z%hl1)
+            deallocate(net_units%z%hl2)
             deallocate(net_units%delta%hl1)
             deallocate(net_units%delta%hl2)
             deallocate(train_set)

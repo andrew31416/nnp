@@ -27,6 +27,3 @@ def train(features,energies,forces,slice_indices,num_nodes,nlf_type):
                 np.asarray(energies[_set],dtype=np.float64))
 
     
-    f95.f90wrap_info_net()
-    f95.f90wrap_info_set(1)
-    f95.f90wrap_info_set(2)
