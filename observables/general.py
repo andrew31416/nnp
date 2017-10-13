@@ -10,5 +10,4 @@ def forces(gip):
     forces = []
     for _s in gip:
         forces += list(_s["forces"])
-    forces = np.asarray(forces)
-    print('forces shape : {}'.format(forces.shape))
+    return np.asarray(forces)
