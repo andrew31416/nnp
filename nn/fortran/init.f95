@@ -23,6 +23,12 @@ module init
             allocate(net_weights%hl1(D+1,net_dim%hl1))
             allocate(net_weights%hl2(net_dim%hl1+1,net_dim%hl2))
             allocate(net_weights%hl3(net_dim%hl2+1))
+            
+           
+            !* derivative of output wrt. weights
+            allocate(backprop_weights%hl1(D+1,net_dim%hl1))
+            allocate(backprop_weights%hl2(net_dim%hl1+1,net_dim%hl2))
+            allocate(backprop_weights%hl3(net_dim%hl2+1))
 
             allocate(net_units%a%hl1(net_dim%hl1))
             allocate(net_units%a%hl2(net_dim%hl2))
@@ -53,13 +59,15 @@ module init
             !* scratch
             integer :: ii,natm,idx1,idx2
             
-            if (set_type.eq.1) then
-                allocate(train_set(nconf))
-            else if (set_type.eq.2) then
-                allocate(test_set(nconf))
-            else 
-                call error("initialise_set","error in specified set")
+            if ( (set_type.lt.1).or.(set_type.gt.2) ) then
+                call error("initialise_set","unsupported set_type")
             end if
+
+            !* allocate memory for structures
+            allocate(data_sets(set_type)%configs(nconf))
+
+            !* number of structures in set
+            data_sets(set_type)%nconf = nconf
 
             !* parse features
             do ii=1,nconf,1
@@ -70,43 +78,25 @@ module init
                 idx1 = slice_idxs(1,ii)
                 idx2 = slice_idxs(2,ii)
 
-                if (set_type.eq.1) then
-                    train_set(ii)%n = natm
-                    
-                    !* include null dimension for biases
-                    allocate(train_set(ii)%x(D+1,natm))
-                    allocate(train_set(ii)%forces(3,natm))
+                data_sets(set_type)%configs(ii)%n = natm
+                
+                !* include null dimension for biases
+                allocate(data_sets(set_type)%configs(ii)%x(D+1,natm))
+                allocate(data_sets(set_type)%configs(ii)%forces(3,natm))
+                allocate(data_sets(set_type)%configs(ii)%current_ei(natm))
+                allocate(data_sets(set_type)%configs(ii)%current_fi(3,natm))
 
-                    !* for biases
-                    train_set(ii)%x(1,:) = 1.0d0
+                !* for biases
+                data_sets(set_type)%configs(ii)%x(1,:) = 1.0d0
+                
+                !* features
+                data_sets(set_type)%configs(ii)%x(2:,1:natm) = xin(:,idx1:idx2)
 
-                    !* energy
-                    train_set(ii)%energy = ein(ii)
+                !* ref: energy
+                data_sets(set_type)%configs(ii)%energy = ein(ii)
 
-                    !* features
-                    train_set(ii)%x(2:,1:natm) = xin(:,idx1:idx2)
-
-                    !* forces
-                    train_set(ii)%forces(1:3,:) = fin(:,idx1:idx2)
-                else
-                    test_set(ii)%n = natm
-                    
-                    !* include null dimension for biases
-                    allocate(test_set(ii)%x(D+1,natm))
-                    allocate(test_set(ii)%forces(3,natm))
-
-                    !* for biases
-                    test_set(ii)%x(1,:) = 1.0d0
-
-                    !* energy
-                    test_set(ii)%energy = ein(ii)
-
-                    !* features
-                    test_set(ii)%x(2:,1:natm) = xin(:,idx1:idx2)
-
-                    !* forces
-                    test_set(ii)%forces(1:3,:) = fin(:,idx1:idx2)
-                end if
+                !* ref: forces
+                data_sets(set_type)%configs(ii)%forces(1:3,:) = fin(:,idx1:idx2)
             end do
         end subroutine
 
@@ -160,8 +150,8 @@ module init
             deallocate(net_units%z%hl2)
             deallocate(net_units%delta%hl1)
             deallocate(net_units%delta%hl2)
-            deallocate(train_set)
-            deallocate(test_set)
+            deallocate(data_sets(1)%configs)
+            deallocate(data_sets(2)%configs)
         end subroutine finalize
 
 end module init

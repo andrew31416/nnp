@@ -43,51 +43,36 @@ module io
 
             !* scratch 
             integer :: ii,jj
-
-            if (set_type.eq.1) then
-                write(*,*) "========="
-                write(*,*) "train set"
-                write(*,*) "========="
-                do ii=1,size(train_set),1
-                    write(*,*) ""
-                    write(*,*) "-------------"
-                    write(*,*) "structure ",ii
-                    write(*,*) "-------------"
-                    write(*,*) "features:"
-                    do jj=1,train_set(ii)%n
-                        write(*,*) train_set(ii)%x(:,jj)
-                    end do
-                
-                    write(*,*) ""
-                    write(*,*) 'energy : ',train_set(ii)%energy
-                    write(*,*) "forces:"
-                    do jj=1,train_set(ii)%n
-                        write(*,*) train_set(ii)%forces(:,jj)
-                    end do
-
-                end do
-            else 
-                write(*,*) "========"
-                write(*,*) "test set"
-                write(*,*) "========"
-                do ii=1,size(test_set),1
-                    write(*,*) ""
-                    write(*,*) "-------------"
-                    write(*,*) "structure ",ii
-                    write(*,*) "-------------"
-                    write(*,*) "features:"
-                    do jj=1,test_set(ii)%n
-                        write(*,*) test_set(ii)%x(:,jj)
-                    end do
-                
-                    write(*,*) ""
-                    write(*,*) 'energy : ',test_set(ii)%energy
-                    write(*,*) "forces:"
-                    do jj=1,test_set(ii)%n
-                        write(*,*) test_set(ii)%forces(:,jj)
-                    end do
-
-                end do
+           
+            if ( (set_type.lt.1).or.(set_type.gt.2) ) then
+                call error("info_set","unsupported set_type. User error")
             end if
+
+            write(*,*) "========="
+            if (set_type.eq.1) then
+                write(*,*) "train set"
+            else
+                write(*,*) "test set"
+            end if
+            write(*,*) "========="
+
+            do ii=1,data_sets(set_type)%nconf,1
+                write(*,*) ""
+                write(*,*) "-------------"
+                write(*,*) "structure ",ii
+                write(*,*) "-------------"
+                write(*,*) "features:"
+                do jj=1,data_sets(set_type)%configs(ii)%n
+                    write(*,*) data_sets(set_type)%configs(ii)%x(:,jj)
+                end do
+            
+                write(*,*) ""
+                write(*,*) 'energy : ',data_sets(set_type)%configs(ii)%energy
+                write(*,*) "forces:"
+                do jj=1,data_sets(set_type)%configs(ii)%n
+                    write(*,*) data_sets(set_type)%configs(ii)%forces(:,jj)
+                end do
+
+            end do
         end subroutine info_set
 end module io

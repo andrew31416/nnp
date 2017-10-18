@@ -28,13 +28,20 @@ module config
         type(unit_),public :: delta
     end type units
 
-    !* atomic structures
+    !* atomic structure type
     type,public :: structure
-        integer :: n                                    !* number of atoms
-        real(8),dimension(:,:),allocatable :: x         !* features (D,n)
-        real(8),dimension(:,:),allocatable :: forces    !* ref forces
-        real(8) :: energy                               !* ref total energy
+        integer :: n                                        !* number of atoms
+        real(8),dimension(:,:),allocatable :: x             !* features (D,n)
+        real(8),dimension(:),  allocatable :: current_ei    !* current per atom energies
+        real(8),dimension(:,:),allocatable :: current_fi    !* current per atom forces
+        real(8),dimension(:,:),allocatable :: forces        !* ref forces
+        real(8) :: energy                                   !* ref total energy
     end type structure
+
+    type,public :: structures
+        type(structure),dimension(:),allocatable :: configs
+        integer :: nconf                                !* number of structures
+    end type structures
 
     !----------------!
     ! initialisation !
@@ -43,11 +50,14 @@ module config
     !* net weights
     type(weights)  ,public,save :: net_weights
     
+    !* output deriv wrt. weights for backpropr
+    type(weights)  ,public,save :: backprop_weights
+    
     !* number of nodes per layer
     type(num_nodes),public,save :: net_dim
     
     !* type of nonlinear activation function
-    integer,public :: nlf                               !* 1 = sigmoid, 2 = tanh 
+    integer,public :: nlf                               !* 1 = logistic, 2 = tanh 
 
     !* activation and backprop units
     type(units),public,save :: net_units
@@ -55,8 +65,7 @@ module config
     !* dimension of features
     integer,public :: D
 
-    !* train and test sets
-    type(structure),public,dimension(:),allocatable :: train_set
-    type(structure),public,dimension(:),allocatable :: test_set
-
+    !* data sets
+    type(structures),public :: data_sets(1:2)
+    
 end module
