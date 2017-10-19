@@ -1,0 +1,21 @@
+#!/bin/sh
+
+
+# build and run fortran unit tests
+dir="./nn/fortran/"
+
+cd $dir
+
+unittest="build_unittest.sh"
+
+eval $unittest
+
+ret_status=$?
+
+if [ $ret_status == 1 ]; then
+    # SUCCESS
+    exit 0
+else then
+    # FAILURE
+    exit 1
+fi
