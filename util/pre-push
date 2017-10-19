@@ -8,6 +8,8 @@ cd $dir
 
 unittest="build_unittest.sh"
 
+echo "evaluating "$unittest" from "
+pwd
 eval $unittest
 
 ret_status=$?
@@ -15,7 +17,7 @@ ret_status=$?
 if [ $ret_status == 1 ]; then
     # SUCCESS
     exit 0
-else then
+else
     # FAILURE
     exit 1
 fi
