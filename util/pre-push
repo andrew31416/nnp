@@ -8,9 +8,6 @@ cd $dir
 
 unittest="./build_unittest.sh"
 
-echo "evaluating "$unittest" from "
-pwd
-ls
 $unittest
 
 ret_status=$?
