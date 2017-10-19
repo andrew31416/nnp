@@ -6,11 +6,12 @@ dir="./nn/fortran/"
 
 cd $dir
 
-unittest="build_unittest.sh"
+unittest="./build_unittest.sh"
 
 echo "evaluating "$unittest" from "
 pwd
-eval $unittest
+ls
+$unittest
 
 ret_status=$?
 
