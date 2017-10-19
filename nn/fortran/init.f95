@@ -26,9 +26,9 @@ module init
             
            
             !* derivative of output wrt. weights
-            allocate(backprop_weights%hl1(D+1,net_dim%hl1))
-            allocate(backprop_weights%hl2(net_dim%hl1+1,net_dim%hl2))
-            allocate(backprop_weights%hl3(net_dim%hl2+1))
+            allocate(dydw%hl1(D+1,net_dim%hl1))
+            allocate(dydw%hl2(net_dim%hl1+1,net_dim%hl2))
+            allocate(dydw%hl3(net_dim%hl2+1))
 
             allocate(net_units%a%hl1(net_dim%hl1))
             allocate(net_units%a%hl2(net_dim%hl2))
@@ -39,6 +39,9 @@ module init
             
             allocate(net_units%delta%hl1(net_dim%hl1))
             allocate(net_units%delta%hl2(net_dim%hl2))
+
+            !* total number of net weights
+            nwght = (D+1)*net_dim%hl1 + (net_dim%hl1+1)*net_dim%hl2 + net_dim%hl2 + 1
 
             !* initialise NN weights
             call random_weights()
@@ -123,7 +126,7 @@ module init
             !* biases
             net_weights%hl1(1,:) = 0.0d0
             net_weights%hl2(1,:) = 0.0d0
-            net_weights%hl3(1:)  = 0.0d0
+            net_weights%hl3(1)  = 0.0d0
 
         end subroutine random_weights
 

@@ -14,6 +14,43 @@ module io
             call exit(0)
         end subroutine
 
+        subroutine unittest_header()
+            implicit none
+
+            write(*,*) ""
+            write(*,*) "======================="
+            write(*,*) "Running Unit Test Suite"
+            write(*,*) "======================="
+            write(*,*) ""
+        end subroutine
+
+        subroutine unittest_summary(tests)
+            implicit none
+
+            logical,intent(in) :: tests(:)
+
+            if (all(tests)) then
+                write(*,*) ""
+                write(*,*) "Unit test summary : SUCCESS"
+            else
+                write(*,*) ""
+                write(*,*) "Unit test summary : FAILURE"
+            end if
+        end subroutine
+
+        subroutine unittest_test(num,success)
+            implicit none
+
+            integer,intent(in) :: num
+            logical,intent(in) :: success
+
+            if (success) then
+                write(*,*) 'test     ',num,'    OK'
+            else    
+                write(*,*) 'test     ',num,'    FAILED'
+            end if
+        end subroutine unittest_test
+
         subroutine info_net()
             use config
 

@@ -1,5 +1,6 @@
 module propagate
     use config
+    use io
 
     implicit none
 
@@ -15,7 +16,6 @@ module propagate
 
             !* scratch
             integer :: nrow,ncol,ii
-            real(8) :: yout
 
             !------------------!
             !* hidden layer 1 *!
@@ -80,8 +80,6 @@ module propagate
 
             !* scratch
             integer :: ii
-            real(8) :: tmp
-
 
             !-------------------!
             !* delta back prop *!
@@ -92,17 +90,15 @@ module propagate
             !* delta_i^(2) = h'(a_i^(2)) * w_i^(3) 
             do ii=1,net_dim%hl2,1
                 !* bias does not have node
-                net_units%delta%hl2(ii) = activation_deriv(net_units%a%hl2(ii+1))*&
+                net_units%delta%hl2(ii) = activation_deriv(net_units%a%hl2(ii))*&
                         &net_weights%hl3(ii+1)
             end do
-
             
-
             !* layer 1 *!
             
             !* delta_i^(1) = h'(a_i^(1)) * sum_j w_ij^(2) delta_i^(2)
-            call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:,:),net_dim%hl1,&
-                    &net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
+            call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:net_dim%hl1+1,1:net_dim%hl2),&
+                    &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
             do ii=1,net_dim%hl1,1
                 net_units%delta%hl1(ii) = activation_deriv(net_units%a%hl1(ii))*&
                         &net_units%delta%hl1(ii)
@@ -115,37 +111,34 @@ module propagate
             !---------------!
 
             !* bias
-            backprop_weights%hl3(1) = 1.0d0
+            dydw%hl3(1) = 1.0d0
 
-            do ii=1,net_dim%hl3,1
-                backprop_weights%hl3(ii+1) = net_units%z%hl2(ii)
+            do ii=1,net_dim%hl2,1
+                dydw%hl3(ii+1) = net_units%z%hl2(ii+1)
             end do
-
             !----------------!
             !* second layer *!
             !----------------!
           
             !* bias
             do ii=1,net_dim%hl2,1
-                backprop_weights%hl2(1,ii) = activation_deriv(net_units%a%hl2(ii))
+                dydw%hl2(1,ii) = activation_deriv(net_units%a%hl2(ii))*net_weights%hl3(ii+1)
             end do
 
-            call dgemm('n','n',net_dim%hl1,net_dim%hl2,1,1.0d0,net_units%z%hl1(2:),&
-                    &net_dim%hl1,net_units%delta%hl2,1,0.0d0,backprop_weights%hl2(2:,:),net_dim%hl1)
-
+            call dgemm('n','n',net_dim%hl1,net_dim%hl2,1,1.0d0,net_units%z%hl1(2),&
+                    &net_dim%hl1,net_units%delta%hl2,1,0.0d0,dydw%hl2(2:net_dim%hl1+1,1:net_dim%hl2),net_dim%hl1)
             !---------------!
             !* first layer *!
             !---------------!
 
             !* bias
             do ii=1,net_dim%hl1,1
-                backprop_weights%hl1(1,ii) = activation_deriv(net_units%a%hl1(ii))
+                dydw%hl1(1,ii) = activation_deriv(net_units%a%hl1(ii))*&
+                        &sum(net_weights%hl2(ii+1,:)*net_units%delta%hl2)
             end do
             
-            call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:,atm),&
-                    &D,net_units%delta%hl1,1,0.0d0,backprop_weights%hl1(2:,:),D)
-
-
+            call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
+                    &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
 
         end subroutine backward_propagate
 
@@ -158,6 +151,9 @@ module propagate
                 activation = logistic(ain)
             else if (nlf.eq.2) then
                 activation = tanh(ain)
+            else
+                call error("activation","unsupported nonlinear function")
+                call exit(0)
             end if
         end function activation
 
@@ -167,9 +163,12 @@ module propagate
             real(8),intent(in) :: ain
 
             if (nlf.eq.1) then
-                activation_deriv = logistic_derv(ain)
+                activation_deriv = logistic_deriv(ain)
             else if (nlf.eq.2) then
                 activation_deriv = tanh_deriv(ain)
+            else
+                call error("activation_deriv","unsupported nonlinear function")
+                call exit(0)
             end if
         end function activation_deriv
 

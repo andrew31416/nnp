@@ -49,9 +49,12 @@ module config
 
     !* net weights
     type(weights)  ,public,save :: net_weights
-    
-    !* output deriv wrt. weights for backpropr
-    type(weights)  ,public,save :: backprop_weights
+
+    !* total number of net weights
+    integer,public :: nwght
+
+    !* dy/dw
+    type(weights)  ,public,save :: dydw
     
     !* number of nodes per layer
     type(num_nodes),public,save :: net_dim
