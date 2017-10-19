@@ -83,6 +83,14 @@ program unittest
             end do
 
             call unittest_summary(tests)
+
+            if (all(tests)) then
+                !* success
+                call exit(1)
+            else
+                !* failure
+                call exit(0)
+            end if
         end subroutine main
 
         logical function test_dydw()
