@@ -17,10 +17,8 @@ ret_status=$?
 
 if [ $ret_status == 1 ]; then
     # SUCCESS
-    "run was succesful"
     exit 0
 else
     # FAILURE
-    "run was bad"
     exit 1
 fi

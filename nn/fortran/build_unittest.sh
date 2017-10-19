@@ -42,10 +42,8 @@ unittest_status=$?
 
 if [ $unittest_status == 1 ]; then
     # SUCCESS
-    echo "exiting with success"
     exit 1
 else
     # FAILURE
-    echo "exiting with fail"
     exit 0
 fi
