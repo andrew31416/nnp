@@ -71,6 +71,9 @@ module config
     !* data sets
     type(structures),public :: data_sets(1:2)
 
+    !* derivative of net wrt features
+    real(8),allocatable,public :: dydx(:)
+
     !* type of loss norm (l1 or l2)
     integer,public :: loss_norm_type
 

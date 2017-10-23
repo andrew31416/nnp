@@ -15,7 +15,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:4)
+            logical :: tests(1:5)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -32,7 +32,7 @@ program unittest
 
             integer :: num_tests
 
-            num_tests = 4
+            num_tests = size(tests)
 
             !* number of nodes
             num_nodes(1) = 3
@@ -73,10 +73,9 @@ program unittest
             !* perform unit tests *!
             !----------------------!
             
-            tests(1) = test_dydw()
-            
-            !* tests(2-4)
-            call test_loss_jac(tests(2:4))
+            tests(1) = test_dydw()              ! dydw
+            call test_loss_jac(tests(2:4))      ! d loss / dw
+            tests(5) = test_dydx()               ! dydx
 
             deallocate(features)
             deallocate(forces)
@@ -250,11 +249,92 @@ program unittest
                 !-------------------------------!
 
                 call loss_jacobian(original_weights,nwght,set_type,anl_jac)
-                do ww=1,5
-                    write(*,*) ww,num_jac(ww),anl_jac(ww)
-                end do
+                
                 test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-15),dble(1e-10))
             end do !* end loop over loss terms
         end subroutine test_loss_jac
+
+        logical function test_dydx()
+            implicit none
+
+            !* scratch 
+            integer :: set_type,conf,atm,xx,ii,ww
+            real(8) :: dw,x0
+            real(8),allocatable :: num_dydx(:)
+            logical,allocatable :: log_atms(:),cnf_atms(:)
+            logical :: set_atms(1:2)
+
+            allocate(num_dydx(D))
+
+            do set_type=1,2
+                allocate(cnf_atms(data_sets(set_type)%nconf))
+
+                do conf=1,data_sets(set_type)%nconf
+                    allocate(log_atms(data_sets(set_type)%configs(conf)%n))
+                    
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+
+                        !--------------------------!
+                        !* numerical differential *!
+                        !--------------------------!
+                        
+                        do xx=1,D
+                           x0 = data_sets(set_type)%configs(conf)%x(xx+1,atm)
+
+                            do ww=5,5 
+                                !* finite difference for feature
+                                dw = 1.0d0/(10**ww)
+
+                                do ii=1,2
+                                    if (ii.eq.1) then
+                                        data_sets(set_type)%configs(conf)%x(xx+1,atm) = x0 + dw
+                                    else
+                                        data_sets(set_type)%configs(conf)%x(xx+1,atm) = x0 - dw
+                                    end if
+                                    
+                                    call forward_propagate(conf,atm,set_type)
+   
+                                    if (ii.eq.1) then
+                                        num_dydx(xx) = data_sets(set_type)%configs(conf)%current_ei(atm)
+                                    else
+                                        num_dydx(xx) = num_dydx(xx) - &
+                                                &data_sets(set_type)%configs(conf)%current_ei(atm)
+                                    end if
+                                    
+                                    data_sets(set_type)%configs(conf)%x(xx+1,atm) = x0 
+                                end do !* end loop +/- dw
+
+                                num_dydx(xx) = num_dydx(xx) / (2.0d0*dw)
+                            end do !* end loop finite differences
+                        end do !* end loop features
+                        
+                        !---------------------------!
+                        !* analytical differential *!
+                        !---------------------------!
+                        
+                        call forward_propagate(conf,atm,set_type)
+                        call backward_propagate(conf,atm,set_type)
+                    
+                        write(*,*) 'num              anly              dw'
+                        do xx=1,D
+                            write(*,*) num_dydx(xx),dydx(xx),dw
+                        end do
+
+                        log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-15),dble(1e-10))
+
+                    end do !* end loop atoms
+                
+                    cnf_atms(conf) = all(log_atms)
+
+                    deallocate(log_atms)
+                end do !* end loop configurations
+
+                set_atms(set_type) = all(cnf_atms)
+
+                deallocate(cnf_atms)
+            end do !* end loop data sets
+
+            test_dydx = all(set_atms)
+        end function test_dydx
 
 end program unittest

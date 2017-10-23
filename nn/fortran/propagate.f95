@@ -79,7 +79,8 @@ module propagate
             integer,intent(in) :: conf,atm,set_type
 
             !* scratch
-            integer :: ii
+            integer :: ii,jj,kk
+            real(8) :: tmp1
 
             !-------------------!
             !* delta back prop *!
@@ -139,6 +140,22 @@ module propagate
             
             call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
                     &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
+
+            !---------------------------!
+            !* derivative wrt features *!
+            !---------------------------!
+
+            dydx = 0.0d0
+
+            do jj=1,net_dim%hl2
+                tmp1 = net_weights%hl3(jj+1)*activation_deriv(net_units%a%hl2(jj))
+                do  ii=1,net_dim%hl1
+                    do kk=1,D,1
+                        dydx(kk) = dydx(kk) + tmp1*net_weights%hl2(ii+1,jj)*&
+                                &activation_deriv(net_units%a%hl1(ii))*net_weights%hl1(kk+1,ii)
+                    end do
+                end do
+            end do
 
         end subroutine backward_propagate
 
