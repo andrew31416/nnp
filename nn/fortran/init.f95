@@ -25,6 +25,8 @@ module init
             
             allocate(net_units%a%hl1(net_dim%hl1))
             allocate(net_units%a%hl2(net_dim%hl2))
+            allocate(net_units%a_deriv%hl1(net_dim%hl1))
+            allocate(net_units%a_deriv%hl2(net_dim%hl2))
             
             !* include null value for bias
             allocate(net_units%z%hl1(net_dim%hl1+1))

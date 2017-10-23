@@ -90,9 +90,11 @@ module propagate
             
             !* delta_i^(2) = h'(a_i^(2)) * w_i^(3) 
             do ii=1,net_dim%hl2,1
+                !* activation derivatives
+                net_units%a_deriv%hl2(ii) = activation_deriv(net_units%a%hl2(ii))
+
                 !* bias does not have node
-                net_units%delta%hl2(ii) = activation_deriv(net_units%a%hl2(ii))*&
-                        &net_weights%hl3(ii+1)
+                net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
             end do
             
             !* layer 1 *!
@@ -101,8 +103,10 @@ module propagate
             call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:net_dim%hl1+1,1:net_dim%hl2),&
                     &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
             do ii=1,net_dim%hl1,1
-                net_units%delta%hl1(ii) = activation_deriv(net_units%a%hl1(ii))*&
-                        &net_units%delta%hl1(ii)
+                !* activation derivatives
+                net_units%a_deriv%hl1(ii) = activation_deriv(net_units%a%hl1(ii))
+
+                net_units%delta%hl1(ii) = net_units%a_deriv%hl1(ii)*net_units%delta%hl1(ii)
             end do
 
             !* derivative of output wrt. weights *!
@@ -123,7 +127,7 @@ module propagate
           
             !* bias
             do ii=1,net_dim%hl2,1
-                dydw%hl2(1,ii) = activation_deriv(net_units%a%hl2(ii))*net_weights%hl3(ii+1)
+                dydw%hl2(1,ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
             end do
 
             call dgemm('n','n',net_dim%hl1,net_dim%hl2,1,1.0d0,net_units%z%hl1(2),&
@@ -134,7 +138,7 @@ module propagate
 
             !* bias
             do ii=1,net_dim%hl1,1
-                dydw%hl1(1,ii) = activation_deriv(net_units%a%hl1(ii))*&
+                dydw%hl1(1,ii) = net_units%a_deriv%hl1(ii)*&
                         &sum(net_weights%hl2(ii+1,:)*net_units%delta%hl2)
             end do
             
@@ -148,14 +152,17 @@ module propagate
             dydx = 0.0d0
 
             do jj=1,net_dim%hl2
-                tmp1 = net_weights%hl3(jj+1)*activation_deriv(net_units%a%hl2(jj))
                 do  ii=1,net_dim%hl1
+                    tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(ii+1,jj)*&
+                            &net_units%a_deriv%hl1(ii)
                     do kk=1,D,1
-                        dydx(kk) = dydx(kk) + tmp1*net_weights%hl2(ii+1,jj)*&
-                                &activation_deriv(net_units%a%hl1(ii))*net_weights%hl1(kk+1,ii)
+                        dydx(kk) = dydx(kk) + tmp1*net_weights%hl1(kk+1,ii)
                     end do
                 end do
             end do
+            
+            !call dgemm("n","n",D,net_dim%hl2,net_dim%hl1,1.0d0,&
+            !        &net_weights%hl2(2:D+1,1:net_dim%net_dim%hl2),D,tmp_array,net_dim%hl1,dydx)
 
         end subroutine backward_propagate
 
