@@ -70,5 +70,12 @@ module config
 
     !* data sets
     type(structures),public :: data_sets(1:2)
-    
+
+    !* type of loss norm (l1 or l2)
+    integer,public :: loss_norm_type
+
+    !* loss constants
+    real(8),public :: loss_const_energy
+    real(8),public :: loss_const_forces
+    real(8),public :: loss_const_reglrn
 end module

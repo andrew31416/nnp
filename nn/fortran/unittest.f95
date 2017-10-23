@@ -5,6 +5,7 @@ program unittest
     use propagate
     use util
     use io
+    use measures
 
     implicit none
 
@@ -14,7 +15,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:1)
+            logical :: tests(1:4)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -31,7 +32,7 @@ program unittest
 
             integer :: num_tests
 
-            num_tests = 1
+            num_tests = 4
 
             !* number of nodes
             num_nodes(1) = 3
@@ -71,8 +72,11 @@ program unittest
             !----------------------!
             !* perform unit tests *!
             !----------------------!
-
+            
             tests(1) = test_dydw()
+            
+            !* tests(2-4)
+            call test_loss_jac(tests(2:4))
 
             deallocate(features)
             deallocate(forces)
@@ -110,11 +114,13 @@ program unittest
             allocate(derivs(nwght))
 
             !* initial weights
-            call parse_weights_flatten(original_weights,nwght,.false.)
+            call parse_structure_to_array(net_weights,original_weights)
             
             conf = 1
             set_type = 1
             atm = 1
+
+            dy = 0.0d0
 
             do ww=4,4,1
                 dw = 1.0d0/(10.0d0**ww)
@@ -127,10 +133,10 @@ program unittest
                         else 
                             original_weights(ii) = w0 - dw
                         end if
-                    
+                        
                         !* read in weights
-                        call parse_weights_expand(original_weights,nwght)
-
+                        call parse_array_to_structure(original_weights,net_weights)
+                        
                         !* forward propagate
                         call forward_propagate(conf,atm,set_type)
 
@@ -149,9 +155,11 @@ program unittest
                     original_weights(ii) = w0
                 end do
                
-                !* analytical derivatives
+                !--------------------------!
+                !* analytical derivatives *!
+                !--------------------------!
 
-                call parse_weights_expand(original_weights,nwght)
+                call parse_array_to_structure(original_weights,net_weights)
 
                 !* forward prop
                 call forward_propagate(conf,atm,set_type)
@@ -160,14 +168,93 @@ program unittest
                 call backward_propagate(conf,atm,set_type)
               
                 !* parse dy/dw into 1d array
-                call parse_weights_flatten(dydw_flat,nwght,.true.)
+                call parse_structure_to_array(dydw,dydw_flat)
 
-                !do ii=1,nwght,1
-                !    write(*,*) dw,ii,derivs(ii),dydw_flat(ii)
-                !end do
                 test_result = array_equal(derivs,dydw_flat,dble(1e-15),dble(1e-10))
             end do
             test_dydw = test_result
-        end function
+        end function test_dydw
+
+        subroutine test_loss_jac(test_result)
+            !* test the jacobian of energy, force, reg. loss functions *!
+
+            implicit none
+
+            logical,intent(out) :: test_result(1:3)
+
+            !* scratch
+            integer :: ii,jj,kk,ww,conf,atm,set_type
+            real(8) :: dw,w0,dloss,tmp
+            real(8),dimension(:),allocatable :: num_jac,anl_jac,original_weights
+
+            allocate(num_jac(nwght))
+            allocate(anl_jac(nwght))
+            allocate(original_weights(nwght))
+            
+            !* initial weights
+            call parse_structure_to_array(net_weights,original_weights)
+
+            conf= 1
+            atm = 1
+            set_type = 1
+
+            dloss = 0.0d0
+
+            do ii=1,3,1
+                if (ii.eq.1) then
+                    loss_const_energy = 1.0d0
+                    loss_const_forces = 0.0d0
+                    loss_const_reglrn = 0.0d0
+                else if (ii.eq.2) then
+                    loss_const_energy = 0.0d0
+                    loss_const_forces = 1.0d0
+                    loss_const_reglrn = 0.0d0
+                else
+                    loss_const_energy = 0.0d0
+                    loss_const_forces = 0.0d0
+                    loss_const_reglrn = 1.0d0
+                end if
+                
+                do ww=4,4,1
+                    !* finite difference
+                    dw = 1.0d0/(10.0d0**(ww))
+
+                    do jj=1,nwght,1
+                        w0 = original_weights(jj)
+
+                        do kk=1,2,1
+                            if (kk.eq.1) then
+                                original_weights(jj) = w0 + dw
+                            else
+                                original_weights(jj) = w0 - dw
+                            end if
+                            
+                            tmp = loss(original_weights,nwght,set_type)
+
+                            if (kk.eq.1) then
+                                dloss = tmp
+                            else
+                                dloss = dloss - tmp
+                            end if
+
+                            original_weights(jj) = w0
+                        end do !* end loop +/- dw
+
+                        num_jac(jj) = dloss / (2.0d0 * dw)
+                    end do !* end loop over weights
+
+                end do !* end loop over dw
+
+                !-------------------------------!
+                !* analytical jacobian of loss *!
+                !-------------------------------!
+
+                call loss_jacobian(original_weights,nwght,set_type,anl_jac)
+                do ww=1,5
+                    write(*,*) ww,num_jac(ww),anl_jac(ww)
+                end do
+                test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-15),dble(1e-10))
+            end do !* end loop over loss terms
+        end subroutine test_loss_jac
 
 end program unittest

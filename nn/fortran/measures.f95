@@ -1,16 +1,12 @@
 module measures
+    use config
     use propagate
     use util
+    use init
 
     implicit none
 
     real(8),external :: dnrm2
-
-    real(8) :: tot_energy_loss
-    real(8) :: tot_forces_loss
-    real(8) :: tot_reg_loss
-
-    type(weights),private :: loss_deriv 
 
     contains
 
@@ -22,68 +18,107 @@ module measures
             real(8),intent(in) :: flat_weights(1:nw)
 
             !* scratch
-            integer :: conf,atm,loss_type
-            real(8) :: const_energy,const_forces,const_reg
+            integer :: conf,atm
+            real(8) :: tmp_energy,tmp_forces,tmp_reglrn
 
             !* read in NN weights
-            call parse_weights_expand(flat_weights,nw)
-
-            !* energy loss constant
-            const_energy = 1.0d0
-            
-            !* forces loss constant
-            const_forces = 1.0d0
-
-            !* regularization constant
-            const_reg = 1.0d0
-
-            !* type of norm for loss
-            loss_type = 2
+            call parse_array_to_structure(flat_weights,net_weights)
 
             do conf=1,data_sets(set_type)%nconf,1
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
                     !* forward prop on training data
-                    call forward_propagate(conf,atm,1)
+                    call forward_propagate(conf,atm,set_type)
                 end do
             end do
 
-            call loss_energy(set_type,loss_type)
-            call loss_forces(set_type,loss_type)
-            call loss_regularization(flat_weights)
-            
-            loss = tot_reg_loss*const_reg +&
-                    &tot_forces_loss*const_forces +&
-                    &tot_energy_loss*const_energy
+            tmp_energy = loss_energy(set_type)
+            tmp_forces = loss_forces(set_type)
+            tmp_reglrn = loss_reglrn(flat_weights)
+
+            loss = tmp_energy + tmp_forces + tmp_reglrn
         end function loss
 
-        subroutine loss_derivative(flat_weights,nw,set_type)
+        subroutine loss_jacobian(flat_weights,nw,set_type,jacobian)
 
             implicit none
             
             integer,intent(in) :: nw,set_type
             real(8),intent(in) :: flat_weights(1:nw)
-            
+            real(8),intent(out) :: jacobian(1:nw)
+
             !* scratch
             integer :: conf,atm
+            real(8) :: tmpE
+
+            type(weights) :: loss_jac
+            type(weights) :: tmp_jac
+
+            call allocate_weights(loss_jac)
+            call allocate_weights(tmp_jac)
+        
+            call zero_weights(loss_jac)
+
+            !* read in supplied weights
+            call parse_array_to_structure(flat_weights,net_weights)
 
             do conf=1,data_sets(set_type)%nconf,1
+                
+                call zero_weights(tmp_jac)
+                
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
                     !* forward prop on training data
-                    call forward_propagate(conf,atm,1)
+                    call forward_propagate(conf,atm,set_type)
                     
                     call backward_propagate(conf,atm,set_type)
+                   
+                    !* total energy contribution
+                    call loss_energy_jacobian(tmp_jac)
                 end do
+
+                !-----------------------!
+                !* energy contribution *!
+                !-----------------------!
+
+                !* sgn( \sum_i E_i - E ) * \sum_i dE_i / dw
+                tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
+                        &-data_sets(set_type)%configs(conf)%energy
+               
+                if(loss_norm_type.eq.1) then
+                    !* l1 norm
+                    tmpE = sign(1.0d0,tmpE) / dble(data_sets(set_type)%configs(conf)%n)
+                else if (loss_norm_type.eq.2) then
+                    !* l2 norm
+                    tmpE = sign(1.0d0,tmpE)*tmpE / dble(data_sets(set_type)%configs(conf)%n)
+                end if
+
+                !* constant scaling
+                tmpE = tmpE * 0.5d0 * loss_const_energy
+
+                loss_jac%hl1 = loss_jac%hl1 + tmp_jac%hl1 * tmpE
+                loss_jac%hl2 = loss_jac%hl2 + tmp_jac%hl2 * tmpE
+                loss_jac%hl3 = loss_jac%hl3 + tmp_jac%hl3 * tmpE
             end do
 
-        end subroutine loss_derivative
+            !-------------------------------!
+            !* regularization contribution *!
+            !-------------------------------!
+        
+            call loss_reglrn_jacobian(loss_jac)
 
-        subroutine loss_energy(set_type,loss_type)
+            !* structured to 1d
+            call parse_structure_to_array(loss_jac,jacobian)
+
+            call deallocate_weights(loss_jac)
+            call deallocate_weights(tmp_jac)
+        end subroutine loss_jacobian
+
+        real(8) function loss_energy(set_type)
             implicit none
             
-            integer,intent(in) :: set_type,loss_type
+            integer,intent(in) :: set_type
 
             !* scratch
-            real(8) :: tmp1,tmp2
+            real(8) :: tmp1,tmp2,tot_energy_loss
             integer :: conf
 
             tot_energy_loss = 0.0d0
@@ -97,27 +132,27 @@ module measures
                 tmp1 = abs(sum(data_sets(set_type)%configs(conf)%current_ei)&
                         & - data_sets(set_type)%configs(conf)%energy) * tmp2
                 
-                if (loss_type.eq.1) then
+                if (loss_norm_type.eq.1) then
                     !* l1 norm
                     tot_energy_loss = tot_energy_loss + tmp1
-                else if (loss_type.eq.2) then
+                else if (loss_norm_type.eq.2) then
                     !* l2 norm
                     tot_energy_loss = tot_energy_loss + tmp1**2
                 end if
 
             end do
             
-            tot_energy_loss = tot_energy_loss * 0.5d0 
-        end subroutine loss_energy
+            loss_energy = tot_energy_loss * 0.5d0 * loss_const_energy 
+        end function loss_energy
 
-        subroutine loss_forces(set_type,loss_type)
+        real(8) function loss_forces(set_type)
             implicit none
 
-            integer,intent(in) :: set_type,loss_type
+            integer,intent(in) :: set_type
 
             !* scratch
             integer :: conf,atm,ii
-            real(8) :: tmp
+            real(8) :: tmp,tot_forces_loss
 
             tot_forces_loss = 0.0d0
 
@@ -129,7 +164,7 @@ module measures
                         tmp = abs(data_sets(set_type)%configs(conf)%current_fi(ii,atm) - &
                         & data_sets(set_type)%configs(conf)%forces(ii,atm))
 
-                        if (loss_type.eq.1) then
+                        if (loss_norm_type.eq.1) then
                             tot_forces_loss = tot_forces_loss + tmp
                         else
                             tot_forces_loss = tot_forces_loss + tmp**2
@@ -138,22 +173,62 @@ module measures
                 end do
             end do
 
-            tot_forces_loss = tot_forces_loss * 0.5d0
-        end subroutine loss_forces
+            loss_forces = tot_forces_loss * 0.5d0 * loss_const_forces
+        end function loss_forces
 
-        subroutine loss_regularization(flat_weights)
+        real(8) function loss_reglrn(flat_weights)
             implicit none
 
             real(8),intent(in) :: flat_weights(:)
 
-            !* l2 norm
-            tot_reg_loss = dnrm2(size(flat_weights),flat_weights,1) * 0.5d0
-        end subroutine loss_regularization
+            !* l2 norm**2 = w.T w
+            loss_reglrn = dnrm2(size(flat_weights),flat_weights,1)**2 * 0.5d0 * &
+                    &loss_const_reglrn
+        end function loss_reglrn
 
 
-        subroutine loss_energy_deriv()
+        subroutine loss_reglrn_jacobian(loss_jac)
             implicit none
 
-            !* calculate dy/dw
-        end subroutine
+            type(weights),intent(inout) :: loss_jac
+
+            !* scratch
+            integer :: ii,jj
+            
+            !* layer 1
+            do ii=1,net_dim%hl1
+                do jj=1,D+1
+                    loss_jac%hl1(jj,ii) = loss_jac%hl1(jj,ii) + net_weights%hl1(jj,ii)*&
+                            &loss_const_reglrn
+                            !&dydw%hl1(jj,ii)*loss_const_reglrn
+                end do
+            end do
+            
+            !* layer 2
+            do ii=1,net_dim%hl2
+                do jj=1,net_dim%hl1+1
+                    loss_jac%hl2(jj,ii) = loss_jac%hl2(jj,ii) + net_weights%hl2(jj,ii)*&
+                            &loss_const_reglrn
+                            !&dydw%hl2(jj,ii)*loss_const_reglrn
+                end do
+            end do
+
+            !* final layer
+            do ii=1,net_dim%hl2+1,1
+                !loss_jac%hl3(ii) = loss_jac%hl3(ii) + net_weights%hl3(ii)*dydw%hl3(ii)*&
+                loss_jac%hl3(ii) = loss_jac%hl3(ii) + net_weights%hl3(ii)*&
+                            &loss_const_reglrn
+            end do
+        end subroutine loss_reglrn_jacobian
+
+        subroutine loss_energy_jacobian(tmp_jac)
+            implicit none
+
+            type(weights),intent(inout) :: tmp_jac
+
+            tmp_jac%hl1 = tmp_jac%hl1 + dydw%hl1
+            tmp_jac%hl2 = tmp_jac%hl2 + dydw%hl2
+            tmp_jac%hl3 = tmp_jac%hl3 + dydw%hl3
+            
+        end subroutine loss_energy_jacobian
 end module measures

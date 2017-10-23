@@ -4,69 +4,21 @@ module util
     implicit none
 
     contains
-
-        subroutine parse_weights_expand(flat_weights,nwght)
-            !===================================================!
-            ! update NN weights from a flat list of weights     !
-            !===================================================!
-            
-            implicit none
-
-            integer,intent(in) :: nwght
-            real(8),intent(in) :: flat_weights(1:nwght)
-
-            !* scratch
-            integer :: ii,jj,cntr
-
-            cntr = 1
-
-            !* hidden layer 1
-            do ii=1,net_dim%hl1,1
-                do jj=1,D+1,1
-                    net_weights%hl1(jj,ii) = flat_weights(cntr)
-                    cntr = cntr + 1
-                end do  !* loop features (and bias)
-            end do !* loop linear models
-            
-            !* hidden layer 2
-            do ii=1,net_dim%hl2,1
-                do jj=1,net_dim%hl1+1,1
-                    !* include bias in weights
-                    net_weights%hl2(jj,ii) = flat_weights(cntr)
-                    cntr = cntr + 1
-                end do !* loop features
-            end do !* loop linear models
-       
-            !* final output weights
-            do ii=1,net_dim%hl2+1,1
-                !* include bias in weights
-                net_weights%hl3(ii) = flat_weights(cntr)
-                cntr = cntr + 1
-            end do
-
-        end subroutine
         
-        subroutine parse_weights_flatten(flat_weights,nwght,deriv)
+        subroutine parse_array_to_structure(data_in,data_out)
             implicit none
 
-            integer,intent(in) :: nwght
-            logical,intent(in) :: deriv
-            real(8),intent(out) :: flat_weights(1:nwght)
-
-            !* scratch
-            integer :: ii,jj,cntr
-
+            real(8),intent(in) :: data_in(1:nwght)
+            type(weights),intent(inout) :: data_out
+            
+            integer :: cntr,ii,jj
+            
             cntr = 1
-
+            
             !* hidden layer 1 
             do ii=1,net_dim%hl1,1
                 do jj=1,D+1,1
-                    !* include bias in weights
-                    if (deriv) then
-                        flat_weights(cntr) = dydw%hl1(jj,ii)
-                    else
-                        flat_weights(cntr) = net_weights%hl1(jj,ii)
-                    end if
+                    data_out%hl1(jj,ii) = data_in(cntr) 
                     cntr = cntr + 1
                 end do !* loop features
             end do !* loop linear models
@@ -75,11 +27,7 @@ module util
             do ii=1,net_dim%hl2,1
                 do jj=1,net_dim%hl1+1,1
                     !* include bias in weights
-                    if (deriv) then
-                        flat_weights(cntr) = dydw%hl2(jj,ii)
-                    else
-                        flat_weights(cntr) = net_weights%hl2(jj,ii)
-                    end if
+                    data_out%hl2(jj,ii) = data_in(cntr)
                     cntr = cntr + 1
                 end do !* loop features
             end do !* loop linear models
@@ -87,14 +35,44 @@ module util
             !* final output weights
             do ii=1,net_dim%hl2+1,1
                 !* include bias in weights
-                if (deriv) then
-                    flat_weights(cntr) = dydw%hl3(ii)
-                else
-                    flat_weights(cntr) = net_weights%hl3(ii)
-                end if 
+                data_out%hl3(ii) = data_in(cntr)
                 cntr = cntr + 1
             end do
-        end subroutine
+        end subroutine parse_array_to_structure
+
+        subroutine parse_structure_to_array(data_in,data_out)
+            implicit none
+
+            type(weights),intent(in) :: data_in
+            real(8),intent(inout) :: data_out(1:nwght)
+            
+            integer :: cntr,ii,jj
+            cntr = 1
+            
+            !* hidden layer 1 
+            do ii=1,net_dim%hl1,1
+                do jj=1,D+1,1
+                    data_out(cntr) = data_in%hl1(jj,ii)
+                    cntr = cntr + 1
+                end do !* loop features
+            end do !* loop linear models
+            
+            !* hidden layer 2
+            do ii=1,net_dim%hl2,1
+                do jj=1,net_dim%hl1+1,1
+                    !* include bias in weights
+                    data_out(cntr) = data_in%hl2(jj,ii)
+                    cntr = cntr + 1
+                end do !* loop features
+            end do !* loop linear models
+       
+            !* final output weights
+            do ii=1,net_dim%hl2+1,1
+                !* include bias in weights
+                data_out(cntr) = data_in%hl3(ii)
+                cntr = cntr + 1
+            end do
+        end subroutine parse_structure_to_array
 
         integer function total_num_weights()
             implicit none
@@ -107,7 +85,17 @@ module util
             l3 = net_dim%hl2 + 1
 
             total_num_weights = l1+l2+l3
-        end function
+        end function total_num_weights
+
+        subroutine zero_weights(weights_out)
+            implicit none
+
+            type(weights),intent(inout) :: weights_out
+
+            weights_out%hl1 = 0.0d0
+            weights_out%hl2 = 0.0d0
+            weights_out%hl3 = 0.0d0
+        end subroutine zero_weights
 
         logical function array_equal(arr1,arr2,ftol,rtol)
             implicit none

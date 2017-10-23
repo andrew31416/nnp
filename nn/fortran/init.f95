@@ -1,5 +1,6 @@
 module init
     use config
+    use util
 
     implicit none
     
@@ -19,20 +20,12 @@ module init
             !* type of nonlinear activation func
             nlf = nlf_type
 
-            !* include bias in weights
-            allocate(net_weights%hl1(D+1,net_dim%hl1))
-            allocate(net_weights%hl2(net_dim%hl1+1,net_dim%hl2))
-            allocate(net_weights%hl3(net_dim%hl2+1))
+            call allocate_weights(net_weights)
+            call allocate_weights(dydw)
             
-           
-            !* derivative of output wrt. weights
-            allocate(dydw%hl1(D+1,net_dim%hl1))
-            allocate(dydw%hl2(net_dim%hl1+1,net_dim%hl2))
-            allocate(dydw%hl3(net_dim%hl2+1))
-
             allocate(net_units%a%hl1(net_dim%hl1))
             allocate(net_units%a%hl2(net_dim%hl2))
-
+            
             !* include null value for bias
             allocate(net_units%z%hl1(net_dim%hl1+1))
             allocate(net_units%z%hl2(net_dim%hl2+1))
@@ -41,14 +34,43 @@ module init
             allocate(net_units%delta%hl2(net_dim%hl2))
 
             !* total number of net weights
-            nwght = (D+1)*net_dim%hl1 + (net_dim%hl1+1)*net_dim%hl2 + net_dim%hl2 + 1
+            nwght = total_num_weights() 
 
             !* initialise NN weights
             call random_weights()
-            
+          
+            !* type of loss norm (l1 or l2)
+            loss_norm_type = 1
+
+            !* some constants for types of loss
+            loss_const_energy = 1.0d0
+            loss_const_forces = 1.0d0
+            loss_const_reglrn = 1.0d0
+
             call check_input()
         end subroutine initialise_net
-   
+  
+        subroutine allocate_weights(weights_in)
+            implicit none
+
+            type(weights),intent(inout) :: weights_in
+
+            !* include bias for each node
+            allocate(weights_in%hl1(D+1,net_dim%hl1))
+            allocate(weights_in%hl2(net_dim%hl1+1,net_dim%hl2))
+            allocate(weights_in%hl3(net_dim%hl2+1))
+        end subroutine
+
+        subroutine deallocate_weights(weights_in)
+            implicit none
+            
+            type(weights),intent(inout) :: weights_in
+
+            deallocate(weights_in%hl1)
+            deallocate(weights_in%hl2)
+            deallocate(weights_in%hl3)
+        end subroutine
+
         subroutine initialise_set(set_type,nconf,ntot,slice_idxs,xin,fin,ein)
             use io, only : error
             
