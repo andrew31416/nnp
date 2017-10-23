@@ -31,10 +31,16 @@ module io
 
             if (all(tests)) then
                 write(*,*) ""
+                write(*,*) '---------------------------'
                 write(*,*) "Unit test summary : SUCCESS"
+                write(*,*) '---------------------------'
+                write(*,*) ""
             else
                 write(*,*) ""
+                write(*,*) '---------------------------'
                 write(*,*) "Unit test summary : FAILURE"
+                write(*,*) '---------------------------'
+                write(*,*) ""
             end if
         end subroutine
 
