@@ -24,14 +24,25 @@ module config
 
     type,public :: units
         type(unit_),public :: a
+        type(unit_),public :: a_deriv
         type(unit_),public :: z
         type(unit_),public :: delta
     end type units
 
+    type,public :: feature_derivatives
+        integer,allocatable :: idx(:)
+        integer :: n
+        real(8),allocatable :: vec(:,:)
+    end type feature_derivatives
+
     !* atomic structure type
     type,public :: structure
         integer :: n                                        !* number of atoms
+        real(8),dimension(:,:),allocatable :: r             !* cartesian coordinates (3,n) / (A)
+        real(8),dimension(:),allocatable :: z               !* atomic number   
+        real(8),dimension(1:3,1:3) :: cell                  !* cell vectors / (A) 
         real(8),dimension(:,:),allocatable :: x             !* features (D,n)
+        type(feature_derivatives),allocatable :: x_deriv(:) !* feature derivatives
         real(8),dimension(:),  allocatable :: current_ei    !* current per atom energies
         real(8),dimension(:,:),allocatable :: current_fi    !* current per atom forces
         real(8),dimension(:,:),allocatable :: forces        !* ref forces

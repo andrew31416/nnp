@@ -1,6 +1,7 @@
 module init
     use config
     use util
+    use feature_config
 
     implicit none
     
