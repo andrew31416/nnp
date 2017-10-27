@@ -11,20 +11,32 @@ FFLAGS="-O2 -llapack -lblas"
 DEBUG="-fcheck=all -W -Wall -pedantic"
 
 f1="config."
-f2="io."
-f3="init."
-f4="propagate."
-f5="util."
-f6="measures."
-f7="feature_config."
-f8="feature_util."
+f2="feature_config."
+f3="io."
+f4="util."
+f5="feature_util."
+f6="init."
+f7="propagate."
+f8="measures."
 f9="features."
 
 unittest="unittest."
 
+#----------------------#
 # clear previous build #
-rm $f1"o"  $f2"o"
+#----------------------#
 
+rm $f1"o"  $f1"mod"
+rm $f2"o"  $f2"mod"
+rm $f3"o"  $f3"mod"
+rm $f4"o"  $f4"mod"
+rm $f5"o"  $f5"mod"
+rm $f6"o"  $f6"mod"
+rm $f7"o"  $f7"mod"
+rm $f8"o"  $f8"mod"
+rm $f9"o"  $f9"mod"
+
+rm $testname
 
 #------------------#
 # build unit tests #
