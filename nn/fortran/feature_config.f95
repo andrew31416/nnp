@@ -54,6 +54,6 @@ module feature_config
     type(feature_info) :: feature_params
 
     !* atom distance-distance information
-    type(feature_info_isotropic) :: feature_isotropic
+    type(feature_info_isotropic),allocatable :: feature_isotropic(:)
 
 end module feature_config

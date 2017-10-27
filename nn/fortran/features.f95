@@ -9,7 +9,7 @@ module features
         subroutine calculate_features()
             implicit none
 
-            integer :: set_type,conf,ii
+            integer :: set_type,conf
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
             integer,allocatable :: ultra_idx(:)
@@ -21,10 +21,15 @@ module features
             
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
-                    call get_ultracell(maxrcut,1000,set_type,conf,&
+                    call get_ultracell(mxrcut,1000,set_type,conf,&
                             &ultra_cart,ultra_idx,ultra_z)
 
-                    call calculate_isotropic_info(ultra_cart,ultra_idx)
+                    call calculate_isotropic_info(set_type,conf,ultra_cart,ultra_idx)
+
+                    deallocate(ultra_z)
+                    deallocate(ultra_idx)
+                    deallocate(ultra_cart)
+                    deallocate(feature_isotropic)
                 end do
             end do
 
@@ -39,5 +44,4 @@ module features
         end subroutine calculate_features
 
     
-
 end module

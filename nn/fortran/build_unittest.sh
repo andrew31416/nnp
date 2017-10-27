@@ -17,9 +17,14 @@ f4="propagate."
 f5="util."
 f6="measures."
 f7="feature_config."
-f8="features."
+f8="feature_util."
+f9="features."
 
 unittest="unittest."
+
+# clear previous build #
+rm $f1"o"  $f2"o"
+
 
 #------------------#
 # build unit tests #
@@ -34,8 +39,9 @@ $FC -c $f5$f_suffix $FFLAGS $DEBUG
 $FC -c $f6$f_suffix $FFLAGS $DEBUG
 $FC -c $f7$f_suffix $FFLAGS $DEBUG
 $FC -c $f8$f_suffix $FFLAGS $DEBUG
+$FC -c $f9$f_suffix $FFLAGS $DEBUG
 
-$FC -o $testname $unittest"f95" config.o init.o propagate.o util.o io.o measures.o feature_config.o features.o $FFLAGS $DEBUG
+$FC -o $testname $unittest"f95" config.o init.o propagate.o util.o io.o measures.o feature_config.o feature_util.o features.o $FFLAGS $DEBUG
 
 
 #-----------#

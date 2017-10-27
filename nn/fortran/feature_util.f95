@@ -65,8 +65,8 @@ module feature_util
             tmp(2) = tmp(2) + dble(jj)
             tmp(3) = tmp(3) + dble(kk)
 
-            call frac_to_cart(tmp,cell,cart)
-        end subroutine
+            call matrix_vec_mult(tmp,cell,cart)
+        end subroutine project_image
 
         subroutine get_ultracell(rcut,maxsize,set_type,conf,ultracart,ultraidx,ultraZ)
             !============================================================!
@@ -270,25 +270,77 @@ module feature_util
             integer,intent(in) :: ultraidx(:),set_type,conf
 
             !* scratch
-            integer :: dim(1:1),ii,jj
-            real(8) :: rcut2
+            integer :: dim(1:1),ii,jj,cntr
+            real(8) :: rcut2,dr2,rtol2
+            real(8) :: drii(1:3),drjj(1:3)
 
             !* dim(1) = number atoms in ultra cell
             dim = shape(ultraidx)
 
             !* max isotropic interaction cut off
-            rcut2 = maxrcut(1)
+            rcut2 = maxrcut(1)**2
+
+            !* min distance between 2 different atoms allowed
+            rtol2 = (0.0000001)**2
+
+            !* info for each atom
+            allocate(feature_isotropic(data_sets(set_type)%configs(conf)%n))
 
             do ii=1,data_sets(set_type)%configs(conf)%n,1
                 !* iterate over local atoms
 
+                !* local position
+                drii(:) = data_sets(set_type)%configs(conf)%r(:,ii)
+
+                cntr = 0
                 do jj=1,dim(1),1
-                    !* loop over all interacting atoms
+                    drjj(:) = ultracart(:,jj)
 
-                    
+                    dr2 = distance2(drii,drjj) 
+
+                    if ( (dr2.lt.rtol2).or.(dr2.gt.rcut2) ) then
+                        !* same atom or beyond cut off
+                        cycle
+                    else 
+                        cntr = cntr + 1    
+                    end if
                 end do
+
+
+                !* allocate neighbour mem
+                allocate(feature_isotropic(ii)%dr(cntr))
+                allocate(feature_isotropic(ii)%idx(cntr))
+                allocate(feature_isotropic(ii)%drdri(3,cntr))
+               
+                !* number of neighbours 
+                feature_isotropic(ii)%n = cntr
+
+                cntr = 1
+                do jj=1,dim(1),1
+                    drjj(:) = ultracart(:,jj)
+
+                    dr2 = distance2(drii,drjj) 
+
+                    if ( (dr2.lt.rtol2).or.(dr2.gt.rcut2) ) then
+                        !* same atom or beyond cut off
+                        cycle
+                    else 
+                        feature_isotropic(ii)%dr(cntr) = sqrt(dr2)
+                        feature_isotropic(ii)%idx(cntr) = jj
+                        feature_isotropic(ii)%drdri(:,cntr) = drjj(:) - drii(:)
+                        cntr = cntr + 1    
+                    end if
+                end do
+
+
             end do
+        end subroutine calculate_isotropic_info
 
+        real(8) function distance2(dr1,dr2)
+            implicit none
 
-        end subroutine
+            real(8),intent(in) :: dr1(1:3),dr2(1:3)
+
+            distance2 = (dr1(1)-dr2(1))**2 + (dr1(2)-dr2(2))**2 + (dr1(3)-dr2(3))**2  
+        end function distance2
 end module        
