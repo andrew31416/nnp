@@ -51,30 +51,10 @@ program unittest
             !* initialise feature memory
             call generate_features(fD)
 
-
+            !* calculate features and analytical derivatives
             call calculate_features()
 
-
-            !allocate(features(fD,natm*nconf,2))
-            !allocate(forces(3,natm*nconf,2))
-            !allocate(energy(nconf,2))
-            !allocate(slice_idx(2,nconf))
-            !call srand(1)
-            !call random_number(features(:,:,:))
-            !call random_number(forces(:,:,:))
-            !call random_number(energy(:,:))
-
             call initialise_net(num_nodes,nlf_type,fD)
-
-            !do ii=1,nconf,1
-            !    slice_idx(1,ii) = (ii-1)*natm + 1
-            !    slice_idx(2,ii) = ii*natm
-            !end do
-
-            !do ii=1,2,1
-            !    call initialise_set(ii,nconf,nconf*natm,slice_idx,features(:,:,ii),&
-            !            &forces(:,:,ii),energy(:,ii))
-            !end do
 
             !----------------------!
             !* perform unit tests *!

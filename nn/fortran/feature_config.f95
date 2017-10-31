@@ -15,6 +15,7 @@ module feature_config
         real(8),allocatable :: dr(:)        ! distance to neighbour
         integer,allocatable :: idx(:)       ! index of neighbour
         real(8),allocatable :: drdri(:,:)   ! derivative of distance wrt atom
+        real(8),allocatable :: z(:)         ! atomic number of neighbour
     end type feature_info_isotropic
 
     !------------------------------!
@@ -31,6 +32,7 @@ module feature_config
         !=======================================================!
         integer :: ftype                    ! feature type
         real(8) :: rcut                     ! interaction cut off 
+        real(8) :: rs                       ! iso exp offset
         real(8) :: fs                       ! tapering smoothness
         real(8) :: eta                      ! iso
         real(8) :: xi                       ! ani

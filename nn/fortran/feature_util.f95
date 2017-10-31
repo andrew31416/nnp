@@ -259,14 +259,14 @@ module feature_util
             maxrcut = tmpr
         end function maxrcut
 
-        subroutine calculate_isotropic_info(set_type,conf,ultracart,ultraidx)
+        subroutine calculate_isotropic_info(set_type,conf,ultracart,ultraz,ultraidx)
             !===============================================================!
             !* calculate isotropic atom-atom distances and derivatives     *!
             !===============================================================!
 
             implicit none
 
-            real(8),intent(in) :: ultracart(:,:)
+            real(8),intent(in) :: ultracart(:,:),ultraz(:)
             integer,intent(in) :: ultraidx(:),set_type,conf
 
             !* scratch
@@ -310,6 +310,7 @@ module feature_util
                 !* allocate neighbour mem
                 allocate(feature_isotropic(ii)%dr(cntr))
                 allocate(feature_isotropic(ii)%idx(cntr))
+                allocate(feature_isotropic(ii)%z(cntr))
                 allocate(feature_isotropic(ii)%drdri(3,cntr))
                
                 !* number of neighbours 
@@ -326,8 +327,9 @@ module feature_util
                         cycle
                     else 
                         feature_isotropic(ii)%dr(cntr) = sqrt(dr2)
-                        feature_isotropic(ii)%idx(cntr) = jj
+                        feature_isotropic(ii)%idx(cntr) = ultraidx(jj)
                         feature_isotropic(ii)%drdri(:,cntr) = drjj(:) - drii(:)
+                        feature_isotropic(ii)%z(cntr) = ultraz(jj) 
                         cntr = cntr + 1    
                     end if
                 end do
@@ -343,4 +345,32 @@ module feature_util
 
             distance2 = (dr1(1)-dr2(1))**2 + (dr1(2)-dr2(2))**2 + (dr1(3)-dr2(3))**2  
         end function distance2
+
+
+        logical function int_in_intarray(idx,array,arg)
+            implicit none
+
+            integer,intent(in) :: idx,array(:)
+            integer,intent(out) :: arg
+
+            !* scratch
+            integer :: ii
+            logical :: ishere
+
+            ishere = .false.
+            arg = -1    ! NULL value, should not use if if ishere = False
+
+            do ii=1,size(array)
+                if (array(ii).eq.idx) then
+                    !* idx is in array
+                    ishere = .true.
+                    
+                    !* return index value where idx is found
+                    arg = ii
+                    exit
+                end if
+            end do
+
+            int_in_intarray = ishere
+        end function int_in_intarray
 end module        

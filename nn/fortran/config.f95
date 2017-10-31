@@ -37,16 +37,16 @@ module config
 
     !* atomic structure type
     type,public :: structure
-        integer :: n                                        !* number of atoms
-        real(8),dimension(:,:),allocatable :: r             !* cartesian coordinates (3,n) / (A)
-        real(8),dimension(:),allocatable :: z               !* atomic number   
-        real(8),dimension(1:3,1:3) :: cell                  !* cell vectors / (A) 
-        real(8),dimension(:,:),allocatable :: x             !* features (D,n)
-        type(feature_derivatives),allocatable :: x_deriv(:) !* feature derivatives
-        real(8),dimension(:),  allocatable :: current_ei    !* current per atom energies
-        real(8),dimension(:,:),allocatable :: current_fi    !* current per atom forces
-        real(8),dimension(:,:),allocatable :: forces        !* ref forces
-        real(8) :: energy                                   !* ref total energy
+        integer :: n                                            !* number of atoms
+        real(8),dimension(:,:),allocatable :: r                 !* cartesian coordinates (3,n) / (A)
+        real(8),dimension(:),allocatable :: z                   !* atomic number   
+        real(8),dimension(1:3,1:3) :: cell                      !* cell vectors / (A) 
+        real(8),dimension(:,:),allocatable :: x                 !* features (D+1,n)
+        type(feature_derivatives),allocatable :: x_deriv(:,:)   !* feature derivatives (D,n)
+        real(8),dimension(:),  allocatable :: current_ei        !* current per atom energies
+        real(8),dimension(:,:),allocatable :: current_fi        !* current per atom forces
+        real(8),dimension(:,:),allocatable :: forces            !* ref forces
+        real(8) :: energy                                       !* ref total energy
     end type structure
 
     type,public :: structures
