@@ -316,6 +316,9 @@ module feature_util
                 !* number of neighbours 
                 feature_isotropic(ii)%n = cntr
 
+                !* atomic number
+                feature_isotropic(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
+
                 cntr = 1
                 do jj=1,dim(1),1
                     drjj(:) = ultracart(:,jj)

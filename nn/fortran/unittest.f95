@@ -157,7 +157,7 @@ program unittest
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
                     allocate(data_sets(set_type)%configs(conf)%x(fD+1,data_sets(set_type)%configs(conf)%n))
-                    !allocate(data_sets(set_type)%configs(conf)%x_deriv(D+1,data_sets(set_type)%configs(conf)%n))
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(fD,data_sets(set_type)%configs(conf)%n))
                 end do
             end do
         end subroutine generate_features

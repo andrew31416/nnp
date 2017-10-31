@@ -1,8 +1,10 @@
 module features
     use config
+    use io
     use feature_config
     use feature_util
     use tapering, only : taper_1,taper_deriv_1
+   
 
     implicit none
 
@@ -50,8 +52,7 @@ module features
         subroutine calculate_all_features(set_type,conf)
             implicit none
 
-            integer,intent(in) :: set_type,conf,ultra_idx(:)
-            real(8),intent(in) :: ultra_z(:)
+            integer,intent(in) :: set_type,conf
         
             !* scratch
             integer :: atm,ft
@@ -116,9 +117,9 @@ module features
             integer,intent(in) :: set_type,conf,atm,ft_idx
 
             !* scratch
-            integer :: arr_idx ,ii,jj,cntr,arg
+            integer :: arr_idx ,ii,cntr,arg
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
-            integer :: idx_to_contrib(1:data_sets(set_type)%configs(conf)%n)
+            integer :: idx_to_contrib(1:feature_isotropic(atm)%n)
             logical :: zero_neighbours 
             real(8) :: rcut
 
@@ -187,16 +188,20 @@ module features
                     !* contributing interaction
                     call feature_behler_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                    call feature_behler_iso_deriv(atm,ii,&
+                    call feature_behler_iso_deriv(atm,ii,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,idx_to_contrib(ii)))
                 end if
             end do
             !* derivative wrt. central atm
-            call feature_behler_iso_deriv(atm,0,&
+            call feature_behler_iso_deriv(atm,0,ft_idx,&
                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
 
 
         end subroutine feature_twobody
+
+        subroutine feature_threebody()
+            implicit none
+        end subroutine feature_threebody
 
         subroutine feature_behler_iso(atm,neigh_idx,ft_idx,current_val)
             implicit none
@@ -205,7 +210,7 @@ module features
             real(8),intent(inout) :: current_val
 
             !* scratch
-            real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,eta,rs
+            real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,eta,rs,fs
             
             dr  = feature_isotropic(atm)%dr(neigh_idx)
             
@@ -224,16 +229,16 @@ module features
             tmp2 = taper_1(dr,rcut,fs)
 
             !* atomic numbers
-            tmp3 = (data_sets(set_type)%configs(conf)%z(atm)+1.0d0)**za * &
+            tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
                     &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
 
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_behler_iso
       
-        subroutine feature_behler_iso_deriv(atm,neigh_idx,deriv_vec)
+        subroutine feature_behler_iso_deriv(atm,neigh_idx,ft_idx,deriv_vec)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx
+            integer,intent(in) :: atm,neigh_idx,ft_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -267,14 +272,15 @@ module features
                 dr_scl = feature_isotropic(atm)%dr(ii)
 
                 !* r_neighbour - r_centralatom
-                dr_vec(:) = feature_isotropic%drdri(:,ii)
+                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
 
                 !* tapering
-                tap = taper_1(dr,rcut,fs)
-                tap_deriv = taper_deriv_1(dr,rcut,fs)
+                tap = taper_1(dr_scl,rcut,fs)
+                tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
 
                 tmp1 =  exp(-eta*(dr_scl-rs)**2)  *  (tap_deriv + &
-                        &2.0d0*(eta**2)*(dr_scl-rs)*tap) 
+                        &2.0d0*(eta**2)*(dr_scl-rs)*tap) *&
+                        &feature_isotropic(atm)%z_atom * feature_isotropic(atm)%z(ii)
 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2
             end do

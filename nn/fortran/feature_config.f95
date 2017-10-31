@@ -16,6 +16,7 @@ module feature_config
         integer,allocatable :: idx(:)       ! index of neighbour
         real(8),allocatable :: drdri(:,:)   ! derivative of distance wrt atom
         real(8),allocatable :: z(:)         ! atomic number of neighbour
+        real(8) :: z_atom                   ! central atomic number
     end type feature_info_isotropic
 
     !------------------------------!
