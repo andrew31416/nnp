@@ -62,7 +62,7 @@ program unittest
             
             tests(1) = test_dydw()              ! dydw
             call test_loss_jac(tests(2:4))      ! d loss / dw
-            tests(5) = test_dydx()               ! dydx
+            tests(5) = test_dydx()              ! dydx
 
 
             do ii=1,num_tests
@@ -187,7 +187,7 @@ program unittest
 
             dy = 0.0d0
 
-            do ww=4,4,1
+            do ww=5,5,1
                 dw = 1.0d0/(10.0d0**ww)
 
                 do ii=1,nwght,1
@@ -235,7 +235,7 @@ program unittest
                 !* parse dy/dw into 1d array
                 call parse_structure_to_array(dydw,dydw_flat)
                 
-                test_result = array_equal(derivs,dydw_flat,dble(1e-15),dble(1e-10))
+                test_result = array_equal(derivs,dydw_flat,dble(1e-7),dble(1e-10))
             end do
             test_dydw = test_result
         end function test_dydw
@@ -316,7 +316,7 @@ program unittest
 
                 call loss_jacobian(original_weights,nwght,set_type,anl_jac)
                 
-                test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-15),dble(1e-10))
+                test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-7),dble(1e-10))
             end do !* end loop over loss terms
         end subroutine test_loss_jac
 
@@ -381,7 +381,7 @@ program unittest
                         call forward_propagate(conf,atm,set_type)
                         call backward_propagate(conf,atm,set_type)
                     
-                        log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-15),dble(1e-10))
+                        log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-7),dble(1e-10))
 
                     end do !* end loop atoms
                 
@@ -397,5 +397,136 @@ program unittest
 
             test_dydx = all(set_atms)
         end function test_dydx
+
+        logical function test_dxdr()
+            implicit none
+
+            !* scratch
+            integer :: ii,jj,kk,ll,dd,ww,set_type,conf,atm
+            real(8) :: dw,x0
+            real(8),allocatable :: num_dxdr(:,:)
+            type(feature_derivatives),allocatable :: anl_deriv(:,:)
+            logical :: deriv_matches,atom_ok,all_ok,set_arr(1:2)
+            logical,allocatable :: conf_arr(:),atm_arr(:)
+            
+
+            do set_type=1,2
+                allocate(conf_arr(data_sets(set_type)%nconf))
+
+                do conf=1,data_sets(set_type)%nconf
+                    !* finite difference of features for all atoms
+                    allocate(num_dxdr(D,data_sets(set_type)%configs(conf)%n))
+                    allocate(anl_deriv(D,data_sets(set_type)%configs(conf)%n))
+                    
+                    allocate(atm_arr(data_sets(set_type)%configs(conf)%n))
+                    atm_arr(:) = .true.
+
+                    !* calculate analytical derivatives
+                    call calculate_features()
+
+                    !* copy numerical derivatives
+                    do ii=1,data_sets(set_type)%configs(conf)%n
+                        do jj=1,D
+                            anl_deriv(jj,ii)%n = data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%n
+                            allocate(anl_deriv(jj,ii)%idx(anl_deriv(jj,ii)%n))
+                            allocate(anl_deriv(jj,ii)%vec(3,anl_deriv(jj,ii)%n))
+                            anl_deriv(jj,ii)%idx(:) = &
+                                    &data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%idx(:)
+                            anl_deriv(jj,ii)%vec(:,:) = &
+                                    &data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%vec(:,:)
+                        end do
+                    end do
+
+
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        do dd=1,3,1
+                            !* real space coordinate
+                            x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
+                            
+                            do ww=4,4,1
+        
+                                !-----------------------------!
+                                !* numerical differentiation *!
+                                !-----------------------------!
+
+                                !* finite difference (A)
+                                dw = 1.0d0/(10.0d0**ww)
+                                
+                                do ii=1,2,1
+                                    if (ii.eq.1) then
+                                        data_sets(set_type)%configs(conf)%r(dd,atm) = x0 + dw
+                                    else
+                                        data_sets(set_type)%configs(conf)%r(dd,atm) = x0 - dw
+                                    end if
+                                    
+                                    !* calculate features
+                                    call calculate_features()
+
+                                    if (ii.eq.1) then
+                                        num_dxdr(:,:) = data_sets(set_type)%configs(conf)%x(2:,:)
+                                    else
+                                        num_dxdr(:,:) = ( num_dxdr(:,:) - &
+                                                &data_sets(set_type)%configs(conf)%x(2:,:) ) / (2.0d0*dw)
+                                    end if
+                                end do !* end loop +/- dw
+
+                                !---------------------------------------!
+                                !* analytical and numerical comparison *!
+                                !---------------------------------------!
+
+                                all_ok = .true.
+
+                                !* search for all terms with atm in
+                                do jj=1,data_sets(set_type)%configs(conf)%n,1    
+                                    atom_ok = .true.
+                                    do kk=1,D,1
+                                        deriv_matches = .true.
+                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10))) then
+                                            deriv_matches = .false.
+                                            do ll=1,anl_deriv(kk,jj)%n
+                                                !* loop over atoms which contribute to feature kk,atom jj
+                                                if (anl_deriv(kk,jj)%idx(ll).eq.jj) then 
+                                                    if ( scalar_equal(num_dxdr(kk,jj),&
+                                                            &anl_deriv(kk,jj)%vec(dd,ll),&
+                                                            &dble(1e-10),dble(1e-10)) ) then
+                                                        deriv_matches = .true.                    
+                                                    end if
+                                                end if  
+                                            end do !* end loop over contributing atoms to (kk,jj)
+                                        end if
+                                        
+                                        if (deriv_matches.neqv..true.) then
+                                            !* one of feature derivs for this atom is wrong
+                                            atom_ok = .false.
+                                        end if
+                                    end do !* end loop over features
+
+
+                                    if (atom_ok.neqv..true.) then
+                                        all_ok = .false.
+                                    end if
+                                end do !* end loop over atoms jj
+
+
+                                if (all_ok.neqv..true.) then
+                                    atm_arr(atm) = .false.
+                                end if
+                            end do
+                        end do !* end loop over dimensions
+                    end do !* end loop over atoms in structure
+
+                    conf_arr(conf) = all(atm_arr)
+
+                    deallocate(atm_arr)
+                    deallocate(num_dxdr)
+                    deallocate(anl_deriv)
+                end do  !* end loop over structures in set
+                set_arr(set_type) = all(conf_arr)
+
+                deallocate(conf_arr)
+            end do !* end loop over test/train sets
+
+            test_dxdr = all(set_arr)
+        end function test_dxdr
 
 end program unittest

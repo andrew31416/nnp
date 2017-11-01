@@ -39,14 +39,6 @@ module features
                 end do
             end do
 
-            do set_type=1,2
-                do conf=1,data_sets(set_type)%nconf
-                    call random_number(data_sets(set_type)%configs(conf)%x(2:,:))
-
-                    data_sets(set_type)%configs(conf)%x(1,:) = 1.0d0
-                end do
-            end do
-            
         end subroutine calculate_features
 
         subroutine calculate_all_features(set_type,conf)
@@ -61,6 +53,9 @@ module features
                 do ft=1,feature_params%num_features
                     call evaluate_feature(ft,set_type,conf,atm)
                 end do !* end loop features
+
+                !* null dimension for bias
+                data_sets(set_type)%configs(conf)%x(1,atm) = 1.0d0
             end do !* end loop atoms
         end subroutine calculate_all_features
 

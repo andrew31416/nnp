@@ -140,6 +140,9 @@ module util
                     equal = .true.
                 end if
             end if
+            if (equal.neqv..true.) then
+                write(*,*) scl1,scl2,'are not equal'
+            end if
             scalar_equal = equal
         end function scalar_equal
 end module util
