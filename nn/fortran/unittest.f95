@@ -7,6 +7,7 @@ program unittest
     use io
     use measures
     use features
+    use feature_util
 
     implicit none
 
@@ -16,7 +17,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:5)
+            logical :: tests(1:6)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -63,7 +64,7 @@ program unittest
             tests(1) = test_dydw()              ! dydw
             call test_loss_jac(tests(2:4))      ! d loss / dw
             tests(5) = test_dydx()              ! dydx
-
+            !tests(6) = test_dxdr()              ! d feature / d atom position
 
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -410,16 +411,21 @@ program unittest
             logical,allocatable :: conf_arr(:),atm_arr(:)
             
 
-            do set_type=1,2
+            !do set_type=1,2
+            do set_type=1,1
                 allocate(conf_arr(data_sets(set_type)%nconf))
 
-                do conf=1,data_sets(set_type)%nconf
+                !do conf=1,data_sets(set_type)%nconf
+                do conf=1,1
                     !* finite difference of features for all atoms
                     allocate(num_dxdr(D,data_sets(set_type)%configs(conf)%n))
                     allocate(anl_deriv(D,data_sets(set_type)%configs(conf)%n))
                     
                     allocate(atm_arr(data_sets(set_type)%configs(conf)%n))
                     atm_arr(:) = .true.
+
+                    !* deallocate previous mem
+                    call deallocate_feature_deriv_info()
 
                     !* calculate analytical derivatives
                     call calculate_features()
@@ -428,17 +434,20 @@ program unittest
                     do ii=1,data_sets(set_type)%configs(conf)%n
                         do jj=1,D
                             anl_deriv(jj,ii)%n = data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%n
-                            allocate(anl_deriv(jj,ii)%idx(anl_deriv(jj,ii)%n))
-                            allocate(anl_deriv(jj,ii)%vec(3,anl_deriv(jj,ii)%n))
-                            anl_deriv(jj,ii)%idx(:) = &
-                                    &data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%idx(:)
-                            anl_deriv(jj,ii)%vec(:,:) = &
-                                    &data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%vec(:,:)
+                            if (anl_deriv(jj,ii)%n.ne.0) then
+                                allocate(anl_deriv(jj,ii)%idx(anl_deriv(jj,ii)%n))
+                                allocate(anl_deriv(jj,ii)%vec(3,anl_deriv(jj,ii)%n))
+                                anl_deriv(jj,ii)%idx(:) = &
+                                        &data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%idx(:)
+                                anl_deriv(jj,ii)%vec(:,:) = &
+                                        &data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%vec(:,:)
+                            end if
                         end do
                     end do
 
 
-                    do atm=1,data_sets(set_type)%configs(conf)%n
+                    !do atm=1,data_sets(set_type)%configs(conf)%n
+                    do atm=1,1
                         do dd=1,3,1
                             !* real space coordinate
                             x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
@@ -458,6 +467,9 @@ program unittest
                                     else
                                         data_sets(set_type)%configs(conf)%r(dd,atm) = x0 - dw
                                     end if
+                                    
+                                    !* deallocate previous mem
+                                    call deallocate_feature_deriv_info()
                                     
                                     !* calculate features
                                     call calculate_features()
@@ -481,11 +493,12 @@ program unittest
                                     atom_ok = .true.
                                     do kk=1,D,1
                                         deriv_matches = .true.
-                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10))) then
+                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10)).neqv.&
+                                        &.true.) then
                                             deriv_matches = .false.
                                             do ll=1,anl_deriv(kk,jj)%n
                                                 !* loop over atoms which contribute to feature kk,atom jj
-                                                if (anl_deriv(kk,jj)%idx(ll).eq.jj) then 
+                                                if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                             &anl_deriv(kk,jj)%vec(dd,ll),&
                                                             &dble(1e-10),dble(1e-10)) ) then

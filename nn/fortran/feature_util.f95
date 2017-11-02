@@ -376,4 +376,23 @@ module feature_util
 
             int_in_intarray = ishere
         end function int_in_intarray
+
+        subroutine deallocate_feature_deriv_info()
+            implicit none
+
+            integer :: set_type,conf,atm,ft
+            
+            do set_type=1,2
+                do conf=1,data_sets(set_type)%nconf
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        do ft=1,D
+                            if (data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n.ne.0) then
+                                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)
+                                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)
+                            end if
+                        end do
+                    end do
+                end do
+            end do
+        end subroutine
 end module        

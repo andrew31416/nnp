@@ -162,7 +162,7 @@ module features
                     idx_to_contrib(ii) = -1     ! NULL value
                 end if
             end do !* end loop over neighbour images
-
+            
             allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx(cntr))
             allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(3,cntr))
             
