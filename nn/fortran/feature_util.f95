@@ -8,12 +8,12 @@ module feature_util
 
         subroutine invert_matrix(mtrx_in,mtrx_out)
             implicit none
-
+            
             real(8),intent(in) :: mtrx_in(1:3,1:3)
             real(8),intent(inout) :: mtrx_out(1:3,1:3)
 
             real(8) :: det
-
+            
             mtrx_out(1,1) = mtrx_in(2,2)*mtrx_in(3,3) - mtrx_in(3,2)*mtrx_in(2,3)
             mtrx_out(2,1) = mtrx_in(2,3)*mtrx_in(3,1) - mtrx_in(2,1)*mtrx_in(3,3)
             mtrx_out(3,1) = mtrx_in(2,1)*mtrx_in(3,2) - mtrx_in(3,1)*mtrx_in(2,2) 
@@ -26,13 +26,13 @@ module feature_util
             mtrx_out(2,3) = mtrx_in(2,1)*mtrx_in(1,3) - mtrx_in(1,1)*mtrx_in(1,3)
             mtrx_out(3,3) = mtrx_in(1,1)*mtrx_in(2,2) - mtrx_in(2,1)*mtrx_in(1,2)
 
-            det = mtrx_in(1,1)*mtrx_out(1,1) + mtrx_in(2,2)*mtrx_out(2,1) + &
+            det = mtrx_in(1,1)*mtrx_out(1,1) + mtrx_in(1,2)*mtrx_out(2,1) + &
                     &mtrx_in(1,3)*mtrx_out(3,1)
 
-            mtrx_out(:,:) = mtrx_out(:,:)/det                    
+            mtrx_out(:,:) = mtrx_out(:,:)/det                   
         end subroutine
 
-        subroutine matrix_vec_mult(frac,cell,cart)
+        subroutine matrix_vec_mult(cell,frac,cart)
             implicit none
 
             real(8),intent(in) :: frac(1:3),cell(1:3,1:3)
@@ -65,7 +65,7 @@ module feature_util
             tmp(2) = tmp(2) + dble(jj)
             tmp(3) = tmp(3) + dble(kk)
 
-            call matrix_vec_mult(tmp,cell,cart)
+            call matrix_vec_mult(cell,tmp,cart)
         end subroutine project_image
 
         subroutine get_ultracell(rcut,maxsize,set_type,conf,ultracart,ultraidx,ultraZ)
@@ -91,7 +91,7 @@ module feature_util
             logical :: pairfound
             real(8) :: localcell(1:3,1:3),invcell(1:3,1:3)
             integer :: natm
-
+            
             ultranatm = 0
 
             rcut2 = rcut**2
@@ -114,7 +114,7 @@ module feature_util
                     cartii(1:3) = data_sets(set_type)%configs(conf)%r(1:3,atomii)
 
                     !* fractional coordinates fracii
-                    call matrix_vec_mult(cartii,invcell,fracii)
+                    call matrix_vec_mult(invcell,cartii,fracii)
 
                     !* search over all layers
                     do ii=-layer,layer
@@ -144,6 +144,7 @@ module feature_util
                                  
                                     if ( (cartii(1)-cartjj(1))**2+(cartii(2)-cartjj(2))**2+&
                                             &(cartii(3)-cartjj(3))**2 .le. rcut2 ) then
+!write(*,*) cartii , data_sets(set_type)%configs(conf)%r(1:3,atomii)
                                         pairfound = .true.
                                     end if
                                 end do

@@ -33,15 +33,15 @@ program unittest
             num_tests = size(tests)
 
             !* number of nodes
-            num_nodes(1) = 3
-            num_nodes(2) = 2
+            num_nodes(1) = 10
+            num_nodes(2) = 3
 
             !* nonlinear function
             nlf_type = 1
             
             !* features
             fD = 2
-            natm = 20
+            natm = 30
             nconf = 2
             
             call unittest_header()
@@ -102,17 +102,17 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 20.0d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 20.0d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 20.0d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 10.0d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 10.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 10.0d0
 
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%energy)
                     data_sets(set_type)%configs(conf)%forces = 0.0d0
 
                     !data_sets(set_type)%configs(conf)%r(:,:) = 0.0d0
-                    !data_sets(set_type)%configs(conf)%r(1,1) = 9.0d0
-                    !data_sets(set_type)%configs(conf)%r(1,2) = 11.0d0
+                    !data_sets(set_type)%configs(conf)%r(1,1) = 0.5d0
+                    !data_sets(set_type)%configs(conf)%r(1,2) = 1.5d0
 
                     do ii=1,3
                         call random_number(data_sets(set_type)%configs(conf)%r(ii,:))
@@ -192,7 +192,7 @@ program unittest
 
             dy = 0.0d0
 
-            do ww=5,5,1
+            do ww=4,4,1
                 dw = 1.0d0/(10.0d0**ww)
 
                 do ii=1,nwght,1
@@ -240,7 +240,7 @@ program unittest
                 !* parse dy/dw into 1d array
                 call parse_structure_to_array(dydw,dydw_flat)
                 
-                test_result = array_equal(derivs,dydw_flat,dble(1e-7),dble(1e-10))
+                test_result = array_equal(derivs,dydw_flat,dble(1e-7),dble(1e-10),.true.)
             end do
             test_dydw = test_result
         end function test_dydw
@@ -321,7 +321,7 @@ program unittest
 
                 call loss_jacobian(original_weights,nwght,set_type,anl_jac)
                 
-                test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-7),dble(1e-10))
+                test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-7),dble(1e-10),.true.)
             end do !* end loop over loss terms
         end subroutine test_loss_jac
 
@@ -386,7 +386,7 @@ program unittest
                         call forward_propagate(conf,atm,set_type)
                         call backward_propagate(conf,atm,set_type)
                     
-                        log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-7),dble(1e-10))
+                        log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-7),dble(1e-10),.true.)
 
                     end do !* end loop atoms
                 
@@ -413,6 +413,7 @@ program unittest
             type(feature_derivatives),allocatable :: anl_deriv(:,:)
             logical :: deriv_matches,atom_ok,all_ok,set_arr(1:2)
             logical,allocatable :: conf_arr(:),atm_arr(:)
+            logical :: atom_passes
             
 
             do set_type=1,2
@@ -452,8 +453,10 @@ program unittest
                         do dd=1,3,1
                             !* real space coordinate
                             x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
-                            
-                            do ww=4,4,1
+                           
+                            !* if one of finite difference is OK, atom_passes = True
+                            atom_passes = .false. 
+                            do ww=4,8,1
         
                                 !-----------------------------!
                                 !* numerical differentiation *!
@@ -505,7 +508,7 @@ program unittest
                                                 if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                     &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-10),&
-                                                    &dble(1e-10),.true.) ) then
+                                                    &dble(1e-10),.false.) ) then
                                                         deriv_matches = .true.                   
                                                     end if
                                                 end if  
@@ -523,12 +526,21 @@ program unittest
                                         all_ok = .false.
                                     end if
                                 end do !* end loop over atoms jj
+                
 
-
-                                if (all_ok.neqv..true.) then
-                                    atm_arr(atm) = .false.
+                                if (all_ok) then
+                                    atom_passes = .true.
                                 end if
-                            end do
+
+                                !if (all_ok.neqv..true.) then
+                                !    atm_arr(atm) = .false.
+                                !end if
+                            end do !* end loop over finite difference
+
+                            if (atom_passes.neqv..true.) then
+                                !* none of the finite differences gave a correct solution
+                                atm_arr(atm) = .false.
+                            end if
                         end do !* end loop over dimensions
                     end do !* end loop over atoms in structure
 

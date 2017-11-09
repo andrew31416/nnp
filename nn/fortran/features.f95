@@ -209,7 +209,7 @@ module features
            
             !* atom-neigh_idx distance 
             dr  = feature_isotropic(atm)%dr(neigh_idx)
-            
+!write(*,*) dr,atm,feature_isotropic(atm)%idx(neigh_idx)
             !* symmetry function params
             za   = feature_params%info(ft_idx)%za
             zb   = feature_params%info(ft_idx)%zb
@@ -266,7 +266,7 @@ module features
             do ii=lim1,lim2,1
                 if (atm.eq.feature_isotropic(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
-                    return
+                    cycle
                 end if
                 
                 !* atom-atom distance

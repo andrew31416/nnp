@@ -97,10 +97,11 @@ module util
             weights_out%hl3 = 0.0d0
         end subroutine zero_weights
 
-        logical function array_equal(arr1,arr2,ftol,rtol)
+        logical function array_equal(arr1,arr2,ftol,rtol,verbose)
             implicit none
 
             real(8),intent(in) :: arr1(:),arr2(:),ftol,rtol
+            logical,intent(in) :: verbose
 
             logical :: equal,tmp
             integer :: ii
@@ -110,7 +111,7 @@ module util
             if (size(arr1).eq.size(arr2)) then
                 tmp = .true.
                 do ii=1,size(arr1)
-                    if (scalar_equal(arr1(ii),arr2(ii),ftol,rtol,.false.).neqv..true.) then
+                    if (scalar_equal(arr1(ii),arr2(ii),ftol,rtol,verbose).neqv..true.) then
                         tmp = .false.
                     end if
                 end do
