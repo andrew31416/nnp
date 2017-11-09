@@ -12,7 +12,7 @@ $unittest
 
 ret_status=$?
 
-if [ $ret_status == 1 ]; then
+if [ $ret_status==1 ]; then
     # SUCCESS
     exit 0
 else
