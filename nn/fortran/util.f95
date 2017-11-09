@@ -110,7 +110,7 @@ module util
             if (size(arr1).eq.size(arr2)) then
                 tmp = .true.
                 do ii=1,size(arr1)
-                    if (scalar_equal(arr1(ii),arr2(ii),ftol,rtol).neqv..true.) then
+                    if (scalar_equal(arr1(ii),arr2(ii),ftol,rtol,.false.).neqv..true.) then
                         tmp = .false.
                     end if
                 end do
@@ -121,10 +121,11 @@ module util
             array_equal = equal
         end function array_equal
 
-        logical function scalar_equal(scl1,scl2,ftol,rtol)
+        logical function scalar_equal(scl1,scl2,ftol,rtol,verbose)
             implicit none
 
             real(8),intent(in) :: scl1,scl2,ftol,rtol
+            logical,intent(in) :: verbose
 
             logical :: equal
 
@@ -140,7 +141,7 @@ module util
                     equal = .true.
                 end if
             end if
-            if (equal.neqv..true.) then
+            if ( (equal.neqv..true.).and.(verbose) ) then
                 write(*,*) scl1,scl2,'are not equal'
             end if
             scalar_equal = equal

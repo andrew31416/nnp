@@ -315,8 +315,8 @@ module feature_util
                
                 !* number of neighbours 
                 feature_isotropic(ii)%n = cntr
-
-                !* atomic number
+                
+                !* atomic number of central atom in interaction
                 feature_isotropic(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
 
                 cntr = 1
@@ -329,9 +329,17 @@ module feature_util
                         !* same atom or beyond cut off
                         cycle
                     else 
+                        !* atom-atom distance
                         feature_isotropic(ii)%dr(cntr) = sqrt(dr2)
+
+                        !* local cell identifier of neighbour cntr
                         feature_isotropic(ii)%idx(cntr) = ultraidx(jj)
-                        feature_isotropic(ii)%drdri(:,cntr) = drjj(:) - drii(:)
+
+                        !* d rij / drj 
+                        feature_isotropic(ii)%drdri(:,cntr) = (drjj(:) - drii(:)) / &
+                                &feature_isotropic(ii)%dr(cntr)
+                        
+                        !* Z of neighbour cntr
                         feature_isotropic(ii)%z(cntr) = ultraz(jj) 
                         cntr = cntr + 1    
                     end if

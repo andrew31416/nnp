@@ -41,7 +41,7 @@ program unittest
             
             !* features
             fD = 2
-            natm = 2
+            natm = 20
             nconf = 2
             
             call unittest_header()
@@ -64,7 +64,7 @@ program unittest
             tests(1) = test_dydw()              ! dydw
             call test_loss_jac(tests(2:4))      ! d loss / dw
             tests(5) = test_dydx()              ! dydx
-            !tests(6) = test_dxdr()              ! d feature / d atom position
+            tests(6) = test_dxdr()              ! d feature / d atom position
 
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -102,13 +102,17 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 4.0d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 5.0d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 10.0d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 20.0d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 20.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 20.0d0
 
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%energy)
                     data_sets(set_type)%configs(conf)%forces = 0.0d0
+
+                    !data_sets(set_type)%configs(conf)%r(:,:) = 0.0d0
+                    !data_sets(set_type)%configs(conf)%r(1,1) = 9.0d0
+                    !data_sets(set_type)%configs(conf)%r(1,2) = 11.0d0
 
                     do ii=1,3
                         call random_number(data_sets(set_type)%configs(conf)%r(ii,:))
@@ -411,12 +415,10 @@ program unittest
             logical,allocatable :: conf_arr(:),atm_arr(:)
             
 
-            !do set_type=1,2
-            do set_type=1,1
+            do set_type=1,2
                 allocate(conf_arr(data_sets(set_type)%nconf))
 
-                !do conf=1,data_sets(set_type)%nconf
-                do conf=1,1
+                do conf=1,data_sets(set_type)%nconf
                     !* finite difference of features for all atoms
                     allocate(num_dxdr(D,data_sets(set_type)%configs(conf)%n))
                     allocate(anl_deriv(D,data_sets(set_type)%configs(conf)%n))
@@ -429,11 +431,12 @@ program unittest
 
                     !* calculate analytical derivatives
                     call calculate_features()
-
+                    
                     !* copy numerical derivatives
                     do ii=1,data_sets(set_type)%configs(conf)%n
                         do jj=1,D
                             anl_deriv(jj,ii)%n = data_sets(set_type)%configs(conf)%x_deriv(jj,ii)%n
+                            
                             if (anl_deriv(jj,ii)%n.ne.0) then
                                 allocate(anl_deriv(jj,ii)%idx(anl_deriv(jj,ii)%n))
                                 allocate(anl_deriv(jj,ii)%vec(3,anl_deriv(jj,ii)%n))
@@ -445,9 +448,7 @@ program unittest
                         end do
                     end do
 
-
-                    !do atm=1,data_sets(set_type)%configs(conf)%n
-                    do atm=1,1
+                    do atm=1,data_sets(set_type)%configs(conf)%n
                         do dd=1,3,1
                             !* real space coordinate
                             x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
@@ -473,15 +474,18 @@ program unittest
                                     
                                     !* calculate features
                                     call calculate_features()
-
+                                    
                                     if (ii.eq.1) then
                                         num_dxdr(:,:) = data_sets(set_type)%configs(conf)%x(2:,:)
                                     else
                                         num_dxdr(:,:) = ( num_dxdr(:,:) - &
                                                 &data_sets(set_type)%configs(conf)%x(2:,:) ) / (2.0d0*dw)
                                     end if
+                                    
+                                    !* return coordinate to original value
+                                    data_sets(set_type)%configs(conf)%r(dd,atm) = x0
                                 end do !* end loop +/- dw
-
+                                
                                 !---------------------------------------!
                                 !* analytical and numerical comparison *!
                                 !---------------------------------------!
@@ -493,16 +497,16 @@ program unittest
                                     atom_ok = .true.
                                     do kk=1,D,1
                                         deriv_matches = .true.
-                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10)).neqv.&
-                                        &.true.) then
+                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10),.false.)&
+                                        &.neqv..true.) then
                                             deriv_matches = .false.
                                             do ll=1,anl_deriv(kk,jj)%n
                                                 !* loop over atoms which contribute to feature kk,atom jj
                                                 if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
-                                                            &anl_deriv(kk,jj)%vec(dd,ll),&
-                                                            &dble(1e-10),dble(1e-10)) ) then
-                                                        deriv_matches = .true.                    
+                                                    &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-10),&
+                                                    &dble(1e-10),.true.) ) then
+                                                        deriv_matches = .true.                   
                                                     end if
                                                 end if  
                                             end do !* end loop over contributing atoms to (kk,jj)
@@ -529,16 +533,16 @@ program unittest
                     end do !* end loop over atoms in structure
 
                     conf_arr(conf) = all(atm_arr)
-
+                    
                     deallocate(atm_arr)
                     deallocate(num_dxdr)
                     deallocate(anl_deriv)
                 end do  !* end loop over structures in set
                 set_arr(set_type) = all(conf_arr)
-
+                
                 deallocate(conf_arr)
             end do !* end loop over test/train sets
-
+            
             test_dxdr = all(set_arr)
         end function test_dxdr
 

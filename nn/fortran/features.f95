@@ -197,7 +197,7 @@ module features
         subroutine feature_threebody()
             implicit none
         end subroutine feature_threebody
-
+        
         subroutine feature_behler_iso(atm,neigh_idx,ft_idx,current_val)
             implicit none
 
@@ -206,7 +206,8 @@ module features
 
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,eta,rs,fs
-            
+           
+            !* atom-neigh_idx distance 
             dr  = feature_isotropic(atm)%dr(neigh_idx)
             
             !* symmetry function params
@@ -222,7 +223,7 @@ module features
 
             !* tapering
             tmp2 = taper_1(dr,rcut,fs)
-
+        
             !* atomic numbers
             tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
                     &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
@@ -238,7 +239,7 @@ module features
 
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
-            real(8) :: rs,fs,rcut
+            real(8) :: rs,fs,rcut,tmpz
             real(8) :: za,zb,eta
             integer :: ii,lim1,lim2
 
@@ -263,21 +264,28 @@ module features
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
+                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+                    return
+                end if
+                
                 !* atom-atom distance
                 dr_scl = feature_isotropic(atm)%dr(ii)
 
-                !* r_neighbour - r_centralatom
+                !* (r_neighbour - r_centralatom)/dr_scl
                 dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
-
+                
                 !* tapering
                 tap = taper_1(dr_scl,rcut,fs)
                 tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
 
-                tmp1 =  exp(-eta*(dr_scl-rs)**2)  *  (tap_deriv + &
-                        &2.0d0*(eta**2)*(dr_scl-rs)*tap) *&
-                        &feature_isotropic(atm)%z_atom * feature_isotropic(atm)%z(ii)
+                !* atomic numbers
+                tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
 
-                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2
+                tmp1 =  exp(-eta*(dr_scl-rs)**2)  *  (tap_deriv - &
+                        &2.0d0*eta*(dr_scl-rs)*tap) 
+                
+                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
             end do
         end subroutine feature_behler_iso_deriv
 
