@@ -38,6 +38,8 @@ module feature_config
         real(8) :: eta                      ! iso
         real(8) :: xi                       ! ani
         real(8) :: lambda                   ! ani
+        real(8), allocatable :: prec(:,:)   ! normal precision
+        real(8), allocatable :: mean(:)     ! normal mean
         real(8) :: za                       ! central atomic number
         real(8) :: zb                       ! neighbour atomic number
     end type feature_

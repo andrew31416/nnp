@@ -112,7 +112,7 @@ module features
             integer,intent(in) :: set_type,conf,atm,ft_idx
 
             !* scratch
-            integer :: arr_idx ,ii,cntr,arg
+            integer :: arr_idx ,ii,cntr,arg,ftype
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
             integer :: idx_to_contrib(1:feature_isotropic(atm)%n)
             logical :: zero_neighbours 
@@ -125,6 +125,9 @@ module features
 
             !* interaction cut off
             rcut = feature_params%info(ft_idx)%rcut
+
+            !* type of interaction
+            ftype = feature_params%info(ft_idx)%ftype
 
             if (feature_isotropic(atm)%n.gt.0) then
                 do ii=1,feature_isotropic(atm)%n,1
@@ -181,16 +184,31 @@ module features
             do ii=1,feature_isotropic(atm)%n
                 if (feature_isotropic(atm)%dr(ii).le.rcut) then
                     !* contributing interaction
-                    call feature_behler_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+                    if (ftype.eq.1) then
+                        call feature_behler_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                    call feature_behler_iso_deriv(atm,ii,ft_idx,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,idx_to_contrib(ii)))
+                        call feature_behler_iso_deriv(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                &vec(1:3,idx_to_contrib(ii)))
+                    else if (ftype.eq.3) then
+                        call feature_normal_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+
+                        call feature_normal_iso_deriv(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                &vec(1:3,idx_to_contrib(ii)))
+                    end if
                 end if
             end do
+            
             !* derivative wrt. central atm
-            call feature_behler_iso_deriv(atm,0,ft_idx,&
-                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
-
+            
+            if (ftype.eq.1) then
+                call feature_behler_iso_deriv(atm,0,ft_idx,&
+                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+            else if (ftype.eq.3) then
+                call feature_normal_iso_deriv(atm,0,ft_idx,&
+                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+            end if
 
         end subroutine feature_twobody
 
@@ -209,7 +227,7 @@ module features
            
             !* atom-neigh_idx distance 
             dr  = feature_isotropic(atm)%dr(neigh_idx)
-!write(*,*) dr,atm,feature_isotropic(atm)%idx(neigh_idx)
+            
             !* symmetry function params
             za   = feature_params%info(ft_idx)%za
             zb   = feature_params%info(ft_idx)%zb
@@ -288,5 +306,104 @@ module features
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
             end do
         end subroutine feature_behler_iso_deriv
+        
+        subroutine feature_normal_iso(atm,neigh_idx,ft_idx,current_val)
+            implicit none
+
+            integer,intent(in) :: atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: current_val
+
+            !* scratch
+            real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,fs,prec
+            real(8) :: inv2pi,mean
+
+            inv2pi = 0.15915494309d0
+
+            !* atom-neigh_idx distance 
+            dr  = feature_isotropic(atm)%dr(neigh_idx)
+            
+            !* symmetry function params
+            za   = feature_params%info(ft_idx)%za
+            zb   = feature_params%info(ft_idx)%zb
+            fs   = feature_params%info(ft_idx)%fs
+            prec = feature_params%info(ft_idx)%prec(1,1)
+            mean = feature_params%info(ft_idx)%mean(1)
+            rcut = feature_params%info(ft_idx)%rcut
+            
+
+            !* exponential
+            tmp1 = sqrt(prec*inv2pi)*exp(-0.5d0*prec*(dr-mean)**2)
+
+            !* tapering
+            tmp2 = taper_1(dr,rcut,fs)
+        
+            !* atomic numbers
+            tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+                    &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+
+            current_val = current_val + tmp1*tmp2*tmp3
+        end subroutine feature_normal_iso
+        
+        subroutine feature_normal_iso_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+            implicit none
+
+            integer,intent(in) :: atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: deriv_vec(1:3)
+
+            !* scratch
+            real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
+            real(8) :: fs,rcut,tmpz,prec,mean
+            real(8) :: za,zb,inv2pi,prec_const
+            integer :: ii,lim1,lim2
+            
+            inv2pi = 0.15915494309d0
+            
+            !* symmetry function params
+            za   = feature_params%info(ft_idx)%za
+            zb   = feature_params%info(ft_idx)%zb
+            fs   = feature_params%info(ft_idx)%fs
+            prec = feature_params%info(ft_idx)%prec(1,1)
+            mean = feature_params%info(ft_idx)%mean(1)
+            rcut = feature_params%info(ft_idx)%rcut
+
+            prec_const = sqrt(inv2pi*prec)
+
+            if (neigh_idx.eq.0) then
+                lim1 = 1
+                lim2 = feature_isotropic(atm)%n
+                tmp2 = -1.0d0       !* sign for drij/d r_central
+            else
+                lim1 = neigh_idx
+                lim2 = neigh_idx    
+                tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+            end if
+
+
+            !* derivative wrt. central atom itself
+            do ii=lim1,lim2,1
+                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+                    cycle
+                end if
+                
+                !* atom-atom distance
+                dr_scl = feature_isotropic(atm)%dr(ii)
+
+                !* (r_neighbour - r_centralatom)/dr_scl
+                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                
+                !* tapering
+                tap = taper_1(dr_scl,rcut,fs)
+                tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
+
+                !* atomic numbers
+                tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
+
+                tmp1 =  prec_const*exp(-0.5d0*prec*(dr_scl-mean)**2)  *  (tap_deriv - &
+                        &prec*(dr_scl-mean)*tap) 
+                
+                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
+            end do
+        end subroutine feature_normal_iso_deriv
 
 end module

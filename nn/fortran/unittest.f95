@@ -40,8 +40,8 @@ program unittest
             nlf_type = 1
             
             !* features
-            fD = 2
-            natm = 30
+            fD = 3
+            natm = 3
             nconf = 2
             
             call unittest_header()
@@ -138,7 +138,7 @@ program unittest
 
             integer,intent(in) :: fD
 
-            integer :: ii,set_type,conf
+            integer :: set_type,conf
             real(8) :: rcut
 
             allocate(feature_params%info(fD))
@@ -148,16 +148,28 @@ program unittest
 
 
             rcut = 7.0d0
-           
-            feature_params%info(1)%ftype=0              !* atomic number
-            do ii=2,feature_params%num_features
-                feature_params%info(ii)%ftype = 1       !* behler-iso
-                feature_params%info(ii)%rcut = rcut
-                feature_params%info(ii)%fs = 0.2d0
-                call random_number(feature_params%info(ii)%eta)
-                call random_number(feature_params%info(ii)%za)
-                call random_number(feature_params%info(ii)%zb)
-            end do
+          
+            !* test feature 1 
+            feature_params%info(1)%ftype = 0            !* atomic number
+            
+            !* test feature 2
+            feature_params%info(2)%ftype = 1            !* iso Behler
+            feature_params%info(2)%rcut = rcut
+            feature_params%info(2)%fs = 0.2d0
+            call random_number(feature_params%info(2)%eta)
+            call random_number(feature_params%info(2)%za)
+            call random_number(feature_params%info(2)%zb)
+            
+            !* test feature 3
+            feature_params%info(3)%ftype = 3            !* iso normal
+            feature_params%info(3)%rcut = rcut - 1.0d0
+            feature_params%info(3)%fs = 0.2d0
+            call random_number(feature_params%info(3)%za)
+            call random_number(feature_params%info(3)%zb)
+            allocate(feature_params%info(3)%prec(1,1))
+            call random_number(feature_params%info(3)%prec(1,1)) 
+            allocate(feature_params%info(3)%mean(1))
+            call random_number(feature_params%info(3)%mean(1)) 
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -176,12 +188,11 @@ program unittest
             integer :: ww,ii,jj,atm,conf,set_type
             real(8),allocatable :: original_weights(:)
             real(8),allocatable :: dydw_flat(:)
-            real(8),allocatable :: derivs(:)
             real(8) :: dw,w0,dy,num_val
+            logical :: deriv_ok,all_ok
 
             allocate(original_weights(nwght))
             allocate(dydw_flat(nwght))
-            allocate(derivs(nwght))
 
             !* initial weights
             call parse_structure_to_array(net_weights,original_weights)
@@ -192,11 +203,32 @@ program unittest
 
             dy = 0.0d0
 
-            do ww=4,4,1
-                dw = 1.0d0/(10.0d0**ww)
+            test_result = .false.
+                
+            !--------------------------!
+            !* analytical derivatives *!
+            !--------------------------!
 
-                do ii=1,nwght,1
-                    w0 = original_weights(ii)
+            !* forward prop
+            call forward_propagate(conf,atm,set_type)
+            
+            !* back prop
+            call backward_propagate(conf,atm,set_type)
+          
+            !* parse dy/dw into 1d array
+            call parse_structure_to_array(dydw,dydw_flat)
+
+            all_ok = .true.
+
+            do ii=1,nwght,1
+                w0 = original_weights(ii)
+                
+                deriv_ok = .false.
+
+                do ww=2,5,1
+                
+                    dw = 1.0d0/(10.0d0**ww)
+
                     do jj=1,2,1
                         if (jj.eq.1) then
                             original_weights(ii) = w0 + dw
@@ -215,34 +247,23 @@ program unittest
                         else 
                             dy = dy - data_sets(set_type)%configs(conf)%current_ei(atm)
                       end if
-                    end do
+                    end do !* end loop over +/- dw
 
                     num_val = dy/(2.0d0*dw)
- 
-                    derivs(ii) = num_val
+
+                    if (scalar_equal(num_val,dydw_flat(ii),dble(1e-7),dble(1e-10),.false.)) then
+                        deriv_ok = .true.
+                    end if
                
                     !* return to initial value
                     original_weights(ii) = w0
                 end do
                
-                !--------------------------!
-                !* analytical derivatives *!
-                !--------------------------!
-
-                call parse_array_to_structure(original_weights,net_weights)
-
-                !* forward prop
-                call forward_propagate(conf,atm,set_type)
-                
-                !* back prop
-                call backward_propagate(conf,atm,set_type)
-              
-                !* parse dy/dw into 1d array
-                call parse_structure_to_array(dydw,dydw_flat)
-                
-                test_result = array_equal(derivs,dydw_flat,dble(1e-7),dble(1e-10),.true.)
-            end do
-            test_dydw = test_result
+                if (deriv_ok.neqv..true.) then
+                    all_ok = .false.
+                end if    
+            end do !* end loop over finite differences
+            test_dydw = all_ok
         end function test_dydw
 
         subroutine test_loss_jac(test_result)
@@ -456,7 +477,8 @@ program unittest
                            
                             !* if one of finite difference is OK, atom_passes = True
                             atom_passes = .false. 
-                            do ww=4,8,1
+                            !do ww=4,8,1
+                            do ww=4,4,1
         
                                 !-----------------------------!
                                 !* numerical differentiation *!
@@ -507,8 +529,8 @@ program unittest
                                                 !* loop over atoms which contribute to feature kk,atom jj
                                                 if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
-                                                    &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-10),&
-                                                    &dble(1e-10),.false.) ) then
+                                                    &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-7),&
+                                                    &dble(1e-7),.true.) ) then
                                                         deriv_matches = .true.                   
                                                     end if
                                                 end if  
