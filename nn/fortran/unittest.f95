@@ -40,8 +40,8 @@ program unittest
             nlf_type = 1
             
             !* features
-            fD = 3
-            natm = 3
+            fD = 4
+            natm = 10
             nconf = 2
             
             call unittest_header()
@@ -65,7 +65,7 @@ program unittest
             call test_loss_jac(tests(2:4))      ! d loss / dw
             tests(5) = test_dydx()              ! dydx
             tests(6) = test_dxdr()              ! d feature / d atom position
-
+tests(6) = .true.
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
             end do
@@ -150,10 +150,10 @@ program unittest
             rcut = 7.0d0
           
             !* test feature 1 
-            feature_params%info(1)%ftype = 0            !* atomic number
+            feature_params%info(1)%ftype = featureID_StringToInt("atomic_number")    
             
             !* test feature 2
-            feature_params%info(2)%ftype = 1            !* iso Behler
+            feature_params%info(2)%ftype = featureID_StringToInt("acsf_behler-g2")            
             feature_params%info(2)%rcut = rcut
             feature_params%info(2)%fs = 0.2d0
             call random_number(feature_params%info(2)%eta)
@@ -161,7 +161,7 @@ program unittest
             call random_number(feature_params%info(2)%zb)
             
             !* test feature 3
-            feature_params%info(3)%ftype = 3            !* iso normal
+            feature_params%info(3)%ftype = featureID_StringToInt("acsf_normal-iso")
             feature_params%info(3)%rcut = rcut - 1.0d0
             feature_params%info(3)%fs = 0.2d0
             call random_number(feature_params%info(3)%za)
@@ -170,6 +170,16 @@ program unittest
             call random_number(feature_params%info(3)%prec(1,1)) 
             allocate(feature_params%info(3)%mean(1))
             call random_number(feature_params%info(3)%mean(1)) 
+
+            !* test feature 4
+            feature_params%info(4)%ftype = featureID_StringToInt("acsf_behler-g4")
+            feature_params%info(4)%rcut = rcut - 1.0d0
+            feature_params%info(4)%fs = 0.2d0
+            call random_number(feature_params%info(4)%lambda)
+            call random_number(feature_params%info(4)%xi) 
+            call random_number(feature_params%info(4)%eta) 
+            call random_number(feature_params%info(4)%za)
+            call random_number(feature_params%info(4)%zb)
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf

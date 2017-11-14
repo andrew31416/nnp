@@ -4,6 +4,10 @@ module feature_util
 
     implicit none
 
+    !* blas/lapack
+    external :: dcopy
+    real(8),external :: ddot
+
     contains
 
         subroutine invert_matrix(mtrx_in,mtrx_out)
@@ -144,7 +148,6 @@ module feature_util
                                  
                                     if ( (cartii(1)-cartjj(1))**2+(cartii(2)-cartjj(2))**2+&
                                             &(cartii(3)-cartjj(3))**2 .le. rcut2 ) then
-!write(*,*) cartii , data_sets(set_type)%configs(conf)%r(1:3,atomii)
                                         pairfound = .true.
                                     end if
                                 end do
@@ -260,7 +263,31 @@ module feature_util
             maxrcut = tmpr
         end function maxrcut
 
-        subroutine calculate_isotropic_info(set_type,conf,ultracart,ultraz,ultraidx)
+        logical function threebody_features_present()
+            !===============================================================!
+            ! check if any three body features are present                  ! 
+            !===============================================================!
+            
+            implicit none
+
+            logical :: found_some
+            integer :: ii,ftype
+
+            found_some = .false.
+
+            do ii=1,feature_params%num_features,1
+                ftype = feature_params%info(ii)%ftype
+
+                if ( (ftype.eq.2).or.(ftype.eq.4) ) then
+                    found_some = .true.
+                    exit
+                end if
+            end do
+
+            threebody_features_present = found_some
+        end function threebody_features_present
+
+        subroutine calculate_twobody_info(set_type,conf,ultracart,ultraz,ultraidx)
             !===============================================================!
             !* calculate isotropic atom-atom distances and derivatives     *!
             !===============================================================!
@@ -348,7 +375,219 @@ module feature_util
 
 
             end do
-        end subroutine calculate_isotropic_info
+        end subroutine calculate_twobody_info
+        
+        
+        subroutine calculate_threebody_info(set_type,conf,ultracart,ultraz,ultraidx)
+            !===============================================================!
+            !* calculate isotropic atom-atom distances and derivatives     *!
+            !===============================================================!
+
+            implicit none
+
+            real(8),intent(in) :: ultracart(:,:),ultraz(:)
+            integer,intent(in) :: ultraidx(:),set_type,conf
+
+            !* scratch
+            integer :: dim(1:1),ii,jj,kk,cntr
+            real(8) :: rcut2,dr2ij,dr2ik,dr2jk,rtol2
+            real(8) :: rii(1:3),rjj(1:3),rkk(1:3),drij,drik,drjk
+            real(8) :: drij_vec(1:3),drik_vec(1:3),drjk_vec(1:3)
+            integer :: maxbuffer
+            type(feature_info_threebody) :: aniso_info
+
+            !* dim(1) = number atoms in ultra cell
+            dim = shape(ultraidx)
+
+            !* max anisotropic interaction cut off
+            rcut2 = maxrcut(2)**2
+
+            !* min distance between 2 different atoms allowed
+            rtol2 = (0.0000001)**2
+
+            !* max number of assumed 3-body terms per atom
+            maxbuffer = 1000
+
+
+            !* structure for all three body info associated with structure
+            allocate(feature_threebody_info(data_sets(set_type)%configs(conf)%n))
+            
+            allocate(aniso_info%cos_ang(maxbuffer))
+            allocate(aniso_info%dr(3,maxbuffer))
+            allocate(aniso_info%z(2,maxbuffer))
+            allocate(aniso_info%idx(2,maxbuffer))
+            allocate(aniso_info%dcos_dr(3,3,maxbuffer))
+            allocate(aniso_info%drdri(3,6,maxbuffer))
+
+            do ii=1,data_sets(set_type)%configs(conf)%n,1
+                !* iterate over local atoms
+
+                !* local position
+                rii(:) = data_sets(set_type)%configs(conf)%r(:,ii)
+
+                cntr = 0
+                do jj=1,dim(1),1
+                    rjj(:) = ultracart(:,jj)
+
+                    dr2ij = distance2(rii,rjj) 
+
+                    if ( (dr2ij.lt.rtol2).or.(dr2ij.gt.rcut2) ) then
+                        !* same atom or beyond cut off
+                        cycle
+                    end if
+
+                    drij = sqrt(dr2ij)
+                    drij_vec = rjj - rii
+        
+
+                    !* look for unique three-body terms
+                    do kk=jj+1,dim(1),1
+                        if (jj.eq.kk) then
+                            !* same atom
+                            cycle
+                        end if
+                        rkk(:) = ultracart(:,kk)
+
+                        dr2ik = distance2(rii,rkk) 
+                        dr2jk = distance2(rjj,rkk)
+                        
+                        if ( (dr2ik.lt.rtol2).or.(dr2ik.gt.rcut2).or.(dr2jk.gt.rcut2) ) then
+                            cycle
+                        end if
+
+                        drik = sqrt(dr2ik)
+                        drjk = sqrt(dr2jk)
+                        drik_vec = rkk - rii
+                        drjk_vec = rkk - rjj
+
+                        !* have found a three-body term
+                        cntr = cntr + 1  
+                       
+                        !* cos(dtheta_{ijk}) 
+                        aniso_info%cos_ang(cntr) =  cos_angle(rjj-rii,rkk-rii,drij,drik)
+
+                        !* displacements
+                        aniso_info%dr(1,cntr) = drij    ! central vs. jj
+                        aniso_info%dr(2,cntr) = drik    ! central vs. kk
+                        aniso_info%dr(3,cntr) = drjk    ! jj vs. kk
+           
+                        !* atomic number
+                        aniso_info%z(1,cntr) = ultraz(jj)
+                        aniso_info%z(2,cntr) = ultraz(kk)
+                   
+                        !* local cell identifier
+                        aniso_info%idx(1,cntr) = ultraidx(jj)
+                        aniso_info%idx(2,cntr) = ultraidx(kk)
+                  
+                        !---------------------------------!
+                        !* atom-atom distance derivative *!
+                        !---------------------------------!
+                  
+                        ! d |rj-ri| / drj
+                        if (ii.ne.ultraidx(jj)) then
+                            ! ii != jj
+
+                            if (ultraidx(jj).eq.ultraidx(kk)) then
+                                ! ii!=jj , jj==kk, ii!=kk
+                                aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
+                                aniso_info%drdri(:,2,cntr) = drij_vec / drij  ! d |rj-ri| / drk
+                                aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
+                                aniso_info%drdri(:,4,cntr) = drik_vec / drik  ! d |rk-ri| / drj
+                                aniso_info%drdri(:,5,cntr) = 0.0d0            ! d |rk-rj| / drk 
+                                aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri 
+                            else if (ii.eq.ultraidx(kk)) then
+                                ! ii!=jj , ii==kk, jj!=kk
+                                aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
+                                aniso_info%drdri(:,2,cntr) = -drij_vec / drij ! d |rj-ri| / drk
+                                aniso_info%drdri(:,3,cntr) = 0.d0             ! d |rk-ri| / drk
+                                aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
+                                aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
+                                aniso_info%drdri(:,6,cntr) = drjk_vec / drjk  ! d |rk-rj| / dri
+                            else
+                                ! ii!=jj, jj!=kk, ii!=kk 
+                                aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
+                                aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
+                                aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
+                                aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
+                                aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
+                                aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+                            end if
+                        else
+                            if (ii.eq.ultraidx(kk)) then
+                                ! ii==jj==kk
+                                aniso_info%drdri(:,1,cntr) = 0.0d0            ! d |rj-ri| / drj
+                                aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
+                                aniso_info%drdri(:,3,cntr) = 0.0d0            ! d |rk-ri| / drk
+                                aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
+                                aniso_info%drdri(:,5,cntr) = 0.0d0            ! d |rk-rj| / drk
+                                aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+                            end if
+                            ! ii==jj , ii!=kk, jj!=kk
+                            aniso_info%drdri(:,1,cntr) = 0.0d0                ! d |rj-ri| / drj
+                            aniso_info%drdri(:,2,cntr) = 0.0d0                ! d |rj-ri| / drk
+                            aniso_info%drdri(:,3,cntr) = drik_vec / drik      ! d |rk-ri| / drk
+                            aniso_info%drdri(:,4,cntr) = -drik_vec / drik     ! d |rk-ri| / drj
+                            aniso_info%drdri(:,5,cntr) = drjk_vec / drjk      ! d |rk-rj| / drk
+                            aniso_info%drdri(:,6,cntr) = -drjk_vec / drjk     ! d |rk-rj| / dri
+                        end if
+                        
+                        ! remember that d |rj-ri| / dri = - d |rj-ri| / drj
+                   
+                        !---------------------!
+                        !* cosine derivative *!
+                        !---------------------!
+                       
+                        ! dcos_{ijk} / drj
+                        aniso_info%dcos_dr(:,1,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
+                                &drik*aniso_info%drdri(:,1,cntr) + drij*aniso_info%drdri(:,4,cntr) ) + &
+                                &drij_vec*aniso_info%drdri(:,4,cntr) + drik_vec*aniso_info%drdri(:,1,cntr) )
+                        
+                        
+                        !! dcos_{ijk} / drk
+                        aniso_info%dcos_dr(:,2,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
+                                &drik*aniso_info%drdri(:,2,cntr) + drij*aniso_info%drdri(:,3,cntr) ) + &
+                                &drij_vec*aniso_info%drdri(:,3,cntr) + drik_vec*aniso_info%drdri(:,2,cntr) )
+                        
+                        
+                        !! dcos_{ijk} / dri
+                        aniso_info%dcos_dr(:,3,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
+                                &-drik*aniso_info%drdri(:,1,cntr) - drij*aniso_info%drdri(:,3,cntr) ) - &
+                                &drij_vec*aniso_info%drdri(:,3,cntr) - drik_vec*aniso_info%drdri(:,3,cntr) )
+                        
+                    end do !* end loop kk over second neighbours
+                end do !* end loop jj over first neighbours
+                
+
+                !* now copy into 
+                allocate(feature_threebody_info(ii)%cos_ang(cntr))
+                allocate(feature_threebody_info(ii)%dr(3,cntr))
+                allocate(feature_threebody_info(ii)%z(2,cntr))
+                allocate(feature_threebody_info(ii)%idx(2,cntr))
+                allocate(feature_threebody_info(ii)%dcos_dr(3,3,cntr))
+                allocate(feature_threebody_info(ii)%drdri(3,6,cntr))
+               
+                !* number of three-body terms centered on ii
+                feature_threebody_info(ii)%n = cntr
+
+                !* atomic number of central atom
+                feature_threebody_info(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
+               
+                call dcopy(cntr,aniso_info%cos_ang,1,feature_threebody_info(ii)%cos_ang,1)                
+                feature_threebody_info(ii)%dr(:,:) = aniso_info%dr(:,1:cntr)
+                feature_threebody_info(ii)%z(:,:) = aniso_info%z(:,1:cntr)
+                feature_threebody_info(ii)%idx(:,:) = aniso_info%idx(:,1:cntr)
+                feature_threebody_info(ii)%dcos_dr(:,:,:) = aniso_info%dcos_dr(:,:,1:cntr)
+                feature_threebody_info(ii)%drdri(:,:,:) = aniso_info%drdri(:,:,1:cntr)
+                
+            end do !* end loop ii over local cell atoms
+            
+            deallocate(aniso_info%cos_ang)
+            deallocate(aniso_info%dr)
+            deallocate(aniso_info%z)
+            deallocate(aniso_info%idx)
+            deallocate(aniso_info%dcos_dr)
+            deallocate(aniso_info%drdri)
+        end subroutine calculate_threebody_info
 
         real(8) function distance2(dr1,dr2)
             implicit none
@@ -385,6 +624,18 @@ module feature_util
 
             int_in_intarray = ishere
         end function int_in_intarray
+
+        real(8) function cos_angle(drij,drik,drij_mag,drik_mag)
+            implicit none
+            
+            real(8),intent(in) :: drij(1:3),drik(1:3)
+            real(8),intent(in) :: drij_mag,drik_mag
+
+            !* assumes drij = rj - ri
+            !          drik = rk - ri
+
+            cos_angle = ddot(3,drij,1,drik,1) / (drij_mag*drik_mag)
+        end function cos_angle
 
         subroutine deallocate_feature_deriv_info()
             implicit none
