@@ -103,13 +103,13 @@ module feature_config
                 idx = 4
             else if (feature_descriptor.eq."acsf_normal-iso") then
                 idx = 5
-            else if (feature_descriptor.eq."acsf_nornal-ani") then
+            else if (feature_descriptor.eq."acsf_normal-ani") then
                 idx = 6
             else
                 write(*,*) ""
-                write(*,*) '***************************************' 
+                write(*,*) '*********************************************' 
                 write(*,*) 'error raised in routine : feature_StringToInt'
-                write(*,*) '***************************************' 
+                write(*,*) '*********************************************' 
                 write(*,*) ""
                 write(*,*) 'Error : ',"unrecognised feature type"
                 write(*,*) ""

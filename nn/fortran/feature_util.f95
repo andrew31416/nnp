@@ -235,24 +235,29 @@ module feature_util
                 tmpr = feature_params%info(ii)%rcut
 
                 if (arg.eq.0) then
-                    if (ftype.eq.0) then
+                    if (ftype.eq.featureID_StringToInt("atomic_number")) then
                         tmprcut(ii) = -1.0d0
                     else
                         !* all features
                         tmprcut(ii) = tmpr
                     end if
                 else if (arg.eq.1) then
-                    if ( (ftype.eq.0).or.(ftype.ne.1) ) then
+                    if ( (ftype.eq.featureID_StringToInt("acsf_behler-g1")).or.&
+                    &(ftype.eq.featureID_StringToInt("acsf_behler-g2")).or.&
+                    &(ftype.eq.featureID_StringToInt("acsf_normal-iso")) ) then
+                    !if ( (ftype.eq.0).or.(ftype.ne.1) ) then
                         !* all isotropic features
-                        tmprcut(ii) = -1.0d0
-                    else
                         tmprcut(ii) = tmpr
+                    else
+                        tmprcut(ii) = -1.0d0
                     end if
                 else if (arg.eq.2) then
-                    if ( (ftype.eq.0).or.(ftype.ne.2) ) then
-                        tmprcut(ii) = -1.0d0
-                    else
+                    if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
+                    &(ftype.eq.featureID_StringToInt("acsf_behler-g5")).or.&
+                    &(ftype.eq.featureID_StringToInt("acsf_normal-ani")) ) then
                         tmprcut(ii) = tmpr
+                    else
+                        tmprcut(ii) = -1.0d0
                     end if
                 end if
             end do
@@ -401,7 +406,7 @@ module feature_util
 
             !* max anisotropic interaction cut off
             rcut2 = maxrcut(2)**2
-
+            
             !* min distance between 2 different atoms allowed
             rtol2 = (0.0000001)**2
 
@@ -462,6 +467,10 @@ module feature_util
 
                         !* have found a three-body term
                         cntr = cntr + 1  
+                        if (cntr.gt.maxbuffer) then
+                            call error("calculate_threebody_info","value of maxbuffer too small, increase size")
+                        end if
+                            
                        
                         !* cos(dtheta_{ijk}) 
                         aniso_info%cos_ang(cntr) =  cos_angle(rjj-rii,rkk-rii,drij,drik)
@@ -636,6 +645,23 @@ module feature_util
 
             cos_angle = ddot(3,drij,1,drik,1) / (drij_mag*drik_mag)
         end function cos_angle
+
+        subroutine error(routine,message)
+            implicit none
+
+            character(len=*),intent(in) :: routine,message
+
+            character,dimension(1:len(routine)+26) :: header
+            header(:) = "*"
+            
+            write(*,*) ''
+            write(*,*) header
+            write(*,*) 'error raised in routine : ',routine
+            write(*,*) header
+            write(*,*) ''
+            write(*,*) 'Error : ',message
+            call exit(0)
+        end subroutine error
 
         subroutine deallocate_feature_deriv_info()
             implicit none

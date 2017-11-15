@@ -186,29 +186,33 @@ module features
                     if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
                         call feature_behler_g2(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                        call feature_behler_g2_deriv(atm,ii,ft_idx,&
+                        if (calc_feature_derivatives) then
+                            call feature_behler_g2_deriv(atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                 &vec(1:3,idx_to_contrib(ii)))
+                        end if
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-iso")) then
                         call feature_normal_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                        call feature_normal_iso_deriv(atm,ii,ft_idx,&
-                                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                &vec(1:3,idx_to_contrib(ii)))
+                        if (calc_feature_derivatives) then
+                            call feature_normal_iso_deriv(atm,ii,ft_idx,&
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                    &vec(1:3,idx_to_contrib(ii)))
+                        end if
                     end if
                 end if
             end do
             
             !* derivative wrt. central atm
-            
-            if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                call feature_behler_g2_deriv(atm,0,ft_idx,&
-                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
-            else if (ftype.eq.featureID_StringToInt("acsf_normal-iso")) then
-                call feature_normal_iso_deriv(atm,0,ft_idx,&
-                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+            if (calc_feature_derivatives) then 
+                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                    call feature_behler_g2_deriv(atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-iso")) then
+                    call feature_normal_iso_deriv(atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                end if
             end if
-
         end subroutine feature_twobody
 
         subroutine feature_threebody(set_type,conf,atm,ft_idx)
@@ -303,7 +307,9 @@ module features
                 if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
                     call feature_behler_g4(set_type,conf,atm,ft_idx,ii)
 
-                    call feature_behler_g4_deriv(set_type,conf,atm,ft_idx,ii,idx_to_contrib(:,ii)) 
+                    if (calc_feature_derivatives) then
+                        call feature_behler_g4_deriv(set_type,conf,atm,ft_idx,ii,idx_to_contrib(:,ii)) 
+                    end if
                 end if
             end do !* end loop ii over three body terms
             
@@ -437,7 +443,7 @@ module features
             !* taper term
             tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
 
-            data_sets(set_type)%configs(conf)%x(ft_idx-1,atm) = data_sets(set_type)%configs(conf)%x(ft_idx-1,atm)&
+            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
                     &+ 2**(1-xi)*(1.0d0 + lambda*cos_angle)**xi * &
                     &exp(-eta*(drij**2+drik**2+drjk**2))*tmp_taper*tmp_atmz
         end subroutine feature_behler_g4

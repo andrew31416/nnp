@@ -33,7 +33,7 @@ program unittest
             num_tests = size(tests)
 
             !* number of nodes
-            num_nodes(1) = 10
+            num_nodes(1) = 5
             num_nodes(2) = 3
 
             !* nonlinear function
@@ -41,7 +41,7 @@ program unittest
             
             !* features
             fD = 4
-            natm = 10
+            natm = 5
             nconf = 2
             
             call unittest_header()
@@ -65,7 +65,7 @@ program unittest
             call test_loss_jac(tests(2:4))      ! d loss / dw
             tests(5) = test_dydx()              ! dydx
             tests(6) = test_dxdr()              ! d feature / d atom position
-tests(6) = .true.
+tests(6) = .true.            
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
             end do
@@ -102,9 +102,9 @@ tests(6) = .true.
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 10.0d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 10.0d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 10.0d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 5.0d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 5.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 5.0d0
 
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%energy)
@@ -113,6 +113,8 @@ tests(6) = .true.
                     !data_sets(set_type)%configs(conf)%r(:,:) = 0.0d0
                     !data_sets(set_type)%configs(conf)%r(1,1) = 0.5d0
                     !data_sets(set_type)%configs(conf)%r(1,2) = 1.5d0
+                    !data_sets(set_type)%configs(conf)%r(2,3) = -1.5d0
+                
 
                     do ii=1,3
                         call random_number(data_sets(set_type)%configs(conf)%r(ii,:))
@@ -173,7 +175,7 @@ tests(6) = .true.
 
             !* test feature 4
             feature_params%info(4)%ftype = featureID_StringToInt("acsf_behler-g4")
-            feature_params%info(4)%rcut = rcut - 1.0d0
+            feature_params%info(4)%rcut = 4.0d0
             feature_params%info(4)%fs = 0.2d0
             call random_number(feature_params%info(4)%lambda)
             call random_number(feature_params%info(4)%xi) 
@@ -287,6 +289,7 @@ tests(6) = .true.
             integer :: ii,jj,kk,ww,conf,atm,set_type
             real(8) :: dw,w0,dloss,tmp
             real(8),dimension(:),allocatable :: num_jac,anl_jac,original_weights
+            logical :: deriv_ok,all_ok
 
             allocate(num_jac(nwght))
             allocate(anl_jac(nwght))
@@ -316,12 +319,22 @@ tests(6) = .true.
                     loss_const_reglrn = 1.0d0
                 end if
                 
-                do ww=4,4,1
-                    !* finite difference
-                    dw = 1.0d0/(10.0d0**(ww))
+                !-------------------------------!
+                !* analytical jacobian of loss *!
+                !-------------------------------!
 
-                    do jj=1,nwght,1
-                        w0 = original_weights(jj)
+                call loss_jacobian(original_weights,nwght,set_type,anl_jac)
+                
+                all_ok = .true.
+
+                do jj=1,nwght,1
+                    w0 = original_weights(jj)
+                
+                    deriv_ok = .false.
+
+                    do ww=2,7,1
+                        !* finite difference
+                        dw = 1.0d0/(10.0d0**(ww))
 
                         do kk=1,2,1
                             if (kk.eq.1) then
@@ -342,17 +355,22 @@ tests(6) = .true.
                         end do !* end loop +/- dw
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
-                    end do !* end loop over weights
 
-                end do !* end loop over dw
+                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.false.)) then
+                            deriv_ok = .true.
+                        end if
 
-                !-------------------------------!
-                !* analytical jacobian of loss *!
-                !-------------------------------!
+                    end do !* end loop over +/- dw
 
-                call loss_jacobian(original_weights,nwght,set_type,anl_jac)
+                    if (deriv_ok.neqv..true.) then
+                        all_ok = .false.
+                        write(*,*) ' failing because of',jj
+                    end if
+
+                end do !* end loop over weights
+
                 
-                test_result(ii) = array_equal(num_jac,anl_jac,dble(1e-7),dble(1e-10),.true.)
+                test_result(ii) = all_ok
             end do !* end loop over loss terms
         end subroutine test_loss_jac
 
@@ -365,6 +383,7 @@ tests(6) = .true.
             real(8),allocatable :: num_dydx(:)
             logical,allocatable :: log_atms(:),cnf_atms(:)
             logical :: set_atms(1:2)
+            logical :: deriv_ok
 
             allocate(num_dydx(D))
 
@@ -375,15 +394,25 @@ tests(6) = .true.
                     allocate(log_atms(data_sets(set_type)%configs(conf)%n))
                     
                     do atm=1,data_sets(set_type)%configs(conf)%n
+                        log_atms(atm) = .true.
+
+                        !---------------------------!
+                        !* analytical differential *!
+                        !---------------------------!
+                        
+                        call forward_propagate(conf,atm,set_type)
+                        call backward_propagate(conf,atm,set_type)
 
                         !--------------------------!
                         !* numerical differential *!
                         !--------------------------!
                         
                         do xx=1,D
-                           x0 = data_sets(set_type)%configs(conf)%x(xx+1,atm)
+                            x0 = data_sets(set_type)%configs(conf)%x(xx+1,atm)
 
-                            do ww=5,5 
+                            deriv_ok = .false.
+
+                            do ww=2,6 
                                 !* finite difference for feature
                                 dw = 1.0d0/(10**ww)
 
@@ -407,17 +436,19 @@ tests(6) = .true.
                                 end do !* end loop +/- dw
 
                                 num_dydx(xx) = num_dydx(xx) / (2.0d0*dw)
+
+                                if (scalar_equal(num_dydx(xx),dydx(xx),dble(1e-7),dble(1e-10),.false.)) then
+                                    deriv_ok = .true.
+                                end if
                             end do !* end loop finite differences
+
+                            if (deriv_ok.neqv..true.) then
+                                log_atms(atm) = .false.
+                            end if
                         end do !* end loop features
                         
-                        !---------------------------!
-                        !* analytical differential *!
-                        !---------------------------!
-                        
-                        call forward_propagate(conf,atm,set_type)
-                        call backward_propagate(conf,atm,set_type)
                     
-                        log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-7),dble(1e-10),.true.)
+                        !log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-7),dble(1e-10),.false.)
 
                     end do !* end loop atoms
                 
@@ -461,6 +492,9 @@ tests(6) = .true.
                     !* deallocate previous mem
                     call deallocate_feature_deriv_info()
 
+                    !* make sure feature derivative calculation is turned on
+                    calc_feature_derivatives = .true.
+                    
                     !* calculate analytical derivatives
                     call calculate_features()
                     
@@ -479,6 +513,9 @@ tests(6) = .true.
                             end if
                         end do
                     end do
+                    
+                    !* feat. derivs. are expensive for numerical differential
+                    calc_feature_derivatives = .false.
 
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         do dd=1,3,1
@@ -488,7 +525,7 @@ tests(6) = .true.
                             !* if one of finite difference is OK, atom_passes = True
                             atom_passes = .false. 
                             !do ww=4,8,1
-                            do ww=4,4,1
+                            do ww=5,5,1
         
                                 !-----------------------------!
                                 !* numerical differentiation *!
@@ -526,11 +563,12 @@ tests(6) = .true.
                                 !---------------------------------------!
 
                                 all_ok = .true.
-
+                                
                                 !* search for all terms with atm in
                                 do jj=1,data_sets(set_type)%configs(conf)%n,1    
                                     atom_ok = .true.
-                                    do kk=1,D,1
+                                    !do kk=1,D,1 
+                                    do kk=D,D,1 
                                         deriv_matches = .true.
                                         if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10),.false.)&
                                         &.neqv..true.) then
@@ -541,7 +579,7 @@ tests(6) = .true.
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                     &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-7),&
                                                     &dble(1e-7),.true.) ) then
-                                                        deriv_matches = .true.                   
+                                                        deriv_matches = .true.      
                                                     end if
                                                 end if  
                                             end do !* end loop over contributing atoms to (kk,jj)

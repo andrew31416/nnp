@@ -92,4 +92,7 @@ module config
     real(8),public :: loss_const_energy
     real(8),public :: loss_const_forces
     real(8),public :: loss_const_reglrn
+
+    !* (forward and back)-prop behaviour
+    logical,public :: calc_feature_derivatives = .true.
 end module

@@ -14,11 +14,13 @@ module io
             implicit none
 
             character(len=*),intent(in) :: routine,message
+            character,dimension(1:len(routine)+26) :: header
+            header(:) = "*"
 
             write(*,*) '' 
-            write(*,*) '***************************************'
+            write(*,*) header
             write(*,*) 'error raised in routine : ',routine
-            write(*,*) '***************************************'
+            write(*,*) header
             write(*,*) ''
             write(*,*) 'Error : ',message
             write(*,*) ''
