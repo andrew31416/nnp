@@ -65,7 +65,7 @@ program unittest
             call test_loss_jac(tests(2:4))      ! d loss / dw
             tests(5) = test_dydx()              ! dydx
             tests(6) = test_dxdr()              ! d feature / d atom position
-tests(6) = .true.            
+            
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
             end do
@@ -111,9 +111,9 @@ tests(6) = .true.
                     data_sets(set_type)%configs(conf)%forces = 0.0d0
 
                     !data_sets(set_type)%configs(conf)%r(:,:) = 0.0d0
-                    !data_sets(set_type)%configs(conf)%r(1,1) = 0.5d0
-                    !data_sets(set_type)%configs(conf)%r(1,2) = 1.5d0
-                    !data_sets(set_type)%configs(conf)%r(2,3) = -1.5d0
+                    !data_sets(set_type)%configs(conf)%r(1,1) = 0.0d0
+                    !data_sets(set_type)%configs(conf)%r(1,2) = 1.0d0
+                    !data_sets(set_type)%configs(conf)%r(1,3) = 2.0d0
                 
 
                     do ii=1,3
@@ -524,7 +524,7 @@ tests(6) = .true.
                            
                             !* if one of finite difference is OK, atom_passes = True
                             atom_passes = .false. 
-                            !do ww=4,8,1
+                            !do ww=3,8,1
                             do ww=5,5,1
         
                                 !-----------------------------!
@@ -567,8 +567,7 @@ tests(6) = .true.
                                 !* search for all terms with atm in
                                 do jj=1,data_sets(set_type)%configs(conf)%n,1    
                                     atom_ok = .true.
-                                    !do kk=1,D,1 
-                                    do kk=D,D,1 
+                                    do kk=1,D,1 
                                         deriv_matches = .true.
                                         if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10),.false.)&
                                         &.neqv..true.) then
@@ -578,8 +577,8 @@ tests(6) = .true.
                                                 if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                     &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-7),&
-                                                    &dble(1e-7),.true.) ) then
-                                                        deriv_matches = .true.      
+                                                    &dble(1e-7),.false.) ) then
+                                                        deriv_matches = .true.     
                                                     end if
                                                 end if  
                                             end do !* end loop over contributing atoms to (kk,jj)

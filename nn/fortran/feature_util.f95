@@ -394,10 +394,11 @@ module feature_util
             integer,intent(in) :: ultraidx(:),set_type,conf
 
             !* scratch
-            integer :: dim(1:1),ii,jj,kk,cntr
+            integer :: dim(1:1),ii,jj,kk,zz,cntr
             real(8) :: rcut2,dr2ij,dr2ik,dr2jk,rtol2
             real(8) :: rii(1:3),rjj(1:3),rkk(1:3),drij,drik,drjk
             real(8) :: drij_vec(1:3),drik_vec(1:3),drjk_vec(1:3)
+            real(8) :: sign_ij(1:3),sign_ik(1:3)
             integer :: maxbuffer
             type(feature_info_threebody) :: aniso_info
 
@@ -503,7 +504,15 @@ module feature_util
                                 aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
                                 aniso_info%drdri(:,4,cntr) = drik_vec / drik  ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = 0.0d0            ! d |rk-rj| / drk 
-                                aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri 
+                                aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+                                
+                                sign_ij(1) =  1.0d0 
+                                sign_ij(2) =  1.0d0
+                                sign_ij(3) = -1.0d0
+                                
+                                sign_ik(1) =  1.0d0
+                                sign_ik(2) =  1.0d0
+                                sign_ik(3) = -1.0d0
                             else if (ii.eq.ultraidx(kk)) then
                                 ! ii!=jj , ii==kk, jj!=kk
                                 aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
@@ -512,6 +521,14 @@ module feature_util
                                 aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
                                 aniso_info%drdri(:,6,cntr) = drjk_vec / drjk  ! d |rk-rj| / dri
+
+                                sign_ij(1) =  1.0d0
+                                sign_ij(2) = -1.0d0
+                                sign_ij(3) = -1.0d0
+
+                                sign_ik(1) =  0.0d0
+                                sign_ik(2) =  0.0d0
+                                sign_ik(3) =  0.0d0
                             else
                                 ! ii!=jj, jj!=kk, ii!=kk 
                                 aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
@@ -520,6 +537,14 @@ module feature_util
                                 aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
                                 aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+
+                                sign_ij(1) =  1.0d0
+                                sign_ij(2) =  0.0d0
+                                sign_ij(3) = -1.0d0
+
+                                sign_ik(1) =  0.0d0
+                                sign_ik(2) =  1.0d0
+                                sign_ik(3) = -1.0d0
                             end if
                         else
                             if (ii.eq.ultraidx(kk)) then
@@ -530,14 +555,23 @@ module feature_util
                                 aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = 0.0d0            ! d |rk-rj| / drk
                                 aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+
+                                sign_ij(:) = 0.0d0
+                                sign_ik(:) = 0.0d0
+                            else
+                                ! ii==jj , ii!=kk, jj!=kk
+                                aniso_info%drdri(:,1,cntr) = 0.0d0                ! d |rj-ri| / drj
+                                aniso_info%drdri(:,2,cntr) = 0.0d0                ! d |rj-ri| / drk
+                                aniso_info%drdri(:,3,cntr) = drik_vec / drik      ! d |rk-ri| / drk
+                                aniso_info%drdri(:,4,cntr) = -drik_vec / drik     ! d |rk-ri| / drj
+                                aniso_info%drdri(:,5,cntr) = drjk_vec / drjk      ! d |rk-rj| / drk
+                                aniso_info%drdri(:,6,cntr) = -drjk_vec / drjk     ! d |rk-rj| / dri
+                                
+                                sign_ij(:) =  0.0d0
+                                sign_ik(1) =  -1.0d0
+                                sign_ik(2) =  1.0d0
+                                sign_ik(3) = -1.0d0
                             end if
-                            ! ii==jj , ii!=kk, jj!=kk
-                            aniso_info%drdri(:,1,cntr) = 0.0d0                ! d |rj-ri| / drj
-                            aniso_info%drdri(:,2,cntr) = 0.0d0                ! d |rj-ri| / drk
-                            aniso_info%drdri(:,3,cntr) = drik_vec / drik      ! d |rk-ri| / drk
-                            aniso_info%drdri(:,4,cntr) = -drik_vec / drik     ! d |rk-ri| / drj
-                            aniso_info%drdri(:,5,cntr) = drjk_vec / drjk      ! d |rk-rj| / drk
-                            aniso_info%drdri(:,6,cntr) = -drjk_vec / drjk     ! d |rk-rj| / dri
                         end if
                         
                         ! remember that d |rj-ri| / dri = - d |rj-ri| / drj
@@ -545,23 +579,30 @@ module feature_util
                         !---------------------!
                         !* cosine derivative *!
                         !---------------------!
-                       
-                        ! dcos_{ijk} / drj
-                        aniso_info%dcos_dr(:,1,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
-                                &drik*aniso_info%drdri(:,1,cntr) + drij*aniso_info%drdri(:,4,cntr) ) + &
-                                &drij_vec*aniso_info%drdri(:,4,cntr) + drik_vec*aniso_info%drdri(:,1,cntr) )
+                      
+                        ! j=1 , k=2 , i=3
+                        do zz=1,3,1
+                            aniso_info%dcos_dr(:,zz,cntr) = 1.0d0/(drij*drik) * ( drij_vec*(sign_ik(zz)-&
+                                    &aniso_info%cos_ang(cntr)*sign_ij(zz)*drik/drij) + &
+                                    &drik_vec*(sign_ij(zz) - aniso_info%cos_ang(cntr)*sign_ik(zz)*drij/drik) )
+                        end do
                         
-                        
-                        !! dcos_{ijk} / drk
-                        aniso_info%dcos_dr(:,2,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
-                                &drik*aniso_info%drdri(:,2,cntr) + drij*aniso_info%drdri(:,3,cntr) ) + &
-                                &drij_vec*aniso_info%drdri(:,3,cntr) + drik_vec*aniso_info%drdri(:,2,cntr) )
-                        
-                        
-                        !! dcos_{ijk} / dri
-                        aniso_info%dcos_dr(:,3,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
-                                &-drik*aniso_info%drdri(:,1,cntr) - drij*aniso_info%drdri(:,3,cntr) ) - &
-                                &drij_vec*aniso_info%drdri(:,3,cntr) - drik_vec*aniso_info%drdri(:,3,cntr) )
+                        !! dcos_{ijk} / drj
+                        !aniso_info%dcos_dr(:,1,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
+                        !        &drik*aniso_info%drdri(:,1,cntr) + drij*aniso_info%drdri(:,4,cntr) ) + &
+                        !        &drij_vec*aniso_info%drdri(:,4,cntr) + drik_vec*aniso_info%drdri(:,1,cntr) )
+                        !
+                        !
+                        !!! dcos_{ijk} / drk
+                        !aniso_info%dcos_dr(:,2,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
+                        !        &drik*aniso_info%drdri(:,2,cntr) + drij*aniso_info%drdri(:,3,cntr) ) + &
+                        !        &drij_vec*aniso_info%drdri(:,3,cntr) + drik_vec*aniso_info%drdri(:,2,cntr) )
+                        !
+                        !
+                        !!! dcos_{ijk} / dri
+                        !aniso_info%dcos_dr(:,3,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
+                        !        &-drik*aniso_info%drdri(:,1,cntr) - drij*aniso_info%drdri(:,3,cntr) ) - &
+                        !        &drij_vec*aniso_info%drdri(:,3,cntr) - drik_vec*aniso_info%drdri(:,3,cntr) )
                         
                     end do !* end loop kk over second neighbours
                 end do !* end loop jj over first neighbours

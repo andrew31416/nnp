@@ -505,9 +505,23 @@ module features
 
                 !* derivatives wrt r_zz
                 dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
-                drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
-                drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                
+                if (zz.eq.1) then
+                    ! zz=jj
+                    drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                    drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                else if (zz.eq.2) then
+                    ! zz=kk
+                    drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                else if (zz.eq.3) then
+                    ! zz=ii
+                    drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
+                end if
 
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
