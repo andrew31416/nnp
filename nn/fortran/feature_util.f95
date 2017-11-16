@@ -6,6 +6,7 @@ module feature_util
 
     !* blas/lapack
     external :: dcopy
+    external :: dgemm
     real(8),external :: ddot
 
     contains
@@ -22,18 +23,19 @@ module feature_util
             mtrx_out(2,1) = mtrx_in(2,3)*mtrx_in(3,1) - mtrx_in(2,1)*mtrx_in(3,3)
             mtrx_out(3,1) = mtrx_in(2,1)*mtrx_in(3,2) - mtrx_in(3,1)*mtrx_in(2,2) 
 
-            mtrx_out(1,2) = mtrx_in(3,2)*mtrx_in(1,3) - mtrx_in(2,1)*mtrx_in(3,3)
+            mtrx_out(1,2) = mtrx_in(3,2)*mtrx_in(1,3) - mtrx_in(1,2)*mtrx_in(3,3)
             mtrx_out(2,2) = mtrx_in(1,1)*mtrx_in(3,3) - mtrx_in(3,1)*mtrx_in(1,3)
             mtrx_out(3,2) = mtrx_in(3,1)*mtrx_in(1,2) - mtrx_in(1,1)*mtrx_in(3,2)
 
             mtrx_out(1,3) = mtrx_in(1,2)*mtrx_in(2,3) - mtrx_in(2,2)*mtrx_in(1,3)
-            mtrx_out(2,3) = mtrx_in(2,1)*mtrx_in(1,3) - mtrx_in(1,1)*mtrx_in(1,3)
+            mtrx_out(2,3) = mtrx_in(2,1)*mtrx_in(1,3) - mtrx_in(1,1)*mtrx_in(2,3)
             mtrx_out(3,3) = mtrx_in(1,1)*mtrx_in(2,2) - mtrx_in(2,1)*mtrx_in(1,2)
 
             det = mtrx_in(1,1)*mtrx_out(1,1) + mtrx_in(1,2)*mtrx_out(2,1) + &
                     &mtrx_in(1,3)*mtrx_out(3,1)
 
-            mtrx_out(:,:) = mtrx_out(:,:)/det                   
+            mtrx_out(:,:) = mtrx_out(:,:)/det                  
+
         end subroutine
 
         subroutine matrix_vec_mult(cell,frac,cart)
@@ -401,6 +403,7 @@ module feature_util
             real(8) :: sign_ij(1:3),sign_ik(1:3)
             integer :: maxbuffer
             type(feature_info_threebody) :: aniso_info
+real(8) :: tmp
 
             !* dim(1) = number atoms in ultra cell
             dim = shape(ultraidx)
@@ -412,7 +415,7 @@ module feature_util
             rtol2 = (0.0000001)**2
 
             !* max number of assumed 3-body terms per atom
-            maxbuffer = 1000
+            maxbuffer = 5000
 
 
             !* structure for all three body info associated with structure
@@ -492,7 +495,11 @@ module feature_util
                         !---------------------------------!
                         !* atom-atom distance derivative *!
                         !---------------------------------!
-                  
+tmp = 0.0d0
+aniso_info%drdri(:,:,cntr) = 1.0d0/tmp
+sign_ij(:) = 1.0d0/tmp          
+sign_ik(:) = 1.0d0/tmp          
+                 
                         ! d |rj-ri| / drj
                         if (ii.ne.ultraidx(jj)) then
                             ! ii != jj
@@ -521,15 +528,13 @@ module feature_util
                                 aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
                                 aniso_info%drdri(:,6,cntr) = drjk_vec / drjk  ! d |rk-rj| / dri
-
+                                
                                 sign_ij(1) =  1.0d0
                                 sign_ij(2) = -1.0d0
                                 sign_ij(3) = -1.0d0
 
-                                sign_ik(1) =  0.0d0
-                                sign_ik(2) =  0.0d0
-                                sign_ik(3) =  0.0d0
-                            else
+                                sign_ik(:) =  0.0d0
+                            else if ( (ii.ne.ultraidx(kk)).and.(ultraidx(jj).ne.ultraidx(kk)) ) then
                                 ! ii!=jj, jj!=kk, ii!=kk 
                                 aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
                                 aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
@@ -537,7 +542,7 @@ module feature_util
                                 aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
                                 aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
-
+                                
                                 sign_ij(1) =  1.0d0
                                 sign_ij(2) =  0.0d0
                                 sign_ij(3) = -1.0d0
@@ -555,10 +560,10 @@ module feature_util
                                 aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
                                 aniso_info%drdri(:,5,cntr) = 0.0d0            ! d |rk-rj| / drk
                                 aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
-
+                                
                                 sign_ij(:) = 0.0d0
                                 sign_ik(:) = 0.0d0
-                            else
+                            else if ( (ultraidx(jj).ne.ultraidx(kk)).and.(ii.ne.ultraidx(kk)) ) then
                                 ! ii==jj , ii!=kk, jj!=kk
                                 aniso_info%drdri(:,1,cntr) = 0.0d0                ! d |rj-ri| / drj
                                 aniso_info%drdri(:,2,cntr) = 0.0d0                ! d |rj-ri| / drk
@@ -573,7 +578,21 @@ module feature_util
                                 sign_ik(3) = -1.0d0
                             end if
                         end if
-                        
+    aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
+    aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
+    aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
+    aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
+    aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
+    aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+    
+    sign_ij(1) =  1.0d0
+    sign_ij(2) =  0.0d0
+    sign_ij(3) = -1.0d0
+
+    sign_ik(1) =  0.0d0
+    sign_ik(2) =  1.0d0
+    sign_ik(3) = -1.0d0
+
                         ! remember that d |rj-ri| / dri = - d |rj-ri| / drj
                    
                         !---------------------!
