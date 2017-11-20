@@ -415,7 +415,7 @@ real(8) :: tmp
             rtol2 = (0.0000001)**2
 
             !* max number of assumed 3-body terms per atom
-            maxbuffer = 5000
+            maxbuffer = 50000
 
 
             !* structure for all three body info associated with structure

@@ -27,7 +27,7 @@ module features
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
-                    call get_ultracell(mxrcut,1000,set_type,conf,&
+                    call get_ultracell(mxrcut,5000,set_type,conf,&
                             &ultra_cart,ultra_idx,ultra_z)
 
                     !* always calc. two-body info for features
@@ -493,7 +493,7 @@ module features
                     &(feature_threebody_info(atm)%z_atom+1.0d0)**za
 
             tmp_feature = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * (1.0d0+lambda*cos_angle)**xi
-
+            
             ! 1=jj , 2=kk, 3=ii
             do zz=1,3,1
                 ! map atom id to portion of mem for derivative
@@ -502,7 +502,7 @@ module features
                 else
                     deriv_idx = 1
                 end if
-
+                
                 !* derivatives wrt r_zz
                 dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
                 
@@ -522,10 +522,10 @@ module features
                     drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
                 end if
-
+                
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                (   tap_ij*tap_ik*tap_jk*lambda*xi/(1.0d0+lambda*cos_angle)*dcosdrz +&
+                &(   tap_ij*tap_ik*tap_jk*lambda*xi/(1.0d0+lambda*cos_angle)*dcosdrz +&
                 &tap_ik*tap_jk*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
                 &tap_ij*tap_jk*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz +&
                 &tap_ij*tap_ik*(tap_jk_deriv - 2.0d0*eta*tap_jk*drjk)*drjkdrz    )*tmp_feature*tmp_z

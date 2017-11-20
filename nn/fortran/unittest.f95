@@ -102,10 +102,15 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 5.0d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 5.0d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 5.0d0
-
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 3.d0
+                    data_sets(set_type)%configs(conf)%cell(2,1) = 0.1d0
+                    data_sets(set_type)%configs(conf)%cell(3,1) = 0.2d0
+                    data_sets(set_type)%configs(conf)%cell(1,2) = 0.1d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 3.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,2) = 0.3d0
+                    data_sets(set_type)%configs(conf)%cell(1,3) = -0.1d0
+                    data_sets(set_type)%configs(conf)%cell(2,3) = 0.2d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 3.0d0
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%energy)
                     data_sets(set_type)%configs(conf)%forces = 0.0d0
@@ -182,6 +187,7 @@ program unittest
             call random_number(feature_params%info(4)%eta) 
             call random_number(feature_params%info(4)%za)
             call random_number(feature_params%info(4)%zb)
+feature_params%info(4)%lambda = 1.0d0
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -577,7 +583,7 @@ program unittest
                                                 if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                     &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-7),&
-                                                    &dble(1e-7),.false.) ) then
+                                                    &dble(1e-7),.true.) ) then
                                                         deriv_matches = .true.     
                                                     end if
                                                 end if  
