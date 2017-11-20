@@ -1,6 +1,7 @@
 module propagate
     use config
     use io
+    use feature_util, only : int_in_intarray
 
     implicit none
 
@@ -62,10 +63,8 @@ module propagate
             !* predicted energy
             data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
                     &net_units%z%hl2,1)
-        
-            !* predicted force
-            data_sets(set_type)%configs(conf)%current_fi(1:3,atm) = 0.0d0
-
+       
+            !* must compute forces seperately once have iterated over all atoms in conf 
         end subroutine
 
         subroutine backward_propagate(conf,atm,set_type)
@@ -148,23 +147,56 @@ module propagate
             !---------------------------!
             !* derivative wrt features *!
             !---------------------------!
-
-            dydx = 0.0d0
-
+            
+            dydx(:,atm) = 0.0d0
+            
             do jj=1,net_dim%hl2
                 do  ii=1,net_dim%hl1
                     tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(ii+1,jj)*&
                             &net_units%a_deriv%hl1(ii)
                     do kk=1,D,1
-                        dydx(kk) = dydx(kk) + tmp1*net_weights%hl1(kk+1,ii)
+                        dydx(kk,atm) = dydx(kk,atm) + tmp1*net_weights%hl1(kk+1,ii)
                     end do
                 end do
             end do
-            
             !call dgemm("n","n",D,net_dim%hl2,net_dim%hl1,1.0d0,&
             !        &net_weights%hl2(2:D+1,1:net_dim%net_dim%hl2),D,tmp_array,net_dim%hl1,dydx)
 
         end subroutine backward_propagate
+
+        subroutine calculate_forces(set_type,conf)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf
+
+            !* scratch
+            integer :: atm,natm,ii,jj,deriv_idx
+
+            natm = data_sets(set_type)%configs(conf)%n
+
+            data_sets(set_type)%configs(conf)%current_fi = 0.0d0
+    
+            do atm=1,natm,1
+                do ii=1,D,1
+                    if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
+                        !* feature doest not contain any position info
+                        cycle
+                    end if
+                    
+                    do deriv_idx=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
+                        !* d feature_{ii,atm} / d r_jj
+                        jj = data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%idx(deriv_idx)
+       
+                         !* -= d E_atm / d feature_{ii,atm} * d feature_{ii,atm} / d r_jj
+                        data_sets(set_type)%configs(conf)%current_fi(:,jj) = &
+                                &data_sets(set_type)%configs(conf)%current_fi(:,jj) - dydx(ii,atm) * &
+                                &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,deriv_idx)
+                    end do !* end loop over atoms jj contributing to feature (ii,atm)
+                
+                end do !* end loop over features ii
+            end do !* end loop over local cell atoms
+        end subroutine calculate_forces
 
         real(8) function activation(ain)
             implicit none

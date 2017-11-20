@@ -62,6 +62,7 @@ module measures
             call parse_array_to_structure(flat_weights,net_weights)
 
             do conf=1,data_sets(set_type)%nconf,1
+                call allocate_dydx(set_type,conf)
                 
                 call zero_weights(tmp_jac)
                 
@@ -97,7 +98,9 @@ module measures
                 loss_jac%hl1 = loss_jac%hl1 + tmp_jac%hl1 * tmpE
                 loss_jac%hl2 = loss_jac%hl2 + tmp_jac%hl2 * tmpE
                 loss_jac%hl3 = loss_jac%hl3 + tmp_jac%hl3 * tmpE
-            end do
+
+                deallocate(dydx)
+            end do !* end loop over confs
 
             !-------------------------------!
             !* regularization contribution *!

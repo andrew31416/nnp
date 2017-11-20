@@ -87,6 +87,14 @@ module util
             total_num_weights = l1+l2+l3
         end function total_num_weights
 
+        subroutine allocate_dydx(set_type,conf)
+            implicit none
+
+            integer,intent(in) :: set_type,conf
+
+            allocate(dydx(D,data_sets(set_type)%configs(conf)%n))
+        end subroutine
+
         subroutine zero_weights(weights_out)
             implicit none
 

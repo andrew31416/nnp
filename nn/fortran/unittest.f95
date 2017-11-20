@@ -17,7 +17,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:6)
+            logical :: tests(1:7)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -65,6 +65,7 @@ program unittest
             call test_loss_jac(tests(2:4))      ! d loss / dw
             tests(5) = test_dydx()              ! dydx
             tests(6) = test_dxdr()              ! d feature / d atom position
+            tests(7) = test_forces()            ! - d E_tot / d r_atm 
             
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -102,15 +103,15 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 3.d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 5.d0
                     data_sets(set_type)%configs(conf)%cell(2,1) = 0.1d0
                     data_sets(set_type)%configs(conf)%cell(3,1) = 0.2d0
                     data_sets(set_type)%configs(conf)%cell(1,2) = 0.1d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 3.0d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 5.0d0
                     data_sets(set_type)%configs(conf)%cell(3,2) = 0.3d0
                     data_sets(set_type)%configs(conf)%cell(1,3) = -0.1d0
                     data_sets(set_type)%configs(conf)%cell(2,3) = 0.2d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 3.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 5.0d0
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%energy)
                     data_sets(set_type)%configs(conf)%forces = 0.0d0
@@ -187,7 +188,6 @@ program unittest
             call random_number(feature_params%info(4)%eta) 
             call random_number(feature_params%info(4)%za)
             call random_number(feature_params%info(4)%zb)
-feature_params%info(4)%lambda = 1.0d0
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -218,6 +218,8 @@ feature_params%info(4)%lambda = 1.0d0
             conf = 1
             set_type = 1
             atm = 1
+
+            call allocate_dydx(set_type,conf)
 
             dy = 0.0d0
 
@@ -281,6 +283,8 @@ feature_params%info(4)%lambda = 1.0d0
                     all_ok = .false.
                 end if    
             end do !* end loop over finite differences
+
+            deallocate(dydx)
             test_dydw = all_ok
         end function test_dydw
 
@@ -391,13 +395,15 @@ feature_params%info(4)%lambda = 1.0d0
             logical :: set_atms(1:2)
             logical :: deriv_ok
 
-            allocate(num_dydx(D))
 
             do set_type=1,2
                 allocate(cnf_atms(data_sets(set_type)%nconf))
 
                 do conf=1,data_sets(set_type)%nconf
                     allocate(log_atms(data_sets(set_type)%configs(conf)%n))
+                    allocate(num_dydx(D))
+                   
+                    call allocate_dydx(set_type,conf)
                     
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         log_atms(atm) = .true.
@@ -430,7 +436,7 @@ feature_params%info(4)%lambda = 1.0d0
                                     end if
                                     
                                     call forward_propagate(conf,atm,set_type)
-   
+                                    
                                     if (ii.eq.1) then
                                         num_dydx(xx) = data_sets(set_type)%configs(conf)%current_ei(atm)
                                     else
@@ -443,7 +449,7 @@ feature_params%info(4)%lambda = 1.0d0
 
                                 num_dydx(xx) = num_dydx(xx) / (2.0d0*dw)
 
-                                if (scalar_equal(num_dydx(xx),dydx(xx),dble(1e-7),dble(1e-10),.false.)) then
+                                if (scalar_equal(num_dydx(xx),dydx(xx,atm),dble(1e-7),dble(1e-10),.false.)) then
                                     deriv_ok = .true.
                                 end if
                             end do !* end loop finite differences
@@ -453,14 +459,13 @@ feature_params%info(4)%lambda = 1.0d0
                             end if
                         end do !* end loop features
                         
-                    
-                        !log_atms(atm) = array_equal(num_dydx,dydx,dble(1e-7),dble(1e-10),.false.)
-
                     end do !* end loop atoms
                 
                     cnf_atms(conf) = all(log_atms)
 
                     deallocate(log_atms)
+                    deallocate(num_dydx)
+                    deallocate(dydx)
                 end do !* end loop configurations
 
                 set_atms(set_type) = all(cnf_atms)
@@ -633,4 +638,109 @@ feature_params%info(4)%lambda = 1.0d0
             test_dxdr = all(set_arr)
         end function test_dxdr
 
+        logical function test_forces()
+            implicit none
+
+            !* scratch
+            integer :: set_type,conf,atm,dd,ww,ii,atm_prime
+            real(8) :: dw,num_val,etot,x0
+            real(8),allocatable :: anl_forces(:,:)
+            logical,allocatable :: atms_ok(:),conf_ok(:)
+            logical :: dd_ok,set_ok(1:2)
+
+            do set_type=1,2,1
+                allocate(conf_ok(data_sets(set_type)%nconf))
+
+                do conf=1,data_sets(set_type)%nconf,1
+                    call allocate_dydx(set_type,conf)
+                    
+                    !* make sure we'are calculating derivatives
+                    calc_feature_derivatives = .true.
+
+                    call deallocate_feature_deriv_info()
+                    call calculate_features()
+
+                    allocate(anl_forces(3,data_sets(set_type)%configs(conf)%n))
+                    
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        call forward_propagate(conf,atm,set_type)
+                        call backward_propagate(conf,atm,set_type)
+                    end do
+                    
+                    !* analytical forces
+                    call calculate_forces(set_type,conf)
+                    anl_forces(:,:) = data_sets(set_type)%configs(conf)%current_fi(:,:)
+                    
+                    !* don't need feature derivatives for numerical force
+                    calc_feature_derivatives = .false.
+                    
+                    
+                    allocate(atms_ok(data_sets(set_type)%configs(conf)%n))
+                    atms_ok(:) = .true.
+
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        do dd=1,3,1
+                            x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
+                            dd_ok = .false.
+                            do ww=1,5,1
+                                !* finite difference
+                                dw = dble(1.0d0/(10.0d0**ww))
+                                
+                                do ii=1,2,1
+                                    if (ii.eq.1) then
+                                        data_sets(set_type)%configs(conf)%r(dd,atm) = x0 + dw
+                                    else
+                                        data_sets(set_type)%configs(conf)%r(dd,atm) = x0 - dw
+                                    end if
+                                    
+                                    call deallocate_feature_deriv_info()
+                                    call calculate_features()
+
+                                    !* have to propagate through all atoms
+                                    do atm_prime=1,data_sets(set_type)%configs(conf)%n,1
+                                        call forward_propagate(conf,atm_prime,set_type)
+                                   end do
+
+                                    !* total energy
+                                    etot = sum(data_sets(set_type)%configs(conf)%current_ei)
+                                    
+                                    if (ii.eq.1) then
+                                        num_val = etot
+                                    else
+                                        !* - d E_tot / d r_atm,dd
+                                        num_val = -(num_val - etot)/(2.0d0*dw)
+                                    end if
+                                end do !* end loop over +/- dw
+                                
+                                !* numerical vs. analytical
+                                if (scalar_equal(num_val,anl_forces(dd,atm),dble(1e-9),dble(1e-10),.false.)) then
+                                    dd_ok = .true.
+                                end if
+                                
+                                !* book keeping
+                                data_sets(set_type)%configs(conf)%r(dd,atm) = x0 
+
+                            end do !* end loop over finite difference magnitude
+
+                            if (dd_ok.neqv..true.) then
+                                !* derivative fails atom
+                                atms_ok(atm) = .false.
+                            end if
+                        end do !* end loop over dimensions dd
+                    end do !* end loop over local cell atoms atm
+
+                    conf_ok(conf) = all(atms_ok)
+
+                    deallocate(dydx)
+                    deallocate(anl_forces)
+                    deallocate(atms_ok)
+                end do !* end loop over confs in set
+
+                set_ok(set_type) = all(conf_ok)
+
+                deallocate(conf_ok)
+            end do !* end loop over data sets
+
+            test_forces = all(set_ok)
+        end function test_forces
 end program unittest

@@ -39,9 +39,6 @@ module init
             !* total number of net weights
             nwght = total_num_weights() 
 
-            !* derivates of net wrt. features
-            allocate(dydx(D))
-
             !* initialise NN weights
             call random_weights()
           
