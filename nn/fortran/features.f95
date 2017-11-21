@@ -547,7 +547,7 @@ module features
 
             !* atom-neigh_idx distance 
             dr  = feature_isotropic(atm)%dr(neigh_idx)
-            
+           
             !* symmetry function params
             za   = feature_params%info(ft_idx)%za
             zb   = feature_params%info(ft_idx)%zb
@@ -556,6 +556,9 @@ module features
             mean = feature_params%info(ft_idx)%mean(1)
             rcut = feature_params%info(ft_idx)%rcut
             
+            if (dr.gt.rcut) then
+                return
+            end if
 
             !* exponential
             tmp1 = sqrt(prec*inv2pi)*exp(-0.5d0*prec*(dr-mean)**2)
@@ -614,6 +617,10 @@ module features
                 
                 !* atom-atom distance
                 dr_scl = feature_isotropic(atm)%dr(ii)
+
+                if (dr_scl.gt.rcut) then
+                    cycle
+                end if
 
                 !* (r_neighbour - r_centralatom)/dr_scl
                 dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
