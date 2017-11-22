@@ -522,7 +522,7 @@ module features
                     drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
                 end if
-                
+
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
                 &(   tap_ij*tap_ik*tap_jk*lambda*xi/(1.0d0+lambda*cos_angle)*dcosdrz +&

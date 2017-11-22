@@ -7,6 +7,8 @@ module feature_util
     !* blas/lapack
     external :: dcopy
     external :: dgemm
+    external :: dgetrf
+    external :: dgetri
     real(8),external :: ddot
 
     contains
@@ -17,25 +19,31 @@ module feature_util
             real(8),intent(in) :: mtrx_in(1:3,1:3)
             real(8),intent(inout) :: mtrx_out(1:3,1:3)
 
-            real(8) :: det
+            !real(8) :: det
             
-            mtrx_out(1,1) = mtrx_in(2,2)*mtrx_in(3,3) - mtrx_in(3,2)*mtrx_in(2,3)
-            mtrx_out(2,1) = mtrx_in(2,3)*mtrx_in(3,1) - mtrx_in(2,1)*mtrx_in(3,3)
-            mtrx_out(3,1) = mtrx_in(2,1)*mtrx_in(3,2) - mtrx_in(3,1)*mtrx_in(2,2) 
+            integer :: ipiv(1:4),info
+            real(8) :: lwork(1:3,1:3)
+            !real(8) :: tmp(1:3,1:3)            
+            
+            !mtrx_out(1,1) = mtrx_in(2,2)*mtrx_in(3,3) - mtrx_in(3,2)*mtrx_in(2,3)
+            !mtrx_out(2,1) = mtrx_in(2,3)*mtrx_in(3,1) - mtrx_in(2,1)*mtrx_in(3,3)
+            !mtrx_out(3,1) = mtrx_in(2,1)*mtrx_in(3,2) - mtrx_in(3,1)*mtrx_in(2,2) 
 
-            mtrx_out(1,2) = mtrx_in(3,2)*mtrx_in(1,3) - mtrx_in(1,2)*mtrx_in(3,3)
-            mtrx_out(2,2) = mtrx_in(1,1)*mtrx_in(3,3) - mtrx_in(3,1)*mtrx_in(1,3)
-            mtrx_out(3,2) = mtrx_in(3,1)*mtrx_in(1,2) - mtrx_in(1,1)*mtrx_in(3,2)
+            !mtrx_out(1,2) = mtrx_in(3,2)*mtrx_in(1,3) - mtrx_in(1,2)*mtrx_in(3,3)
+            !mtrx_out(2,2) = mtrx_in(1,1)*mtrx_in(3,3) - mtrx_in(3,1)*mtrx_in(1,3)
+            !mtrx_out(3,2) = mtrx_in(3,1)*mtrx_in(1,2) - mtrx_in(1,1)*mtrx_in(3,2)
 
-            mtrx_out(1,3) = mtrx_in(1,2)*mtrx_in(2,3) - mtrx_in(2,2)*mtrx_in(1,3)
-            mtrx_out(2,3) = mtrx_in(2,1)*mtrx_in(1,3) - mtrx_in(1,1)*mtrx_in(2,3)
-            mtrx_out(3,3) = mtrx_in(1,1)*mtrx_in(2,2) - mtrx_in(2,1)*mtrx_in(1,2)
+            !mtrx_out(1,3) = mtrx_in(1,2)*mtrx_in(2,3) - mtrx_in(2,2)*mtrx_in(1,3)
+            !mtrx_out(2,3) = mtrx_in(2,1)*mtrx_in(1,3) - mtrx_in(1,1)*mtrx_in(2,3)
+            !mtrx_out(3,3) = mtrx_in(1,1)*mtrx_in(2,2) - mtrx_in(2,1)*mtrx_in(1,2)
 
-            det = mtrx_in(1,1)*mtrx_out(1,1) + mtrx_in(1,2)*mtrx_out(2,1) + &
-                    &mtrx_in(1,3)*mtrx_out(3,1)
+            !det = mtrx_in(1,1)*mtrx_out(1,1) + mtrx_in(1,2)*mtrx_out(2,1) + &
+            !        &mtrx_in(1,3)*mtrx_out(3,1)
 
-            mtrx_out(:,:) = mtrx_out(:,:)/det                  
-
+            !mtrx_out(:,:) = mtrx_out(:,:)/det                  
+            mtrx_out(:,:) = mtrx_in(:,:)
+            call dgetrf(3,3,mtrx_out,3,ipiv,info)
+            call dgetri(3,mtrx_out,3,ipiv,lwork,3,info)
         end subroutine
 
         subroutine matrix_vec_mult(cell,frac,cart)
@@ -121,6 +129,7 @@ module feature_util
 
                     !* fractional coordinates fracii
                     call matrix_vec_mult(invcell,cartii,fracii)
+
 
                     !* search over all layers
                     do ii=-layer,layer
@@ -578,20 +587,20 @@ sign_ik(:) = 1.0d0/tmp
                                 sign_ik(3) = -1.0d0
                             end if
                         end if
-    aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
-    aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
-    aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
-    aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
-    aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
-    aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
-    
-    sign_ij(1) =  1.0d0
-    sign_ij(2) =  0.0d0
-    sign_ij(3) = -1.0d0
+    !aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
+    !aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
+    !aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
+    !aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
+    !aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
+    !aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+    !
+    !sign_ij(1) =  1.0d0
+    !sign_ij(2) =  0.0d0
+    !sign_ij(3) = -1.0d0
 
-    sign_ik(1) =  0.0d0
-    sign_ik(2) =  1.0d0
-    sign_ik(3) = -1.0d0
+    !sign_ik(1) =  0.0d0
+    !sign_ik(2) =  1.0d0
+    !sign_ik(3) = -1.0d0
 
                         ! remember that d |rj-ri| / dri = - d |rj-ri| / drj
                    
@@ -739,6 +748,40 @@ sign_ik(:) = 1.0d0/tmp
                         end do
                     end do
                 end do
+            end do
+        end subroutine
+
+        subroutine copy_threebody_feature_info(feature_in,allocatable_feature)
+            implicit none
+
+            !* arg
+            type(feature_info_threebody),intent(in) :: feature_in(:)
+            type(feature_info_threebody),allocatable,intent(inout) :: allocatable_feature(:)
+
+            !* scratch
+            integer :: natm,ii
+
+            natm = size(feature_in)
+
+            allocate(allocatable_feature(natm))
+            do ii=1,natm,1
+                allocatable_feature(ii)%n = feature_in(ii)%n
+                allocatable_feature(ii)%z_atom = feature_in(ii)%z_atom
+                if (allocatable_feature(ii)%n.gt.0) then
+                    allocate(allocatable_feature(ii)%cos_ang(allocatable_feature(ii)%n))
+                    allocate(allocatable_feature(ii)%dr(3,allocatable_feature(ii)%n))
+                    allocate(allocatable_feature(ii)%z(2,allocatable_feature(ii)%n))
+                    allocate(allocatable_feature(ii)%idx(2,allocatable_feature(ii)%n))
+                    allocate(allocatable_feature(ii)%dcos_dr(3,3,allocatable_feature(ii)%n))
+                    allocate(allocatable_feature(ii)%drdri(3,6,allocatable_feature(ii)%n))
+
+                    allocatable_feature(ii)%cos_ang(:) = feature_in(ii)%cos_ang(:)
+                    allocatable_feature(ii)%dr(:,:) = feature_in(ii)%dr(:,:)
+                    allocatable_feature(ii)%z(:,:) = feature_in(ii)%z(:,:)
+                    allocatable_feature(ii)%idx(:,:) = feature_in(ii)%idx(:,:)
+                    allocatable_feature(ii)%dcos_dr(:,:,:) = feature_in(ii)%dcos_dr(:,:,:)
+                    allocatable_feature(ii)%drdri(:,:,:) = feature_in(ii)%drdri(:,:,:)
+                end if
             end do
         end subroutine
 end module        

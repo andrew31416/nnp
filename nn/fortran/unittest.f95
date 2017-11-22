@@ -17,7 +17,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:7)
+            logical :: tests(1:8)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -37,7 +37,7 @@ program unittest
             num_nodes(2) = 3
 
             !* nonlinear function
-            nlf_type = 1
+            nlf_type = 2
             
             !* features
             fD = 4
@@ -56,16 +56,17 @@ program unittest
             call calculate_features()
 
             call initialise_net(num_nodes,nlf_type,fD)
-
+            
             !----------------------!
             !* perform unit tests *!
             !----------------------!
             
-            tests(1) = test_dydw()              ! dydw
-            call test_loss_jac(tests(2:4))      ! d loss / dw
-            tests(5) = test_dydx()              ! dydx
-            tests(6) = test_dxdr()              ! d feature / d atom position
-            tests(7) = test_forces()            ! - d E_tot / d r_atm 
+            tests(1) = test_dydw()                  ! dydw
+            call test_loss_jac(tests(2:4))          ! d loss / dw
+            tests(5) = test_dydx()                  ! dydx
+            tests(6) = test_threebody_derivatives() ! d cos(angle) /dr_i etc.
+            tests(7) = test_dxdr()                  ! d feature / d atom position
+            tests(8) = test_forces()                ! - d E_tot / d r_atm 
             
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -103,15 +104,15 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 5.d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 4.d0
                     data_sets(set_type)%configs(conf)%cell(2,1) = 0.1d0
                     data_sets(set_type)%configs(conf)%cell(3,1) = 0.2d0
                     data_sets(set_type)%configs(conf)%cell(1,2) = 0.1d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 5.0d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 4.0d0
                     data_sets(set_type)%configs(conf)%cell(3,2) = 0.3d0
                     data_sets(set_type)%configs(conf)%cell(1,3) = -0.1d0
                     data_sets(set_type)%configs(conf)%cell(2,3) = 0.2d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 5.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 4.0d0
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%energy)
                     data_sets(set_type)%configs(conf)%forces = 0.0d0
@@ -188,6 +189,8 @@ program unittest
             call random_number(feature_params%info(4)%eta) 
             call random_number(feature_params%info(4)%za)
             call random_number(feature_params%info(4)%zb)
+feature_params%info(4)%eta = 0.0d0
+feature_params%info(4)%lambda = 0.0d0
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -395,7 +398,6 @@ program unittest
             logical :: set_atms(1:2)
             logical :: deriv_ok
 
-
             do set_type=1,2
                 allocate(cnf_atms(data_sets(set_type)%nconf))
 
@@ -424,7 +426,7 @@ program unittest
 
                             deriv_ok = .false.
 
-                            do ww=2,6 
+                            do ww=2,2 
                                 !* finite difference for feature
                                 dw = 1.0d0/(10**ww)
 
@@ -446,10 +448,11 @@ program unittest
                                     
                                     data_sets(set_type)%configs(conf)%x(xx+1,atm) = x0 
                                 end do !* end loop +/- dw
-
+                                
                                 num_dydx(xx) = num_dydx(xx) / (2.0d0*dw)
 
-                                if (scalar_equal(num_dydx(xx),dydx(xx,atm),dble(1e-7),dble(1e-10),.false.)) then
+                                if (scalar_equal(num_dydx(xx),dydx(xx,atm),dble(1e-7),dble(1e-10),&
+                                &.true.)) then
                                     deriv_ok = .true.
                                 end if
                             end do !* end loop finite differences
@@ -536,7 +539,7 @@ program unittest
                             !* if one of finite difference is OK, atom_passes = True
                             atom_passes = .false. 
                             !do ww=3,8,1
-                            do ww=5,5,1
+                            do ww=4,4,1
         
                                 !-----------------------------!
                                 !* numerical differentiation *!
@@ -580,15 +583,15 @@ program unittest
                                     atom_ok = .true.
                                     do kk=1,D,1 
                                         deriv_matches = .true.
-                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),dble(1e-10),.false.)&
-                                        &.neqv..true.) then
+                                        if (scalar_equal(num_dxdr(kk,jj),0.0d0,dble(1e-10),&
+                                        &dble(1e-10),.false.).neqv..true.) then
                                             deriv_matches = .false.
                                             do ll=1,anl_deriv(kk,jj)%n
                                                 !* loop over atoms which contribute to feature kk,atom jj
                                                 if (anl_deriv(kk,jj)%idx(ll).eq.atm) then 
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                     &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-7),&
-                                                    &dble(1e-7),.true.) ) then
+                                                    &dble(1e-7),.false.) ) then
                                                         deriv_matches = .true.     
                                                     end if
                                                 end if  
@@ -638,6 +641,265 @@ program unittest
             test_dxdr = all(set_arr)
         end function test_dxdr
 
+        logical function test_threebody_derivatives()
+            implicit none
+
+            !* scratch
+            integer :: set_type,conf,atm,dd,ii,jj,kk,ww,bond,idx
+            integer :: nmax
+            real(8) :: x0,dw
+            real(8),allocatable :: ultraz(:),ultracart(:,:)
+            type(feature_info_threebody),allocatable :: threebody_ref(:)
+            type(feature_info_threebody),allocatable :: threebody_dif(:)
+            integer,allocatable :: ultraidx(:),deriv_ok(:,:,:),deriv_ok_cos(:,:)
+            logical :: bad_deriv,dw_ok,all_ok
+
+            if (threebody_features_present().neqv..true.) then
+                test_threebody_derivatives = .true.
+            end if
+
+            all_ok = .true.
+
+            do set_type=1,2
+                do conf=1,data_sets(set_type)%nconf
+                    !* all interacting atom projections
+                    call get_ultracell(maxrcut(0),5000,set_type,conf,&
+                            &ultracart,ultraidx,ultraz)
+                
+                    call calculate_threebody_info(set_type,conf,ultracart,ultraz,ultraidx)
+                    deallocate(ultracart)
+                    deallocate(ultraz)
+                    deallocate(ultraidx)
+
+                    nmax = feature_threebody_info(1)%n
+                    do atm=2,data_sets(set_type)%configs(conf)%n
+                        if (feature_threebody_info(atm)%n.gt.nmax) then
+                            nmax = feature_threebody_info(atm)%n
+                        end if
+                    end do
+
+                    allocate(deriv_ok(3,nmax,data_sets(set_type)%configs(conf)%n))
+                    allocate(deriv_ok_cos(nmax,data_sets(set_type)%configs(conf)%n))
+                    deriv_ok = 0
+                    deriv_ok_cos = 0
+
+                    !* copy threebody info
+                    call copy_threebody_feature_info(feature_threebody_info,threebody_ref)
+                    deallocate(feature_threebody_info)
+
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        do dd=1,3,1
+                            x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
+
+                            dw_ok = .false.
+
+                            do ww=4,7,1
+                                dw = 1.0d0/(10.0d0**dble(ww))
+                            
+                                do ii=1,2
+                                    if (ii.eq.1) then
+                                        data_sets(set_type)%configs(conf)%r(dd,atm) = x0 + dw
+                                    else
+                                        data_sets(set_type)%configs(conf)%r(dd,atm) = x0 - dw
+                                    end if
+
+                                    call get_ultracell(maxrcut(0),5000,set_type,conf,&
+                                            &ultracart,ultraidx,ultraz)
+                                    
+                                    call calculate_threebody_info(set_type,conf,ultracart,ultraz,ultraidx)
+                                    deallocate(ultracart)
+                                    deallocate(ultraz)
+                                    deallocate(ultraidx)
+                                    
+                                    if (ii.eq.1) then
+                                        call copy_threebody_feature_info(feature_threebody_info,&
+                                                &threebody_dif) 
+                                    else
+                                        !* compute finite difference
+                                        do jj=1,data_sets(set_type)%configs(conf)%n
+                                            if (size(feature_threebody_info(jj)%cos_ang).ne.&
+                                            &size(threebody_dif(jj)%cos_ang)) then
+                                                write(*,*) 'dw = ',dw,'too large in threebody deriv test'
+                                                call exit(0)
+                                            end if
+                                            
+                                            threebody_dif(jj)%cos_ang = (threebody_dif(jj)%cos_ang - &
+                                                    &feature_threebody_info(jj)%cos_ang)/(2.0d0*dw)
+                                            threebody_dif(jj)%dr = (threebody_dif(jj)%dr - &
+                                                    &feature_threebody_info(jj)%dr)/(2.0d0*dw)
+                                        end do
+                                    end if
+
+                                    deallocate(feature_threebody_info)
+                                end do !* end loop over +/- dw
+
+                                !* if true, error in derivatives
+                                bad_deriv = .false.
+                                
+                                !* compare analytical to numeric differential
+                                do jj=1,data_sets(set_type)%configs(conf)%n
+                                    do bond=1,threebody_dif(jj)%n
+                                        do kk=1,3
+                                            !-----------------------!
+                                            !* check dr derivative *!
+                                            !-----------------------!
+
+                                            if (scalar_equal(threebody_dif(jj)%dr(kk,bond),0.0d0,&
+                                            &dble(1e-10),dble(1e-15),.false.).neqv..true.) then
+                                                if (atm.eq.jj) then
+                                                    if (kk.le.2) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &-threebody_ref(jj)%drdri(dd,(kk-1)*2+1,bond),&
+                                                        &dble(1e-7),dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    else
+                                                        ! djk/dri_d
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &threebody_ref(jj)%drdri(dd,6,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    end if
+                                                end if !* end if atm == ii
+                                                if (atm.eq.threebody_dif(jj)%idx(1,bond)) then
+                                                    if (kk.eq.1) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &threebody_ref(jj)%drdri(dd,1,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    else if (kk.eq.2) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &threebody_ref(jj)%drdri(dd,4,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    else if (kk.eq.3) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &-threebody_ref(jj)%drdri(dd,5,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    end if
+                                                end if !* end if atom == jj
+                                                if (atm.eq.threebody_dif(jj)%idx(2,bond)) then
+                                                    if (kk.eq.1) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &threebody_ref(jj)%drdri(dd,2,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    else if (kk.eq.2) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &threebody_ref(jj)%drdri(dd,3,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    else if (kk.eq.3) then
+                                                        if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
+                                                        &threebody_ref(jj)%drdri(dd,5,bond),dble(1e-7),&
+                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                            deriv_ok(kk,bond,jj) = 1
+                                                        else
+                                                            if (deriv_ok(kk,bond,jj).eq.0) then
+                                                                deriv_ok(kk,bond,jj) = -1
+                                                            end if
+                                                        end if
+                                                    end if
+                                                end if !* end if atom == kk
+                                                
+                                            end if  !* end if derivative type = dr
+
+                                        end do
+                                        
+                                        !------------------------!
+                                        !* cos_{ijk} derivative *!
+                                        !------------------------!
+
+                                        if (scalar_equal(threebody_dif(jj)%cos_ang(bond),0.0d0,&
+                                        &dble(1e-10),dble(1e-15),.false.).neqv..true.) then
+                                            if (atm.eq.jj) then
+                                                if (scalar_equal(threebody_dif(jj)%cos_ang(bond),&
+                                                &threebody_ref(jj)%dcos_dr(dd,3,bond),dble(1e-7),&
+                                                &dble(1e-10),.false.)) then
+                                                    deriv_ok_cos(bond,jj) = 1
+                                                else
+                                                    if (deriv_ok_cos(bond,jj).eq.0) then
+                                                        write(*,*) atm,jj
+                                                        deriv_ok_cos(bond,jj) = -1
+                                                    end if
+                                                end if
+                                            end if 
+                                        end if
+                                    end do !* end loop over bonds
+                                end do !* end loop over jj
+
+                                if (bad_deriv.neqv..true.) then
+                                    dw_ok = .true.
+                                end if
+
+
+                                deallocate(threebody_dif)
+                            end do !* end loop over finite difference magnitude
+                            
+                            do jj=1,data_sets(set_type)%configs(conf)%n
+                                do bond=1,threebody_ref(jj)%n
+                                    do kk=1,3
+                                        if (deriv_ok(kk,bond,jj).eq.-1) then
+                                            !write(*,*) kk,bond,jj,atm
+                                            all_ok = .false.
+                                        end if
+                                    end do
+
+                                    if (deriv_ok_cos(bond,jj).eq.-1) then
+                                        all_ok = .false.
+                                        !write(*,*) jj,bond
+                                    end if
+                                end do
+                            end do 
+                            
+                        
+                        end do !* end loop over dimenions
+                    end do !* end loop over local cell atoms
+                    
+                    deallocate(deriv_ok)
+                    deallocate(deriv_ok_cos)
+                    deallocate(threebody_ref)
+                end do !* end loop over configs
+            end do !* end loop over sets
+
+            test_threebody_derivatives = all_ok
+        end function test_threebody_derivatives
+
         logical function test_forces()
             implicit none
 
@@ -682,7 +944,7 @@ program unittest
                         do dd=1,3,1
                             x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
                             dd_ok = .false.
-                            do ww=1,5,1
+                            do ww=3,5,1
                                 !* finite difference
                                 dw = dble(1.0d0/(10.0d0**ww))
                                 
@@ -708,12 +970,15 @@ program unittest
                                         num_val = etot
                                     else
                                         !* - d E_tot / d r_atm,dd
-                                        num_val = -(num_val - etot)/(2.0d0*dw)
+                                        num_val = -(num_val - etot)
                                     end if
                                 end do !* end loop over +/- dw
                                 
+                                num_val = num_val/(2.d0*dw)
+
                                 !* numerical vs. analytical
-                                if (scalar_equal(num_val,anl_forces(dd,atm),dble(1e-9),dble(1e-10),.false.)) then
+                                if (scalar_equal(num_val,anl_forces(dd,atm),dble(1e-9),dble(1e-10),&
+                                &.false.)) then
                                     dd_ok = .true.
                                 end if
                                 

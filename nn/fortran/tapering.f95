@@ -18,6 +18,7 @@ module tapering
                 x = x**4
                 tmp = x/(1.0d0+x)
             end if
+
             taper_1 = tmp
         end function taper_1
 

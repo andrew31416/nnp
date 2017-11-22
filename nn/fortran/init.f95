@@ -148,11 +148,14 @@ module init
             call random_number(net_weights%hl2(2:,:))
             call random_number(net_weights%hl3(2:))
 
+            net_weights%hl1(2:,:) = ( net_weights%hl1(2:,:)-0.5d0)*0.001d0
+            net_weights%hl2(2:,:) = ( net_weights%hl2(2:,:)-0.5d0)*0.001d0
+            net_weights%hl3(2:)   = ( net_weights%hl3(2:)  -0.5d0)*0.001d0
+
             !* biases
             net_weights%hl1(1,:) = 0.0d0
             net_weights%hl2(1,:) = 0.0d0
             net_weights%hl3(1)  = 0.0d0
-
         end subroutine random_weights
 
         subroutine check_input()

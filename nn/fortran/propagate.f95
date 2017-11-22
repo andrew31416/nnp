@@ -107,7 +107,7 @@ module propagate
 
                 net_units%delta%hl1(ii) = net_units%a_deriv%hl1(ii)*net_units%delta%hl1(ii)
             end do
-
+            
             !* derivative of output wrt. weights *!
 
             !---------------!
@@ -147,9 +147,7 @@ module propagate
             !---------------------------!
             !* derivative wrt features *!
             !---------------------------!
-            
             dydx(:,atm) = 0.0d0
-            
             do jj=1,net_dim%hl2
                 do  ii=1,net_dim%hl1
                     tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(ii+1,jj)*&
@@ -238,13 +236,13 @@ module propagate
 
             !* scratch
             real(8) :: tmp
-
             tmp = exp(-x)
             logistic_deriv = tmp/((1.0d0+tmp)**2)
         end function logistic_deriv
 
         real(8) function tanh_deriv(x)
             real(8),intent(in) :: x
-            tanh_deriv = 1.0d0 - (tanh(x)**2)
+            !tanh_deriv = 1.0d0 - (tanh(x)**2)
+            tanh_deriv = (1.0d0/cosh(x))**2
         end function tanh_deriv
 end module propagate
