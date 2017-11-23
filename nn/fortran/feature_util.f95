@@ -412,6 +412,7 @@ module feature_util
             real(8) :: sign_ij(1:3),sign_ik(1:3)
             integer :: maxbuffer
             type(feature_info_threebody) :: aniso_info
+            logical :: any_rjk
 real(8) :: tmp
 
             !* dim(1) = number atoms in ultra cell
@@ -436,6 +437,14 @@ real(8) :: tmp
             allocate(aniso_info%idx(2,maxbuffer))
             allocate(aniso_info%dcos_dr(3,3,maxbuffer))
             allocate(aniso_info%drdri(3,6,maxbuffer))
+
+            any_rjk = .false.
+            do ii=1,D
+                if (feature_params%info(ii)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                    !* behler g-5 has no constraint (tapering) on drjk
+                    any_rjk = .true.
+                end if
+            end do
 
             do ii=1,data_sets(set_type)%configs(conf)%n,1
                 !* iterate over local atoms
@@ -469,7 +478,10 @@ real(8) :: tmp
                         dr2ik = distance2(rii,rkk) 
                         dr2jk = distance2(rjj,rkk)
                         
-                        if ( (dr2ik.lt.rtol2).or.(dr2ik.gt.rcut2).or.(dr2jk.gt.rcut2) ) then
+                        if ( (dr2ik.lt.rtol2).or.(dr2ik.gt.rcut2).or.(dr2jk.lt.rtol2) ) then
+                            cycle
+                        else if ( (any_rjk.neqv..true.).and.(dr2jk.gt.rcut2) ) then
+                            !* only behler g-5 doesn't taper drjk
                             cycle
                         end if
 
@@ -481,7 +493,8 @@ real(8) :: tmp
                         !* have found a three-body term
                         cntr = cntr + 1  
                         if (cntr.gt.maxbuffer) then
-                            call error("calculate_threebody_info","value of maxbuffer too small, increase size")
+                            call error("calculate_threebody_info",&
+                                    &"value of maxbuffer too small, increase size")
                         end if
                             
                        

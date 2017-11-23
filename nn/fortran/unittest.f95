@@ -40,7 +40,7 @@ program unittest
             nlf_type = 2
             
             !* features
-            fD = 4
+            fD = 5
             natm = 5
             nconf = 2
             
@@ -104,7 +104,7 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 4.d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 4.0d0
                     data_sets(set_type)%configs(conf)%cell(2,1) = 0.1d0
                     data_sets(set_type)%configs(conf)%cell(3,1) = 0.2d0
                     data_sets(set_type)%configs(conf)%cell(1,2) = 0.1d0
@@ -189,8 +189,16 @@ program unittest
             call random_number(feature_params%info(4)%eta) 
             call random_number(feature_params%info(4)%za)
             call random_number(feature_params%info(4)%zb)
-feature_params%info(4)%eta = 0.0d0
-feature_params%info(4)%lambda = 0.0d0
+            
+            !* test feature 5
+            feature_params%info(5)%ftype = featureID_StringToInt("acsf_behler-g5")
+            feature_params%info(5)%rcut = 3.1d0
+            feature_params%info(5)%fs = 0.2d0
+            call random_number(feature_params%info(5)%lambda)
+            call random_number(feature_params%info(5)%xi) 
+            call random_number(feature_params%info(5)%eta) 
+            call random_number(feature_params%info(5)%za)
+            call random_number(feature_params%info(5)%zb)
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -248,7 +256,7 @@ feature_params%info(4)%lambda = 0.0d0
                 
                 deriv_ok = .false.
 
-                do ww=2,5,1
+                do ww=2,6,1
                 
                     dw = 1.0d0/(10.0d0**ww)
 
@@ -538,8 +546,7 @@ feature_params%info(4)%lambda = 0.0d0
                            
                             !* if one of finite difference is OK, atom_passes = True
                             atom_passes = .false. 
-                            !do ww=3,8,1
-                            do ww=4,4,1
+                            do ww=3,8,1
         
                                 !-----------------------------!
                                 !* numerical differentiation *!
@@ -645,9 +652,9 @@ feature_params%info(4)%lambda = 0.0d0
             implicit none
 
             !* scratch
-            integer :: set_type,conf,atm,dd,ii,jj,kk,ww,bond,idx
+            integer :: set_type,conf,atm,dd,ii,jj,kk,ww,bond
             integer :: nmax
-            real(8) :: x0,dw
+            real(8) :: x0,dw,ftol,rtol
             real(8),allocatable :: ultraz(:),ultracart(:,:)
             type(feature_info_threebody),allocatable :: threebody_ref(:)
             type(feature_info_threebody),allocatable :: threebody_dif(:)
@@ -660,8 +667,13 @@ feature_params%info(4)%lambda = 0.0d0
 
             all_ok = .true.
 
-            do set_type=1,2
-                do conf=1,data_sets(set_type)%nconf
+            ftol = dble(1e-7)
+            rtol = dble(1e-8)
+
+            !do set_type=1,2
+            do set_type=1,1
+                !do conf=1,data_sets(set_type)%nconf
+                do conf=1,1
                     !* all interacting atom projections
                     call get_ultracell(maxrcut(0),5000,set_type,conf,&
                             &ultracart,ultraidx,ultraz)
@@ -670,7 +682,7 @@ feature_params%info(4)%lambda = 0.0d0
                     deallocate(ultracart)
                     deallocate(ultraz)
                     deallocate(ultraidx)
-
+                    
                     nmax = feature_threebody_info(1)%n
                     do atm=2,data_sets(set_type)%configs(conf)%n
                         if (feature_threebody_info(atm)%n.gt.nmax) then
@@ -745,12 +757,12 @@ feature_params%info(4)%lambda = 0.0d0
                                             !-----------------------!
 
                                             if (scalar_equal(threebody_dif(jj)%dr(kk,bond),0.0d0,&
-                                            &dble(1e-10),dble(1e-15),.false.).neqv..true.) then
+                                            &dble(1e-10),dble(1e-10),.false.).neqv..true.) then
                                                 if (atm.eq.jj) then
                                                     if (kk.le.2) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
                                                         &-threebody_ref(jj)%drdri(dd,(kk-1)*2+1,bond),&
-                                                        &dble(1e-7),dble(1e-10),.false.).eqv..true.) then
+                                                        &ftol,rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -760,8 +772,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                     else
                                                         ! djk/dri_d
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &threebody_ref(jj)%drdri(dd,6,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &threebody_ref(jj)%drdri(dd,6,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -773,8 +785,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                 if (atm.eq.threebody_dif(jj)%idx(1,bond)) then
                                                     if (kk.eq.1) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &threebody_ref(jj)%drdri(dd,1,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &threebody_ref(jj)%drdri(dd,1,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -783,8 +795,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                         end if
                                                     else if (kk.eq.2) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &threebody_ref(jj)%drdri(dd,4,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &threebody_ref(jj)%drdri(dd,4,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -793,8 +805,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                         end if
                                                     else if (kk.eq.3) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &-threebody_ref(jj)%drdri(dd,5,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &-threebody_ref(jj)%drdri(dd,5,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -806,8 +818,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                 if (atm.eq.threebody_dif(jj)%idx(2,bond)) then
                                                     if (kk.eq.1) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &threebody_ref(jj)%drdri(dd,2,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &threebody_ref(jj)%drdri(dd,2,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -816,8 +828,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                         end if
                                                     else if (kk.eq.2) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &threebody_ref(jj)%drdri(dd,3,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &threebody_ref(jj)%drdri(dd,3,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -826,8 +838,8 @@ feature_params%info(4)%lambda = 0.0d0
                                                         end if
                                                     else if (kk.eq.3) then
                                                         if (scalar_equal(threebody_dif(jj)%dr(kk,bond),&
-                                                        &threebody_ref(jj)%drdri(dd,5,bond),dble(1e-7),&
-                                                        &dble(1e-10),.false.).eqv..true.) then
+                                                        &threebody_ref(jj)%drdri(dd,5,bond),ftol,&
+                                                        &rtol,.false.).eqv..true.) then
                                                             deriv_ok(kk,bond,jj) = 1
                                                         else
                                                             if (deriv_ok(kk,bond,jj).eq.0) then
@@ -849,12 +861,11 @@ feature_params%info(4)%lambda = 0.0d0
                                         &dble(1e-10),dble(1e-15),.false.).neqv..true.) then
                                             if (atm.eq.jj) then
                                                 if (scalar_equal(threebody_dif(jj)%cos_ang(bond),&
-                                                &threebody_ref(jj)%dcos_dr(dd,3,bond),dble(1e-7),&
-                                                &dble(1e-10),.false.)) then
+                                                &threebody_ref(jj)%dcos_dr(dd,3,bond),ftol,&
+                                                &rtol,.false.)) then
                                                     deriv_ok_cos(bond,jj) = 1
                                                 else
                                                     if (deriv_ok_cos(bond,jj).eq.0) then
-                                                        write(*,*) atm,jj
                                                         deriv_ok_cos(bond,jj) = -1
                                                     end if
                                                 end if
@@ -875,14 +886,14 @@ feature_params%info(4)%lambda = 0.0d0
                                 do bond=1,threebody_ref(jj)%n
                                     do kk=1,3
                                         if (deriv_ok(kk,bond,jj).eq.-1) then
-                                            !write(*,*) kk,bond,jj,atm
+                                            !write(*,*) 'drdri fail:',kk,bond,jj,atm
                                             all_ok = .false.
                                         end if
                                     end do
 
                                     if (deriv_ok_cos(bond,jj).eq.-1) then
                                         all_ok = .false.
-                                        !write(*,*) jj,bond
+                                        write(*,*) 'dcosdr fail:',jj,bond
                                     end if
                                 end do
                             end do 
@@ -944,7 +955,7 @@ feature_params%info(4)%lambda = 0.0d0
                         do dd=1,3,1
                             x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
                             dd_ok = .false.
-                            do ww=3,5,1
+                            do ww=3,6,1
                                 !* finite difference
                                 dw = dble(1.0d0/(10.0d0**ww))
                                 

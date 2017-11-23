@@ -310,6 +310,12 @@ module features
                     if (calc_feature_derivatives) then
                         call feature_behler_g4_deriv(set_type,conf,atm,ft_idx,ii,idx_to_contrib(:,ii)) 
                     end if
+                else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                    call feature_behler_g5(set_type,conf,atm,ft_idx,ii)
+
+                    if (calc_feature_derivatives) then
+                        call feature_behler_g5_deriv(set_type,conf,atm,ft_idx,ii,idx_to_contrib(:,ii)) 
+                    end if
                 end if
             end do !* end loop ii over three body terms
             
@@ -433,6 +439,10 @@ module features
             drik = feature_threebody_info(atm)%dr(2,bond_idx)
             drjk = feature_threebody_info(atm)%dr(3,bond_idx)
 
+            if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
+                return
+            end if
+
             cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
 
             !* atomic number term
@@ -476,6 +486,10 @@ module features
             drij = feature_threebody_info(atm)%dr(1,bond_idx)
             drik = feature_threebody_info(atm)%dr(2,bond_idx)
             drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            
+            if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
+                return
+            end if
 
             cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
 
@@ -532,6 +546,131 @@ module features
             end do
             
         end subroutine feature_behler_g4_deriv
+        
+        subroutine feature_behler_g5(set_type,conf,atm,ft_idx,bond_idx)
+            implicit none
+
+            !* args
+            integer,intent(in) :: atm,ft_idx,bond_idx,set_type,conf
+
+            !* scratch
+            real(8) :: xi,eta,lambda,fs,rcut,za,zb
+            real(8) :: tmp_atmz,tmp_taper
+            real(8) :: drij,drik,cos_angle
+
+            !* feature parameters
+            rcut   = feature_params%info(ft_idx)%rcut
+            eta    = feature_params%info(ft_idx)%eta
+            xi     = feature_params%info(ft_idx)%xi
+            lambda = feature_params%info(ft_idx)%lambda
+            fs     = feature_params%info(ft_idx)%fs
+            za     = feature_params%info(ft_idx)%za
+            zb     = feature_params%info(ft_idx)%zb
+
+            !* atom-atom distances
+            drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            
+            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+                return
+            end if
+
+            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+
+            !* atomic number term
+            tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
+                    &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+
+            !* taper term
+            tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)
+
+            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
+                    &+ 2**(1-xi)*(1.0d0 + lambda*cos_angle)**xi * &
+                    &exp(-eta*(drij**2+drik**2))*tmp_taper*tmp_atmz
+        end subroutine feature_behler_g5
+       
+        subroutine feature_behler_g5_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib)                    
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf,atm,ft_idx,bond_idx
+            integer,intent(in) :: idx_to_contrib(1:2)
+            
+            !* scratch
+            real(8) :: xi,eta,lambda,fs,rcut,za,zb
+            real(8) :: drij,drik,cos_angle,tmp_z
+            integer :: zz,deriv_idx
+            real(8) :: tmp_feature,tap_ij,tap_ik
+            real(8) :: tap_ij_deriv,tap_ik_deriv
+            real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3)
+
+            !* feature parameters
+            rcut   = feature_params%info(ft_idx)%rcut
+            eta    = feature_params%info(ft_idx)%eta
+            xi     = feature_params%info(ft_idx)%xi
+            lambda = feature_params%info(ft_idx)%lambda
+            fs     = feature_params%info(ft_idx)%fs
+            za     = feature_params%info(ft_idx)%za
+            zb     = feature_params%info(ft_idx)%zb
+
+            !* atom-atom distances
+            drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            
+            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+                return
+            end if
+
+            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+
+            !* tapering
+            tap_ij = taper_1(drij,rcut,fs)
+            tap_ik = taper_1(drik,rcut,fs)
+            tap_ij_deriv = taper_deriv_1(drij,rcut,fs)
+            tap_ik_deriv = taper_deriv_1(drik,rcut,fs)
+
+            !* atomic numbers
+            tmp_z = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+                    &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+
+            tmp_feature = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2)) * (1.0d0+lambda*cos_angle)**xi
+            
+            ! 1=jj , 2=kk, 3=ii
+            do zz=1,3,1
+                ! map atom id to portion of mem for derivative
+                if (zz.lt.3) then
+                    deriv_idx = idx_to_contrib(zz) 
+                else
+                    deriv_idx = 1
+                end if
+                
+                !* derivatives wrt r_zz
+                dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                
+                if (zz.eq.1) then
+                    ! zz=jj
+                    drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                else if (zz.eq.2) then
+                    ! zz=kk
+                    drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                else if (zz.eq.3) then
+                    ! zz=ii
+                    drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                end if
+
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
+                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
+                &(   tap_ij*tap_ik*lambda*xi/(1.0d0+lambda*cos_angle)*dcosdrz +&
+                &tap_ik*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
+                &tap_ij*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz )*tmp_feature*tmp_z
+            end do
+            
+        end subroutine feature_behler_g5_deriv
         
         subroutine feature_normal_iso(atm,neigh_idx,ft_idx,current_val)
             implicit none
