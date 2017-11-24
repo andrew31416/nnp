@@ -49,6 +49,7 @@ module feature_config
         real(8) :: eta                      ! iso
         real(8) :: xi                       ! ani
         real(8) :: lambda                   ! ani
+        real(8) :: sqrt_det                 ! precision matrix determinant
         real(8), allocatable :: prec(:,:)   ! normal precision
         real(8), allocatable :: mean(:)     ! normal mean
         real(8) :: za                       ! central atomic number

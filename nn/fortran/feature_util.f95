@@ -628,23 +628,6 @@ sign_ik(:) = 1.0d0/tmp
                                     &drik_vec*(sign_ij(zz) - aniso_info%cos_ang(cntr)*sign_ik(zz)*drij/drik) )
                         end do
                         
-                        !! dcos_{ijk} / drj
-                        !aniso_info%dcos_dr(:,1,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
-                        !        &drik*aniso_info%drdri(:,1,cntr) + drij*aniso_info%drdri(:,4,cntr) ) + &
-                        !        &drij_vec*aniso_info%drdri(:,4,cntr) + drik_vec*aniso_info%drdri(:,1,cntr) )
-                        !
-                        !
-                        !!! dcos_{ijk} / drk
-                        !aniso_info%dcos_dr(:,2,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
-                        !        &drik*aniso_info%drdri(:,2,cntr) + drij*aniso_info%drdri(:,3,cntr) ) + &
-                        !        &drij_vec*aniso_info%drdri(:,3,cntr) + drik_vec*aniso_info%drdri(:,2,cntr) )
-                        !
-                        !
-                        !!! dcos_{ijk} / dri
-                        !aniso_info%dcos_dr(:,3,cntr) = 1.0d0/(drij*drik) * ( aniso_info%cos_ang(cntr) * ( &
-                        !        &-drik*aniso_info%drdri(:,1,cntr) - drij*aniso_info%drdri(:,3,cntr) ) - &
-                        !        &drij_vec*aniso_info%drdri(:,3,cntr) - drik_vec*aniso_info%drdri(:,3,cntr) )
-                        
                     end do !* end loop kk over second neighbours
                 end do !* end loop jj over first neighbours
                 

@@ -5,8 +5,9 @@ module features
     use feature_util
     use tapering, only : taper_1,taper_deriv_1
    
-
     implicit none
+
+    external :: dsymv
 
     contains
         subroutine calculate_features()
@@ -777,5 +778,192 @@ module features
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
             end do
         end subroutine feature_normal_iso_deriv
+        
+        real(8) function func_normal(x,mean,prec,sqrt_det)
+            implicit none
+            
+            !* args
+            real(8),intent(in) :: sqrt_det,x(:),mean(:),prec(:,:)
+
+            !* scratch
+            integer :: n
+            real(8) :: lwork(1:3),pi_const
+
+            !* sqrt(1/(2 pi))
+            pi_const = 0.3989422804014327
+
+            n = size(x)
+
+            !* lwork = prec * (x - mean) (prec is symmetric)
+            call dsymv('u',n,1.0d0,prec,n,x-mean,1,0.0d0,lwork,1)
+
+            !* sum_i lwork_i*(x-mean)_i
+            func_normal = exp(-0.5d0*ddot(n,x-mean,1,lwork,1)) * (sqrt_det * pi_const)**n
+        end function func_normal
+
+        subroutine feature_normal_threebody(set_type,conf,atm,ft_idx,bond_idx)
+            implicit none
+
+            !* args
+            integer,intent(in) :: atm,ft_idx,bond_idx,set_type,conf
+
+            !* scratch
+            real(8) :: prec(1:3,1:3)
+            real(8) :: mean(1:3),fs,rcut,za,zb
+            real(8) :: tmp_atmz,tmp_taper,x1(1:3),x2(1:3)
+            real(8) :: drij,drik,cos_angle,sqrt_det
+
+            !* feature parameters
+            rcut     = feature_params%info(ft_idx)%rcut
+            prec    = feature_params%info(ft_idx)%prec
+            mean    = feature_params%info(ft_idx)%mean
+            fs       = feature_params%info(ft_idx)%fs
+            za       = feature_params%info(ft_idx)%za
+            zb       = feature_params%info(ft_idx)%zb
+            sqrt_det = feature_params%info(ft_idx)%sqrt_det
+
+            !* atom-atom distances
+            drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            
+            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+                return
+            end if
+
+            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+
+            !* must permute atom order to retain invariance
+            x1(1) = drij
+            x1(2) = drik
+            x1(3) = cos_angle
+            x2(1) = drik
+            x2(2) = drij
+            x2(3) = cos_angle
+
+            !* atomic number term
+            tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
+                    &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+
+            !* taper term
+            tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)
+
+            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
+                    &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
+                    + (func_normal(x1,mean,prec,sqrt_det) + func_normal(x2,mean,prec,sqrt_det)) * &
+                    &tmp_atmz*tmp_taper
+        end subroutine feature_normal_threebody
+        
+        subroutine feature_behler_threebody_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib)                    
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf,atm,ft_idx,bond_idx
+            integer,intent(in) :: idx_to_contrib(1:2)
+            
+            !* scratch
+            real(8) :: prec(1:3,1:3),sqrt_det
+            real(8) :: mean(1:3),fs,rcut,za,zb
+            real(8) :: x(1:3,1:2)
+            real(8) :: drij,drik,cos_angle
+            real(8) :: tmp_feat(1:2),tmp_vec(1:3,1:2)
+            real(8) :: tmp_deriv1(1:3),tmp_deriv2(1:3)
+            real(8) :: dxdr1(1:3,1:3),dxdr2(1:3,1:3)
+            real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),tap_ij,tap_ik
+            real(8) :: tap_ij_deriv,tap_ik_deriv,tmpz
+            integer :: deriv_idx,zz
+
+            !* feature parameters
+            rcut     = feature_params%info(ft_idx)%rcut
+            prec     = feature_params%info(ft_idx)%prec
+            mean     = feature_params%info(ft_idx)%mean
+            fs       = feature_params%info(ft_idx)%fs
+            za       = feature_params%info(ft_idx)%za
+            zb       = feature_params%info(ft_idx)%zb
+            sqrt_det = feature_params%info(ft_idx)%sqrt_det
+
+            !* atom-atom distances
+            drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            
+            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+                return
+            end if
+
+            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+
+            !* must permuate atom ordering to retain invariance
+            x(1,1) = drij
+            x(2,1) = drik
+            x(1,2) = drik
+            x(2,2) = drij 
+            x(3,:) = cos_angle
+
+            !* tapering
+            tap_ij = taper_1(drij,rcut,fs)
+            tap_ik = taper_1(drik,rcut,fs)
+            tap_ij_deriv = taper_deriv_1(drij,rcut,fs)
+            tap_ik_deriv = taper_deriv_1(drik,rcut,fs)
+
+            !* atomic numbers
+            tmpz = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+                    &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+
+            tmp_feat(1) = func_normal(x(:,1),mean,prec,sqrt_det)
+            tmp_feat(2) = func_normal(x(:,2),mean,prec,sqrt_det)
+
+            do zz=1,2
+                !* prec * (x - mean)
+                call dsymv('u',3,1.0d0,prec,3,x(:,zz)-mean,1,0.0d0,tmp_vec(:,zz),1)
+            end do    
+        
+            
+            ! 1=jj , 2=kk, 3=ii
+            do zz=1,3,1
+                ! map atom id to portion of mem for derivative
+                if (zz.lt.3) then
+                    deriv_idx = idx_to_contrib(zz) 
+                else
+                    deriv_idx = 1
+                end if
+                
+                !* derivatives wrt r_zz
+                dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                
+                if (zz.eq.1) then
+                    ! zz=jj
+                    drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                else if (zz.eq.2) then
+                    ! zz=kk
+                    drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                else if (zz.eq.3) then
+                    ! zz=ii
+                    drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                end if
+
+                !* dx_{ijk} / dr_z |_ab = d x_{ijk}|_b / d r_z|_a
+                dxdr1(:,1) = drijdrz
+                dxdr1(:,2) = drikdrz
+                dxdr1(:,3) = dcosdrz
+                dxdr2(:,1) = drikdrz
+                dxdr2(:,2) = drijdrz
+                dxdr2(:,3) = dcosdrz
+
+                !* tmp_deriv = dxdr * tmp_vec
+                call dgemv('n',3,3,1.0d0,dxdr1,3,tmp_vec(:,1),1,0.0d0,tmp_deriv1,1)
+                call dgemv('n',3,3,1.0d0,dxdr2,3,tmp_vec(:,2),1,0.0d0,tmp_deriv2,1)
+
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
+                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
+                        &sum(tmp_feat)*(tap_ij*tap_ik_deriv*drikdrz + tap_ik*tap_ij_deriv*drijdrz)*tmpz - &
+                        &tap_ij*tap_ik*(tmp_feat(1)*tmp_deriv1+tmp_feat(2)*tmp_deriv2)*tmpz
+                 
+            end do
+            
+        end subroutine feature_behler_threebody_deriv
 
 end module
