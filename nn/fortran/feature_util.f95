@@ -46,6 +46,39 @@ module feature_util
             call dgetri(3,mtrx_out,3,ipiv,lwork,3,info)
         end subroutine
 
+        real(8) function matrix_determinant(mtrx)
+            implicit none
+
+            real(8),intent(in) :: mtrx(:,:)
+            integer :: dim(1:2),n,ii
+            real(8) :: det,tmp(1:3)
+
+            dim = shape(mtrx)
+
+            !* dimension 
+            n = dim(1)
+            
+            if (n.eq.1) then
+               det = mtrx(1,1)
+            else if (n.eq.2) then
+               det = mtrx(1,1)*mtrx(2,2) - mtrx(1,2)*mtrx(2,1)
+            else if (n.eq.3) then
+                tmp(1) = mtrx(2,2)*mtrx(3,3) - mtrx(3,2)*mtrx(2,3)
+                tmp(2) = mtrx(2,3)*mtrx(3,1) - mtrx(2,1)*mtrx(3,3)
+                tmp(3) = mtrx(2,1)*mtrx(3,2) - mtrx(3,1)*mtrx(2,2)
+
+                det = 0.0d0
+                do ii=1,3,1
+                    det = det + mtrx(1,ii)*tmp(ii)
+                end do
+            else
+                call error("matrix_determinant","unsupported dimension")    
+            end if
+
+            matrix_determinant = det
+
+        end function matrix_determinant
+
         subroutine matrix_vec_mult(cell,frac,cart)
             implicit none
 
@@ -255,7 +288,7 @@ module feature_util
                 else if (arg.eq.1) then
                     if ( (ftype.eq.featureID_StringToInt("acsf_behler-g1")).or.&
                     &(ftype.eq.featureID_StringToInt("acsf_behler-g2")).or.&
-                    &(ftype.eq.featureID_StringToInt("acsf_normal-iso")) ) then
+                    &(ftype.eq.featureID_StringToInt("acsf_normal-b2")) ) then
                     !if ( (ftype.eq.0).or.(ftype.ne.1) ) then
                         !* all isotropic features
                         tmprcut(ii) = tmpr
@@ -265,7 +298,7 @@ module feature_util
                 else if (arg.eq.2) then
                     if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
                     &(ftype.eq.featureID_StringToInt("acsf_behler-g5")).or.&
-                    &(ftype.eq.featureID_StringToInt("acsf_normal-ani")) ) then
+                    &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
                         tmprcut(ii) = tmpr
                     else
                         tmprcut(ii) = -1.0d0

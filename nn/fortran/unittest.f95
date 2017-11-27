@@ -40,7 +40,7 @@ program unittest
             nlf_type = 2
             
             !* features
-            fD = 5
+            fD = 6
             natm = 5
             nconf = 2
             
@@ -170,7 +170,7 @@ program unittest
             call random_number(feature_params%info(2)%zb)
             
             !* test feature 3
-            feature_params%info(3)%ftype = featureID_StringToInt("acsf_normal-iso")
+            feature_params%info(3)%ftype = featureID_StringToInt("acsf_normal-b2")
             feature_params%info(3)%rcut = rcut - 1.0d0
             feature_params%info(3)%fs = 0.2d0
             call random_number(feature_params%info(3)%za)
@@ -179,6 +179,7 @@ program unittest
             call random_number(feature_params%info(3)%prec(1,1)) 
             allocate(feature_params%info(3)%mean(1))
             call random_number(feature_params%info(3)%mean(1)) 
+            feature_params%info(3)%sqrt_det = sqrt(feature_params%info(3)%prec(1,1))
 
             !* test feature 4
             feature_params%info(4)%ftype = featureID_StringToInt("acsf_behler-g4")
@@ -199,6 +200,20 @@ program unittest
             call random_number(feature_params%info(5)%eta) 
             call random_number(feature_params%info(5)%za)
             call random_number(feature_params%info(5)%zb)
+            
+            !* test feature 6
+            feature_params%info(6)%ftype = featureID_StringToInt("acsf_normal-b3")
+            feature_params%info(6)%rcut = 4.0d0
+            feature_params%info(6)%fs = 0.3d0
+            allocate(feature_params%info(6)%prec(3,3))
+            allocate(feature_params%info(6)%mean(3))
+            call random_number(feature_params%info(6)%prec)
+            call random_number(feature_params%info(6)%za)
+            call random_number(feature_params%info(6)%zb)
+            feature_params%info(6)%mean(1) = 4.2d0
+            feature_params%info(6)%mean(2) = 2.1d0
+            feature_params%info(6)%mean(3) = 0.3d0
+            feature_params%info(6)%sqrt_det = sqrt(matrix_determinant(feature_params%info(6)%prec))
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf

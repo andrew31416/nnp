@@ -102,9 +102,9 @@ module feature_config
                 idx = 3
             else if (feature_descriptor.eq."acsf_behler-g5") then
                 idx = 4
-            else if (feature_descriptor.eq."acsf_normal-iso") then
+            else if (feature_descriptor.eq."acsf_normal-b2") then
                 idx = 5
-            else if (feature_descriptor.eq."acsf_normal-ani") then
+            else if (feature_descriptor.eq."acsf_normal-b3") then
                 idx = 6
             else
                 write(*,*) ""
@@ -112,7 +112,7 @@ module feature_config
                 write(*,*) 'error raised in routine : feature_StringToInt'
                 write(*,*) '*********************************************' 
                 write(*,*) ""
-                write(*,*) 'Error : ',"unrecognised feature type"
+                write(*,*) 'Error : ',"unrecognised feature type ",feature_descriptor
                 write(*,*) ""
                 call exit(0)
             end if

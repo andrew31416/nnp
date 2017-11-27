@@ -192,7 +192,7 @@ module features
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                 &vec(1:3,idx_to_contrib(ii)))
                         end if
-                    else if (ftype.eq.featureID_StringToInt("acsf_normal-iso")) then
+                    else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                         call feature_normal_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calc_feature_derivatives) then
@@ -209,7 +209,7 @@ module features
                 if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
                     call feature_behler_g2_deriv(atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
-                else if (ftype.eq.featureID_StringToInt("acsf_normal-iso")) then
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                     call feature_normal_iso_deriv(atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 end if
@@ -316,6 +316,13 @@ module features
 
                     if (calc_feature_derivatives) then
                         call feature_behler_g5_deriv(set_type,conf,atm,ft_idx,ii,idx_to_contrib(:,ii)) 
+                    end if
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                    call feature_normal_threebody(set_type,conf,atm,ft_idx,ii)
+
+                    if (calc_feature_derivatives) then
+                        call feature_normal_threebody_deriv(set_type,conf,atm,ft_idx,ii,&
+                                &idx_to_contrib(:,ii)) 
                     end if
                 end if
             end do !* end loop ii over three body terms
@@ -681,27 +688,28 @@ module features
 
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,fs,prec
-            real(8) :: inv2pi,mean
+            real(8) :: invsqrt2pi,mean,sqrt_det
 
-            inv2pi = 0.15915494309d0
+            invsqrt2pi = 0.3989422804014327d0
 
             !* atom-neigh_idx distance 
             dr  = feature_isotropic(atm)%dr(neigh_idx)
            
             !* symmetry function params
-            za   = feature_params%info(ft_idx)%za
-            zb   = feature_params%info(ft_idx)%zb
-            fs   = feature_params%info(ft_idx)%fs
-            prec = feature_params%info(ft_idx)%prec(1,1)
-            mean = feature_params%info(ft_idx)%mean(1)
-            rcut = feature_params%info(ft_idx)%rcut
-            
+            za       = feature_params%info(ft_idx)%za
+            zb       = feature_params%info(ft_idx)%zb
+            fs       = feature_params%info(ft_idx)%fs
+            prec     = feature_params%info(ft_idx)%prec(1,1)
+            mean     = feature_params%info(ft_idx)%mean(1)
+            rcut     = feature_params%info(ft_idx)%rcut
+            sqrt_det = feature_params%info(ft_idx)%sqrt_det
+
             if (dr.gt.rcut) then
                 return
             end if
 
             !* exponential
-            tmp1 = sqrt(prec*inv2pi)*exp(-0.5d0*prec*(dr-mean)**2)
+            tmp1 = sqrt_det*invsqrt2pi*exp(-0.5d0*prec*(dr-mean)**2)
 
             !* tapering
             tmp2 = taper_1(dr,rcut,fs)
@@ -721,21 +729,22 @@ module features
 
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
-            real(8) :: fs,rcut,tmpz,prec,mean
-            real(8) :: za,zb,inv2pi,prec_const
+            real(8) :: fs,rcut,tmpz,prec,mean,sqrt_det
+            real(8) :: za,zb,invsqrt2pi,prec_const
             integer :: ii,lim1,lim2
             
-            inv2pi = 0.15915494309d0
+            invsqrt2pi = 0.3989422804014327d0
             
             !* symmetry function params
-            za   = feature_params%info(ft_idx)%za
-            zb   = feature_params%info(ft_idx)%zb
-            fs   = feature_params%info(ft_idx)%fs
-            prec = feature_params%info(ft_idx)%prec(1,1)
-            mean = feature_params%info(ft_idx)%mean(1)
-            rcut = feature_params%info(ft_idx)%rcut
+            za       = feature_params%info(ft_idx)%za
+            zb       = feature_params%info(ft_idx)%zb
+            fs       = feature_params%info(ft_idx)%fs
+            prec     = feature_params%info(ft_idx)%prec(1,1)
+            mean     = feature_params%info(ft_idx)%mean(1)
+            rcut     = feature_params%info(ft_idx)%rcut
+            sqrt_det = feature_params%info(ft_idx)%sqrt_det
 
-            prec_const = sqrt(inv2pi*prec)
+            prec_const = invsqrt2pi*sqrt_det
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
@@ -854,7 +863,7 @@ module features
                     &tmp_atmz*tmp_taper
         end subroutine feature_normal_threebody
         
-        subroutine feature_behler_threebody_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib)                    
+        subroutine feature_normal_threebody_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib) 
             implicit none
 
             !* args
@@ -964,6 +973,6 @@ module features
                  
             end do
             
-        end subroutine feature_behler_threebody_deriv
+        end subroutine feature_normal_threebody_deriv
 
 end module
