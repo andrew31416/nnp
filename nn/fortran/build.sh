@@ -7,29 +7,66 @@ f90wrap="f90wrap"
 
 modname="nn_f95"
 
-FFLAGS="-O2 -fPIC -llapack"
+lapack_dir="/usr/lib/atlas-base/atlas/"
+
+FFLAGS="-O2 -fPIC -llapack -lblas"
 DEBUG="-fcheck=all -W -Wall -pedantic"
 
-f1="config."$suffix
-f2="io."$suffix
-f3="init."$suffix
-f4="propagate."$suffix
-f5="measures."$suffix
-f6="feature_config."$suffix
-f6="feature_util."$suffix
-f7="features."$suffix
-f8="util."$suffix
+#--------------------------------------------#
+# all files to compile .o and .mod files for #
+#--------------------------------------------#
+
+f1="config."
+f2="feature_config."
+f3="io."
+f4="util."
+f5="feature_util."
+f6="init."
+f7="propagate."
+f8="measures."
+f9="tapering."
+f10="features."
+
+
+#----------------------------------#
+# files to create f2py pragma from #
+#----------------------------------#
+
+fwrap_files="features.f95 init.f95"
+
+#--------------------------------------#
+# functions to take from wrapped files #
+#--------------------------------------#
+
+fwrap_functions="calculate_distance_distributions initialise_net"
+
+# clear previous build
+rm $f1"o" $f1"mod"
+rm $f2"o" $f2"mod"
+rm $f3"o" $f3"mod"
+rm $f4"o" $f4"mod"
+rm $f5"o" $f5"mod"
+rm $f6"o" $f6"mod"
+rm $f7"o" $f7"mod"
+rm $f8"o" $f8"mod"
+rm $f9"o" $f9"mod"
+rm $f10"o" $f10"mod"
+rm f90wrap_*.f90
+rm unittest.o unittest.mod
 
 # initial build
-$FC -c $f1 $FFLAGS $DEBUG 
-$FC -c $f2 $FFLAGS $DEBUG
-$FC -c $f3 $FFLAGS $DEBUG
-$FC -c $f4 $FFLAGS $DEBUG
-$FC -c $f5 $FFLAGS $DEBUG
-$FC -c $f6 $FFLAGS $DEBUG
-$FC -c $f7 $FFLAGS $DEBUG
-$FC -c $f8 $FFLAGS $DEBUG
+$FC -c  $f1$suffix $FFLAGS $DEBUG 
+$FC -c  $f2$suffix $FFLAGS $DEBUG
+$FC -c  $f3$suffix $FFLAGS $DEBUG
+$FC -c  $f4$suffix $FFLAGS $DEBUG
+$FC -c  $f5$suffix $FFLAGS $DEBUG
+$FC -c  $f6$suffix $FFLAGS $DEBUG
+$FC -c  $f7$suffix $FFLAGS $DEBUG
+$FC -c  $f8$suffix $FFLAGS $DEBUG
+$FC -c  $f9$suffix $FFLAGS $DEBUG
+$FC -c $f10$suffix $FFLAGS $DEBUG
 
-$f90wrap -m $modname $f1 $f2 $f3 $f4 $f5 $f6 $f7 $f8 -k kind_map -S 12 
+$f90wrap -m $modname $fwrap_files -k kind_map -S 12 --only $fwrap_functions
 
-$f2py -c -m $modname f90wrap_*.f90 *.o --f90flags="-fPIC -fopenmp -llapack" -lgomp --fcompiler=$FC
+
+$f2py -c -m $modname -L$lapack_dir -llapack -lblas f90wrap_*.f90 *.o --f90flags="-fPIC -fopenmp -llapack -lblas" -lgomp --fcompiler=$FC 
