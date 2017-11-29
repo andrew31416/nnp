@@ -1,6 +1,6 @@
 module features
     use config
-    use io
+    !use io
     use feature_config
     use feature_util
     use tapering, only : taper_1,taper_deriv_1
@@ -52,6 +52,101 @@ module features
             end do
 
         end subroutine calculate_features
+
+        subroutine calculate_distance_distributions(set_type,sample_rate,twobody_dist,threebody_dist,&
+                &num_two,num_three)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type
+            real(8),intent(in) :: sample_rate(1:2)
+            real(8),intent(out) :: twobody_dist(:)
+            real(8),intent(out) :: threebody_dist(:,:)
+            integer,intent(out) :: num_two,num_three
+
+
+            !* scratch
+            integer :: conf,atm,bond,dim_1,dim_2(1:2)
+            real(8) :: mxrcut
+            real(8),allocatable :: ultra_cart(:,:)
+            real(8),allocatable :: ultra_z(:)
+            integer,allocatable :: ultra_idx(:)
+            logical :: calc_threebody
+
+            !* max cut off of all interactions
+            mxrcut = maxrcut(0)
+            
+            !* whether threebody interactions are present
+            calc_threebody = threebody_features_present()
+
+            !* number of two and threebody terms output
+            num_two = 0
+            num_three = 0
+
+            !* shape of input array
+            dim_1 = size(twobody_dist)
+            dim_2 = shape(threebody_dist)
+
+            do conf=1,data_sets(set_type)%nconf
+                call get_ultracell(mxrcut,5000,set_type,conf,&
+                        &ultra_cart,ultra_idx,ultra_z)
+
+                !* always calc. two-body info for features
+                call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+            
+                do atm=1,data_sets(set_type)%configs(conf)%n
+                    if (feature_isotropic(atm)%n.gt.0) then
+                        do bond=1,feature_isotropic(atm)%n,1
+                            if ((abs(sample_rate(1)-1.0d0).lt.1e-10).or.(rand().lt.sample_rate(1))) then
+                                !* book keeping
+                                num_two = num_two + 1
+                               
+                                if (num_two.gt.dim_1) then
+                                    call error("calculate_distance_distributions",&
+                                            &"two-body buffer too small, increase or decrease sample rate.")
+                                end if
+                                
+                                !* store atom-atom distance from this bond
+                                twobody_dist(num_two) = feature_isotropic(atm)%dr(bond)
+                            end if
+                        end do
+                    end if
+                end do
+
+                if (calc_threebody) then
+                    !* calc. threebody info
+                    call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        if (feature_threebody_info(atm)%n.gt.0) then
+                            do bond=1,feature_threebody_info(atm)%n,1
+                                if ((abs(sample_rate(2)-1.0d0).lt.1e-10).or.(rand().lt.sample_rate(2))) then
+                                    !* book keeping
+                                    num_three = num_three + 1
+                                
+                                    if (num_three.gt.dim_2(2)) then
+                                        call error("calculate_distance_distributions",&
+                                            &"three-body buffer too small, increase or decrease sample rate.")
+                                    end if
+
+                                    threebody_dist(1:2,num_three) = feature_threebody_info(atm)%dr(1:2,bond)
+                                    threebody_dist(3,num_three) = feature_threebody_info(atm)%cos_ang(bond)
+                                end if
+                            end do !* end loop over bonds
+                        end if 
+                    end do !* loop over local atoms
+                end if
+                   
+                                  
+                    
+                deallocate(ultra_z)
+                deallocate(ultra_idx)
+                deallocate(ultra_cart)
+                deallocate(feature_isotropic)
+                deallocate(feature_threebody_info)
+
+            end do !* end loop over confs
+        end subroutine calculate_distance_distributions
 
         subroutine calculate_all_features(set_type,conf)
             implicit none
