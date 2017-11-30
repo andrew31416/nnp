@@ -2,6 +2,8 @@
 Python types for feature information
 """
 import nnp.util.io
+import numpy as np
+import copy
 
 class feature():
     """feature
@@ -23,7 +25,7 @@ class feature():
     >>> import nnp
     >>> _feature = nnp.features.types.feature('atomic_number')
     """
-    def __init__(self,feature_type):
+    def __init__(self,feature_type,params=None):
         self.supp_types = ['atomic_number',
                            'acsf_behler-g1',
                            'acsf_behler-g2',
@@ -33,10 +35,62 @@ class feature():
                            'acsf_normal-b3']
         
         self.type = feature_type
+        self.params = None
 
         if self.type not in self.supp_types:
             raise FeatureError('{} not in {}'.format(self.type,','.join(self.supp_types)))
 
+        if params is not None:
+            self.set_params(params)
+
+    def set_params(self,params):
+        """
+        check parameters for correct args and then set
+
+        Parameters
+        ----------
+        params : dict
+            Key,value pairs of parameters for specific feature type
+        """
+        if isinstance(params,dict)!=True:
+            raise FeatureError("{} is not dict".format(type(params)))
+
+        _ftype = (int,float,np.float32,np.float64)
+        _atype = (list,np.ndarray,int,float,np.float32,np.float64)
+        _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
+                'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
+                'mean':_atype,'rs':_ftype}
+
+        if self.type == 'atomic_number':
+            raise FeatureError("atomic_number features have no params")
+        elif self.type == 'acsf_behler-g1':
+            _keys = ['rcut','fs','za','zb']
+        elif self.type == 'acsf_behler-g2':
+            _keys = ['rcut','fs','eta','rs','za','zb']
+        elif self.type in ['acsf_behler-g4','acsf_behler-g5']:
+            _keys = ['rcut','fs','xi','lambda','za','zb','eta']
+        elif self.type in ['acsf_normal-b2','acsf_normal-b3']:
+            _keys = ['rcut','fs','prec','mean','za','zb']
+            
+        if set(params.keys())!=set(_keys):
+            # check keys
+            raise FeatureError("supplied keys {} != {}".format(params.keys(),_keys))
+        for _attr in params:
+            # check param type
+            if type(params[_attr]) not in _types[_attr]:
+                raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
+        if self.type in ["acsf_normal-b2","acsf_normal-b3"]:
+            # check length of arrays
+            if self.type == "acsf_normal-b2":
+                _length = {"mean":1,"prec":1}
+            elif self.type == "acsf_normal-b3":
+                _length = {"mean":3,"prec":9}
+            for _attr in ["mean","prec"]:
+                params[_attr] = np.asarray(params[_attr],dtype=np.float64)
+                if params[_attr].flatten().shape[0] != _length[_attr]:
+                    raise FeatureError("arrays lengths are not as expected")
+
+        self.params = copy.deepcopy(params)
 
 class features():
     """features
@@ -80,6 +134,8 @@ class features():
         # parse data into fortran structure
         self.set_configuration(gip=self.data["train"],set_type="train")
 
+        self.features = []
+
     def set_configuration(self,gip,set_type):
         """
         Parse configurations into fortran data structure
@@ -87,7 +143,8 @@ class features():
         Parameters
         ----------
         gip : parsers.GeneralInputParser
-            A data structure with all configurations that are to be stored in fortran
+            A data structure with all configurations that are 
+            to be stored in fortran
 
         set_type : String, allowed values = ['train','test']
             The data set type 
@@ -99,6 +156,26 @@ class features():
         nnp.util.io._parse_configs_to_fortran(gip,set_type.lower())
         self.data[set_type.lower] = gip
 
+    def set_rcut(self,rcuts):
+        """
+        Set the maximum interaction cut off radii for two and 
+        three body terms
+
+        Parameters
+        ----------
+        rcuts : dict, keys = 'twobody','threebody'
+            Key,value pairs of two and/or three body max cut
+            off radius
+        """
+
+        if isinstance(rcuts,dict)!=True:
+            raise FeaturesError("argument to set_rcut must be a dict")
+        for _key in rcuts:
+            if _key not in ['twobody','threebody']:
+                raise FeaturesError("{} not a supported key in maxrcut".format(_key))
+   
+            self.maxrcut[_key] = rcuts[_key]
+    
     def bond_distribution(self,set_type):
         """
         Calculate the two body and three body distributions
@@ -111,6 +188,14 @@ class features():
         set_type = set_type.lower()
         if self.data[set_type] is None:
             raise FeaturesError("data for the data set: {} has not been set yet")
+
+        if len(self.features)==0:
+            # create toy features
+            
+            self.features = [features('acsf_normal-b2',{'rcut':self.maxrcut["twobody"],'fs':0.1,'za':4.0,\
+                    'zb':4.0,'mean':2,'prec':3.0}),\
+                    features("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.0,'zb':4.0,\
+                    'mean':np.ones(3),'prec':np.ones((3,3))})]
 
         raise NotImplementedError
 
