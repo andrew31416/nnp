@@ -57,6 +57,7 @@ module feature_util
 
             !* dimension 
             n = dim(1)
+            det = 0
             
             if (n.eq.1) then
                det = mtrx(1,1)

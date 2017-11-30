@@ -1,3 +1,4 @@
-import nn_potential.util.pbc
-import nn_potential.util.taper
-import nn_potential.util.split_sets
+import nnp.util.pbc
+import nnp.util.taper
+import nnp.util.split_sets
+import nnp.util.io

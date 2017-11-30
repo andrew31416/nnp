@@ -101,7 +101,7 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%z(natm))
                     allocate(data_sets(set_type)%configs(conf)%current_ei(natm))
                     allocate(data_sets(set_type)%configs(conf)%current_fi(3,natm))
-                    allocate(data_sets(set_type)%configs(conf)%forces(3,natm))
+                    allocate(data_sets(set_type)%configs(conf)%ref_fi(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
                     data_sets(set_type)%configs(conf)%cell(1,1) = 4.0d0
@@ -114,8 +114,8 @@ program unittest
                     data_sets(set_type)%configs(conf)%cell(2,3) = 0.2d0
                     data_sets(set_type)%configs(conf)%cell(3,3) = 4.0d0
                     data_sets(set_type)%configs(conf)%n = natm
-                    call random_number(data_sets(set_type)%configs(conf)%energy)
-                    data_sets(set_type)%configs(conf)%forces = 0.0d0
+                    call random_number(data_sets(set_type)%configs(conf)%ref_energy)
+                    data_sets(set_type)%configs(conf)%ref_fi = 0.0d0
 
                     !data_sets(set_type)%configs(conf)%r(:,:) = 0.0d0
                     !data_sets(set_type)%configs(conf)%r(1,1) = 0.0d0

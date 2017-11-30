@@ -4,7 +4,6 @@ networks for per-atom attributes
 
 import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def train(train_x,train_y,test_x,test_y,num_nodes,output_ypred,opt_method,activation='sigmoid',reg_const=0.001):

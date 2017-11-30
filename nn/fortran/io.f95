@@ -4,6 +4,7 @@ module io
     implicit none
 
     integer :: unit_feature_info = 1
+    integer :: io_unit_read = 1
 
     type string_array_type
         character,allocatable :: string(:)
@@ -123,10 +124,10 @@ module io
                 end do
             
                 write(*,*) ""
-                write(*,*) 'energy : ',data_sets(set_type)%configs(ii)%energy
+                write(*,*) 'energy : ',data_sets(set_type)%configs(ii)%ref_energy
                 write(*,*) "forces:"
                 do jj=1,data_sets(set_type)%configs(ii)%n
-                    write(*,*) data_sets(set_type)%configs(ii)%forces(:,jj)
+                    write(*,*) data_sets(set_type)%configs(ii)%ref_fi(:,jj)
                 end do
 
             end do
@@ -367,4 +368,108 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
 
             split = read_line
         end function split
+
+        integer function read_natm(file_path)
+            implicit none
+
+            character(len=1024),intent(in) :: file_path 
+
+            integer :: line,natm,iostat
+            character(len=8) :: string
+
+            line = 1
+            natm = 0
+
+            open(unit=io_unit_read,status='old',file=file_path,action='read')
+            do while(.true.)
+                read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                if(line.gt.6) then
+                    if(iostat.lt.0) then
+                        !* EOF
+                        exit
+                    end if
+                    natm = natm + 1
+                end if
+
+                line = line + 1
+            end do
+            close(unit=io_unit_read)
+            !* last two lines are not atom entries
+            read_natm = natm - 2
+        end function read_natm
+
+        subroutine read_config(set_type,conf,filepath)
+            use config
+            
+            implicit none
+
+            integer,intent(in) :: set_type,conf
+            character(len=1024),intent(in) :: filepath
+
+            !* scratch
+            integer :: natm,line,iostat
+            character(len=8) :: string
+            real(8) :: lx,ly,lz,r1,r2,r3,zz,f1,f2,f3
+            real(8) :: energy
+
+            !* assumes atom number has already been set and dynamic mem. allocated
+            natm = data_sets(set_type)%configs(conf)%n 
+
+            line = 1
+            open(unit=io_unit_read,status='old',file=trim(filepath),action='read',iostat=iostat)
+            if (iostat.ne.0) then
+                call error("read_config","file "//trim(filepath)//" does not exist")
+            end if
+            
+            do while(.true.)
+                if (line.eq.1) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string           
+                else if ( (line.eq.2).and.(line.le.4) ) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) lx,ly,lz 
+                    data_sets(set_type)%configs(conf)%cell(1,line-1) = lx
+                    data_sets(set_type)%configs(conf)%cell(2,line-1) = ly
+                    data_sets(set_type)%configs(conf)%cell(3,line-1) = lz
+                else if( (line.ge.5).and.(line.le.6) ) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                    if (iostat.lt.0) then
+                        call error("read_config","problem reading configuration")
+                    end if
+                else if( (line.ge.7).and.(line.le.natm+6) ) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) r1,r2,r3,zz,f1,f2,f3
+                    if (iostat.lt.0) then
+                        call error("read_config","Unexpected problem reading atoms - check number atoms")
+                    end if
+                    data_sets(set_type)%configs(conf)%r(1,line-6) = r1
+                    data_sets(set_type)%configs(conf)%r(2,line-6) = r2
+                    data_sets(set_type)%configs(conf)%r(3,line-6) = r3
+                    data_sets(set_type)%configs(conf)%ref_fi(1,line-6) = f1
+                    data_sets(set_type)%configs(conf)%ref_fi(2,line-6) = f2
+                    data_sets(set_type)%configs(conf)%ref_fi(3,line-6) = f3
+                    data_sets(set_type)%configs(conf)%z(line-6) = zz
+                    data_sets(set_type)%configs(conf)%r(2,line-6) = r2
+                    data_sets(set_type)%configs(conf)%r(3,line-6) = r3
+                else if (line.eq.natm+7) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                    if (iostat.lt.0) then
+                        call error("read_config","problem reading configuration")
+                    end if
+                else if (line.eq.natm+8) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) energy
+                    if (iostat.lt.0) then
+                        call error("read_config","Unexpected problem reading energy - check input file")
+                    end if
+                    data_sets(set_type)%configs(conf)%ref_energy = energy
+                else
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                    if (iostat.lt.0) then
+                        !* EOF as expected
+                        exit
+                    end if
+                end if
+            
+                line = line + 1
+            end do
+           
+            close(unit=io_unit_read) 
+        end subroutine
 end module io

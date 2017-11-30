@@ -45,13 +45,13 @@ module config
         type(feature_derivatives),allocatable :: x_deriv(:,:)   !* feature derivatives (D,n)
         real(8),dimension(:),  allocatable :: current_ei        !* current per atom energies
         real(8),dimension(:,:),allocatable :: current_fi        !* current per atom forces
-        real(8),dimension(:,:),allocatable :: forces            !* ref forces
-        real(8) :: energy                                       !* ref total energy
+        real(8),dimension(:,:),allocatable :: ref_fi            !* ref forces
+        real(8) :: ref_energy                                   !* ref total energy
     end type structure
 
     type,public :: structures
         type(structure),dimension(:),allocatable :: configs
-        integer :: nconf                                !* number of structures
+        integer :: nconf = 0                            !* number of structures
     end type structures
 
     !----------------!

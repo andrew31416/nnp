@@ -82,7 +82,7 @@ module measures
 
                 !* sgn( \sum_i E_i - E ) * \sum_i dE_i / dw
                 tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
-                        &-data_sets(set_type)%configs(conf)%energy
+                        &-data_sets(set_type)%configs(conf)%ref_energy
                
                 if(loss_norm_type.eq.1) then
                     !* l1 norm
@@ -133,7 +133,7 @@ module measures
 
                 !* consider energy per atom
                 tmp1 = abs(sum(data_sets(set_type)%configs(conf)%current_ei)&
-                        & - data_sets(set_type)%configs(conf)%energy) * tmp2
+                        & - data_sets(set_type)%configs(conf)%ref_energy) * tmp2
                 
                 if (loss_norm_type.eq.1) then
                     !* l1 norm
@@ -165,7 +165,7 @@ module measures
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
                     do ii=1,3,1
                         tmp = abs(data_sets(set_type)%configs(conf)%current_fi(ii,atm) - &
-                        & data_sets(set_type)%configs(conf)%forces(ii,atm))
+                        & data_sets(set_type)%configs(conf)%ref_fi(ii,atm))
 
                         if (loss_norm_type.eq.1) then
                             tot_forces_loss = tot_forces_loss + tmp

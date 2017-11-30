@@ -4,7 +4,7 @@ networks for per-atom attributes
 
 import tensorflow as tf
 import numpy as np
-from nn_potential.nn import fortran
+from nnp.nn import fortran
 
 
 def train(features,forces,energies,slice_indices,num_nodes,nlf_type):

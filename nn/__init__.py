@@ -1,2 +1,2 @@
-import nn_potential.nn.per_atom
-import nn_potential.nn.pes
+import nnp.nn.per_atom
+import nnp.nn.pes

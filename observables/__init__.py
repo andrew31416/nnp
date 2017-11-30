@@ -1,2 +1,2 @@
-import nn_potential.observables.sedc
-import nn_potential.observables.general
+import nnp.observables.sedc
+import nnp.observables.general

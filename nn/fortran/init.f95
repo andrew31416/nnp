@@ -2,6 +2,7 @@ module init
     use config
     use util
     use feature_config
+    use io, only : read_natm, read_config
 
     implicit none
     
@@ -110,7 +111,7 @@ module init
                 
                 !* include null dimension for biases
                 allocate(data_sets(set_type)%configs(ii)%x(D+1,natm))
-                allocate(data_sets(set_type)%configs(ii)%forces(3,natm))
+                allocate(data_sets(set_type)%configs(ii)%ref_fi(3,natm))
                 allocate(data_sets(set_type)%configs(ii)%current_ei(natm))
                 allocate(data_sets(set_type)%configs(ii)%current_fi(3,natm))
 
@@ -121,10 +122,10 @@ module init
                 data_sets(set_type)%configs(ii)%x(2:,1:natm) = xin(:,idx1:idx2)
 
                 !* ref: energy
-                data_sets(set_type)%configs(ii)%energy = ein(ii)
+                data_sets(set_type)%configs(ii)%ref_energy = ein(ii)
 
                 !* ref: forces
-                data_sets(set_type)%configs(ii)%forces(1:3,:) = fin(:,idx1:idx2)
+                data_sets(set_type)%configs(ii)%ref_fi(1:3,:) = fin(:,idx1:idx2)
             end do
         end subroutine
 
@@ -168,6 +169,45 @@ module init
                 call error("check_input","nonlinear function type unsupported")
             end if
         end subroutine
+
+        subroutine init_configs_from_disk(files,set_type)
+            implicit none
+
+            !* args
+            character(len=1024),dimension(:),intent(in) :: files
+            integer,intent(in) :: set_type
+
+            !* scratch
+            integer :: conf,natm,dim(1:1)
+
+            if ( data_sets(set_type)%nconf.ne.0 ) then
+                !* need to deallocate now deprecated data
+                deallocate(data_sets(set_type)%configs)
+            end if
+           
+            dim = shape(files)
+            
+            !* number of configurations in this data set
+            data_sets(set_type)%nconf = dim(1)/1024
+            
+            !* start from scratch
+            allocate(data_sets(set_type)%configs(data_sets(set_type)%nconf))
+            
+            do conf=1,data_sets(set_type)%nconf,1
+                !* number of atoms
+                data_sets(set_type)%configs(conf)%n = read_natm(files(conf))
+                
+                natm = data_sets(set_type)%configs(conf)%n 
+                
+                allocate(data_sets(set_type)%configs(conf)%r(3,natm))
+                allocate(data_sets(set_type)%configs(conf)%z(natm))
+                allocate(data_sets(set_type)%configs(conf)%current_ei(natm))
+                allocate(data_sets(set_type)%configs(conf)%current_fi(3,natm))
+                allocate(data_sets(set_type)%configs(conf)%ref_fi(3,natm))
+                !* parse data into fortran data struct.
+                call read_config(set_type,conf,files(conf))
+            end do
+        end subroutine init_configs_from_disk
 
         subroutine finalize()
             implicit none

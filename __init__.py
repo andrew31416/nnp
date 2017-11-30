@@ -1,6 +1,7 @@
-from nn_potential.features import *
-from nn_potential.observables import *
-from nn_potential.nn import *
-from nn_potential.nn.fortran import interface as f95
+from nnp.features import *
+from nnp.observables import *
+from nnp.nn import *
+from nnp.util import *
+#from nnp.nn.fortran import interface as f95
 
 __version__ = '1.0.0'
