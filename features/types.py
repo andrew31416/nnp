@@ -94,6 +94,12 @@ class feature():
                 if params[_attr].flatten().shape[0] != _length[_attr]:
                     raise FeatureError("arrays lengths are not as expected")
 
+            try:
+                # check that matrix is symmetric
+                np.testing.assert_array_almost_equal(params["prec"],params["prec"].T)
+            except AssertionError:
+                raise FeatureError("Supplied precision matrix for threebody gaussian is not symmetric")
+
         self.params = deepcopy(params)
 
     def _write_to_disk(self,file_object):
@@ -114,14 +120,16 @@ class feature():
         if isinstance(file_object,TextIOWrapper)!=True:
             raise FeatureError("type {} is not io.TextIOWrapper.".format(type(file_object))) 
 
-        if self.type == 'acsf_begler-g1':
-            file_object.write('{} : {}\n'.format(self.type,\
+        if self.type == 'atomic_number':
+            file_object.write('{}\n'.format(self.type))
+        elif self.type == 'acsf_behler-g1':
+            file_object.write('{} {}\n'.format(self.type,\
                     ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']])))
         elif self.type == 'acsf_behler-g2':
-            file_object.write('{} : {}\n'.format(self.type,\
+            file_object.write('{} {}\n'.format(self.type,\
                     ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','eta','rs','za','zb']])))
         elif self.type in ['acsf_behler-g4','acsf_behler-g5']:
-            file_object.write('{} : {}\n'.format(self.type,\
+            file_object.write('{} {}\n'.format(self.type,\
                     ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','xi','lambda','eta',\
                     'za','zb']])))
         elif self.type == 'acsf_normal-b2':
@@ -133,7 +141,7 @@ class feature():
                     ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']]),\
                     ' '.join(['{:<20}'.format(_m) for _m in self.params["mean"].flatten()]),\
                     ' '.join(['{:<20}'.format(_m) for _m in self.params["prec"].flatten()])))
-        else: raise FeatueError("Implementation error")
+        else: raise FeatureError("Implementation error")
             
 class features():
     """features
@@ -240,13 +248,15 @@ class features():
         if len(self.features)==0:
             # create toy features
            
-            self.add_feature(feature('acsf_normal-b2',{'rcut':self.maxrcut["twobody"],'fs':0.1,'za':4.0,\
-                    'zb':4.0,'mean':2,'prec':3.0}))
+            self.add_feature(feature('acsf_normal-b2',{'rcut':self.maxrcut["twobody"],'fs':0.1,'za':4.1,\
+                    'zb':4.2,'mean':2,'prec':3.0}))
 
-            self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.0,\
-                    'zb':4.0,'mean':np.ones(3),'prec':np.ones((3,3))}))
+            self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.1,\
+                    'zb':4.2,'mean':np.ones(3),'prec':np.ones((3,3))}))
 
+        print(self.features)
         self._parse_features_to_fortran()
+
 
     def calculate(self):
         raise NotImplementedError

@@ -1,5 +1,6 @@
 module io
     use feature_config
+    use feature_util, only : matrix_determinant
     
     implicit none
 
@@ -136,32 +137,42 @@ module io
         subroutine info_features()
             implicit none
 
-            integer :: ii,jj,dim(1:1)
+            integer :: ii,jj,dim(1:1),norm_feat(1:2)
+
+            !* idx of normal features
+            norm_feat(1) = featureID_StringToInt("acsf_normal-b2")
+            norm_feat(2) = featureID_StringToInt("acsf_normal-b3")
 
             write(*,*) '========'
             write(*,*) 'Features'
             write(*,*) '========'
             do ii=1,feature_params%num_features
-                dim = shape(feature_params%info(ii)%mean)
-
                 write(*,*) ''   
-                write(*,*) 'type   : ',feature_params%info(ii)%ftype
-                write(*,*) 'rcut   : ',feature_params%info(ii)%rcut 
-                write(*,*) 'fs     : ',feature_params%info(ii)%fs 
-                write(*,*) 'rs     : ',feature_params%info(ii)%rs 
-                write(*,*) 'eta    : ',feature_params%info(ii)%eta 
-                write(*,*) 'xi     : ',feature_params%info(ii)%xi 
-                write(*,*) 'lambda : ',feature_params%info(ii)%lambda
-                write(*,*) 'za     : ',feature_params%info(ii)%za
-                write(*,*) 'zb     : ',feature_params%info(ii)%zb
-                write(*,*) 'mean   : '
-                do jj=1,dim(1),1
-                    write(*,*) feature_params%info(ii)%mean(jj)
-                end do
-                write(*,*) 'prec   : '
-                do jj=1,dim(1),1
-                    write(*,*) feature_params%info(ii)%prec(:,jj)
-                end do
+                write(*,*) 'type     : ',feature_params%info(ii)%ftype
+                write(*,*) 'rcut     : ',feature_params%info(ii)%rcut 
+                write(*,*) 'fs       : ',feature_params%info(ii)%fs 
+                write(*,*) 'rs       : ',feature_params%info(ii)%rs 
+                write(*,*) 'eta      : ',feature_params%info(ii)%eta 
+                write(*,*) 'xi       : ',feature_params%info(ii)%xi 
+                write(*,*) 'lambda   : ',feature_params%info(ii)%lambda
+                write(*,*) 'za       : ',feature_params%info(ii)%za
+                write(*,*) 'zb       : ',feature_params%info(ii)%zb
+                if ( feature_params%info(ii)%ftype.ne.norm_feat(1).and.&
+                &feature_params%info(ii)%ftype.ne.norm_feat(2) ) then
+                    write(*,*) 'mean     : 0.0'
+                    write(*,*) 'prec     : 0.0'
+                else
+                    dim = shape(feature_params%info(ii)%mean)
+                    write(*,*) 'mean     : '
+                    do jj=1,dim(1),1
+                        write(*,*) feature_params%info(ii)%mean(jj)
+                    end do
+                    write(*,*) 'prec     : '
+                    do jj=1,dim(1),1
+                        write(*,*) feature_params%info(ii)%prec(:,jj)
+                    end do
+                    write(*,*) 'sqrt_det : ',feature_params%info(ii)%sqrt_det
+                end if
             end do
         end subroutine
 
@@ -569,7 +580,12 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             open(unit=io_unit_read,status='old',file=trim(filepath),action='read',iostat=iostat)
             line = 1
             do while(.true.)
-                if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
+                if (feature_params%info(line)%ftype.eq.featureID_StringToInt("atomic_number")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
@@ -599,7 +615,7 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%xi = xi
                     feature_params%info(line)%lambda = lambda
                     feature_params%info(line)%eta = eta
-                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta
@@ -611,7 +627,7 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%xi = xi
                     feature_params%info(line)%lambda = lambda
                     feature_params%info(line)%eta = eta
-                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean,prec
@@ -620,12 +636,13 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     end if
                     feature_params%info(line)%rcut = rcut
                     feature_params%info(line)%fs = fs
-                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
                     allocate(feature_params%info(line)%mean(1))
                     allocate(feature_params%info(line)%prec(1,1))
                     feature_params%info(line)%mean(1) = mean
                     feature_params%info(line)%prec(1,1) = prec
+                    feature_params%info(line)%sqrt_det = sqrt(prec)
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean_3,&
                         &prec_33(:,1),prec_33(:,2),prec_33(:,3)
@@ -634,12 +651,13 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     end if
                     feature_params%info(line)%rcut = rcut
                     feature_params%info(line)%fs = fs
-                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
                     allocate(feature_params%info(line)%mean(3))
                     allocate(feature_params%info(line)%prec(3,3))
                     feature_params%info(line)%mean(:) = mean_3(:)
                     feature_params%info(line)%prec(:,:) = prec_33(:,:)
+                    feature_params%info(line)%sqrt_det = sqrt(matrix_determinant(prec_33))
                 else
                     call error("read_features","unexpected feature type in features file.")
                 end if
