@@ -321,14 +321,18 @@ module feature_util
             implicit none
 
             logical :: found_some
-            integer :: ii,ftype
+            integer :: ii,ftype,tmp(1:3)
 
             found_some = .false.
+
+            tmp(1) = featureID_StringToInt("acsf_behler-g4")
+            tmp(2) = featureID_StringToInt("acsf_behler-g5")
+            tmp(3) = featureID_StringToInt("acsf_normal-b3")
 
             do ii=1,feature_params%num_features,1
                 ftype = feature_params%info(ii)%ftype
 
-                if ( (ftype.eq.2).or.(ftype.eq.4) ) then
+                if ( (ftype.eq.tmp(1)).or.(ftype.eq.tmp(2)).or.(ftype.eq.tmp(3)) ) then
                     found_some = .true.
                     exit
                 end if

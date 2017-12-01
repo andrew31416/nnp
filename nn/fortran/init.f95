@@ -224,8 +224,6 @@ module init
             allocate(feature_params%info(feature_params%num_features))
 
             call read_features(filepath)
-
-            call info_features()
         end subroutine init_features_from_disk
 
         subroutine finalize()

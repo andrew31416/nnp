@@ -86,7 +86,7 @@ module features
             !* shape of input array
             dim_1 = size(twobody_dist)
             dim_2 = shape(threebody_dist)
-
+            
             do conf=1,data_sets(set_type)%nconf
                 call get_ultracell(mxrcut,5000,set_type,conf,&
                         &ultra_cart,ultra_idx,ultra_z)
@@ -143,8 +143,10 @@ module features
                 deallocate(ultra_idx)
                 deallocate(ultra_cart)
                 deallocate(feature_isotropic)
-                deallocate(feature_threebody_info)
-
+                
+                if (calc_threebody) then
+                    deallocate(feature_threebody_info)
+                end if
             end do !* end loop over confs
         end subroutine calculate_distance_distributions
 

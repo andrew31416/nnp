@@ -180,12 +180,15 @@ class features():
         self.maxrcut = {'twobody':6.0,'threebody':4.0}
 
         # fraction of bonds sampled for bond distribution
-        self.sample_rate = {'twobody':0.5,'threebody':0.1}
+        self.sample_rate = {'twobody':0.5,'threebody':0.5}
 
         # parse data into fortran structure
         self.set_configuration(gip=self.data["train"],set_type="train")
 
         self.features = []
+
+        # max number of bonds considered for 2&3 body terms in dist. calc
+        self.buffer_size = 100000
 
     def set_configuration(self,gip,set_type):
         """
@@ -254,9 +257,19 @@ class features():
             self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.1,\
                     'zb':4.2,'mean':np.ones(3),'prec':np.ones((3,3))}))
 
-        print(self.features)
+        # populate fortran data structures
         self._parse_features_to_fortran()
+       
+        twobody = np.zeros((self.buffer_size),dtype=np.float64,order='F') 
+        threebody = np.zeros((3,self.buffer_size),dtype=np.float64,order='F') 
+        _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],dtype=np.float64)
 
+        _map = {"train":1,"test":2}
+        # calculate 2&3 body distributions
+        n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(set_type=_map[set_type],\
+                sample_rate=_sample_rate,twobody_dist=twobody,threebody_dist=threebody)
+
+        return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
 
     def calculate(self):
         raise NotImplementedError
