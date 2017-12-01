@@ -2,8 +2,12 @@
 Python types for feature information
 """
 import nnp.util.io
+import nnp.nn.fortran.nn_f95 as f95_api
 import numpy as np
-import copy
+import tempfile
+import shutil
+from copy import deepcopy
+from io import TextIOWrapper
 
 class feature():
     """feature
@@ -79,7 +83,7 @@ class feature():
             # check param type
             if type(params[_attr]) not in _types[_attr]:
                 raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
-        if self.type in ["acsf_normal-b2","acsf_normal-b3"]:
+        if self.type in ["acsf_normal-b3"]:
             # check length of arrays
             if self.type == "acsf_normal-b2":
                 _length = {"mean":1,"prec":1}
@@ -90,8 +94,47 @@ class feature():
                 if params[_attr].flatten().shape[0] != _length[_attr]:
                     raise FeatureError("arrays lengths are not as expected")
 
-        self.params = copy.deepcopy(params)
+        self.params = deepcopy(params)
 
+    def _write_to_disk(self,file_object):
+        """
+        Format feature info to disk
+
+        Parameters
+        ----------
+        file_object : io.TextIOWrapper
+            The file object of an open file
+
+        Examples
+        --------
+        >>> f = open('newfile.features','w')
+        >>> feature._write_to_disk(f)
+        """
+        
+        if isinstance(file_object,TextIOWrapper)!=True:
+            raise FeatureError("type {} is not io.TextIOWrapper.".format(type(file_object))) 
+
+        if self.type == 'acsf_begler-g1':
+            file_object.write('{} : {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']])))
+        elif self.type == 'acsf_behler-g2':
+            file_object.write('{} : {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','eta','rs','za','zb']])))
+        elif self.type in ['acsf_behler-g4','acsf_behler-g5']:
+            file_object.write('{} : {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','xi','lambda','eta',\
+                    'za','zb']])))
+        elif self.type == 'acsf_normal-b2':
+            file_object.write('{} {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb',\
+                    'mean','prec']])))
+        elif self.type == 'acsf_normal-b3':
+            file_object.write('{} {} {} {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']]),\
+                    ' '.join(['{:<20}'.format(_m) for _m in self.params["mean"].flatten()]),\
+                    ' '.join(['{:<20}'.format(_m) for _m in self.params["prec"].flatten()])))
+        else: raise FeatueError("Implementation error")
+            
 class features():
     """features
 
@@ -175,7 +218,12 @@ class features():
                 raise FeaturesError("{} not a supported key in maxrcut".format(_key))
    
             self.maxrcut[_key] = rcuts[_key]
+   
+    def add_feature(self,feature):
+        self.features.append(feature)
     
+        # update maxrcut
+
     def bond_distribution(self,set_type):
         """
         Calculate the two body and three body distributions
@@ -191,17 +239,37 @@ class features():
 
         if len(self.features)==0:
             # create toy features
-            
-            self.features = [features('acsf_normal-b2',{'rcut':self.maxrcut["twobody"],'fs':0.1,'za':4.0,\
-                    'zb':4.0,'mean':2,'prec':3.0}),\
-                    features("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.0,'zb':4.0,\
-                    'mean':np.ones(3),'prec':np.ones((3,3))})]
+           
+            self.add_feature(feature('acsf_normal-b2',{'rcut':self.maxrcut["twobody"],'fs':0.1,'za':4.0,\
+                    'zb':4.0,'mean':2,'prec':3.0}))
 
-        raise NotImplementedError
+            self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.0,\
+                    'zb':4.0,'mean':np.ones(3),'prec':np.ones((3,3))}))
+
+        self._parse_features_to_fortran()
 
     def calculate(self):
         raise NotImplementedError
 
+    def _parse_features_to_fortran(self):
+        """
+        Parse formatted list of features to fortran
+        """
+
+        tmpfile = tempfile.NamedTemporaryFile(mode='w',prefix='nnp-',suffix='.features',delete=False) 
+        
+        for _feature in self.features:
+            _feature._write_to_disk(tmpfile.file)
+
+        tmpfile.file.close()
+
+        # fortrans really fussy about chars
+        filepath = np.asarray('{:<1024}'.format(tmpfile.name),dtype='c')
+
+        # parse features from disk into fortran types
+        getattr(f95_api,"f90wrap_init_features_from_disk")(filepath)
+
+        shutil.os.remove(tmpfile.name)
 
 class FeatureError(Exception):
     pass

@@ -133,6 +133,38 @@ module io
             end do
         end subroutine info_set
 
+        subroutine info_features()
+            implicit none
+
+            integer :: ii,jj,dim(1:1)
+
+            write(*,*) '========'
+            write(*,*) 'Features'
+            write(*,*) '========'
+            do ii=1,feature_params%num_features
+                dim = shape(feature_params%info(ii)%mean)
+
+                write(*,*) ''   
+                write(*,*) 'type   : ',feature_params%info(ii)%ftype
+                write(*,*) 'rcut   : ',feature_params%info(ii)%rcut 
+                write(*,*) 'fs     : ',feature_params%info(ii)%fs 
+                write(*,*) 'rs     : ',feature_params%info(ii)%rs 
+                write(*,*) 'eta    : ',feature_params%info(ii)%eta 
+                write(*,*) 'xi     : ',feature_params%info(ii)%xi 
+                write(*,*) 'lambda : ',feature_params%info(ii)%lambda
+                write(*,*) 'za     : ',feature_params%info(ii)%za
+                write(*,*) 'zb     : ',feature_params%info(ii)%zb
+                write(*,*) 'mean   : '
+                do jj=1,dim(1),1
+                    write(*,*) feature_params%info(ii)%mean(jj)
+                end do
+                write(*,*) 'prec   : '
+                do jj=1,dim(1),1
+                    write(*,*) feature_params%info(ii)%prec(:,jj)
+                end do
+            end do
+        end subroutine
+
         subroutine read_feature_info(filepath)
             implicit none
 
@@ -298,7 +330,6 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             if (len(adjustl(trim(delimator))).ne.1) then
                 call error("split","invalid delimator")
             end if
-
             intervals = -1
             read_line = .true.
 
@@ -472,4 +503,153 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
            
             close(unit=io_unit_read) 
         end subroutine
+        
+        integer function read_nfeatures(file_path)
+            implicit none
+
+            character(len=1024),intent(in) :: file_path 
+
+            integer :: line,natm,iostat
+            character(len=80) :: string
+
+            line = 1
+            natm = 0
+
+            open(unit=io_unit_read,status='old',file=trim(file_path),action='read')
+            do while(.true.)
+                read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                if(iostat.lt.0) then
+                    !* EOF
+                    exit
+                end if
+                line = line + 1
+            end do
+            close(unit=io_unit_read)
+        
+            if (line+1.eq.0) then
+                call error("read_nfeatures","0 features found in file")
+            end if
+            
+            !* assumes every line is a feature
+            read_nfeatures = line - 1 
+        end function read_nfeatures
+
+        subroutine read_features(filepath)
+            implicit none
+
+            character(len=1024),intent(in) :: filepath
+            
+            integer :: iostat,line
+            character(len=1024) :: string
+            real(8) :: rcut,fs,za,zb,mean,prec,xi,eta,lambda,rs
+            real(8) :: mean_3(1:3),prec_33(1:3,1:3)
+
+            open(unit=io_unit_read,status='old',file=trim(filepath),action='read',iostat=iostat)
+            if (iostat.ne.0) then
+                call error("read_config","file "//trim(filepath)//" does not exist")
+            end if
+
+            line = 1
+            do while(.true.)
+
+                !* parse feature type 
+                read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                
+                if (iostat.lt.0) then
+                    !* EOF
+                    exit
+                end if
+                
+                feature_params%info(line)%ftype = featureID_StringToInt(trim(string))
+                line = line + 1
+            end do
+            close(unit=io_unit_read)
+            
+            
+            open(unit=io_unit_read,status='old',file=trim(filepath),action='read',iostat=iostat)
+            line = 1
+            do while(.true.)
+                if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                    feature_params%info(line)%rcut = rcut
+                    feature_params%info(line)%fs = fs
+                    feature_params%info(line)%za = za
+                    feature_params%info(line)%zb = zb
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,eta,rs,za,zb
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                    feature_params%info(line)%rcut = rcut
+                    feature_params%info(line)%fs = fs
+                    feature_params%info(line)%eta = eta
+                    feature_params%info(line)%rs = rs
+                    feature_params%info(line)%za = za
+                    feature_params%info(line)%zb = zb
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta,za,zb
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                    feature_params%info(line)%rcut = rcut
+                    feature_params%info(line)%fs = fs
+                    feature_params%info(line)%xi = xi
+                    feature_params%info(line)%lambda = lambda
+                    feature_params%info(line)%eta = eta
+                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%zb = zb
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                    feature_params%info(line)%rcut = rcut
+                    feature_params%info(line)%fs = fs
+                    feature_params%info(line)%xi = xi
+                    feature_params%info(line)%lambda = lambda
+                    feature_params%info(line)%eta = eta
+                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%zb = zb
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean,prec
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                    feature_params%info(line)%rcut = rcut
+                    feature_params%info(line)%fs = fs
+                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%zb = zb
+                    allocate(feature_params%info(line)%mean(1))
+                    allocate(feature_params%info(line)%prec(1,1))
+                    feature_params%info(line)%mean(1) = mean
+                    feature_params%info(line)%prec(1,1) = prec
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean_3,&
+                        &prec_33(:,1),prec_33(:,2),prec_33(:,3)
+                    if (iostat.ne.0) then
+                        call error("read_features","error reading feature entry")
+                    end if
+                    feature_params%info(line)%rcut = rcut
+                    feature_params%info(line)%fs = fs
+                    feature_params%info(line)%zb = za
+                    feature_params%info(line)%zb = zb
+                    allocate(feature_params%info(line)%mean(3))
+                    allocate(feature_params%info(line)%prec(3,3))
+                    feature_params%info(line)%mean(:) = mean_3(:)
+                    feature_params%info(line)%prec(:,:) = prec_33(:,:)
+                else
+                    call error("read_features","unexpected feature type in features file.")
+                end if
+                
+                line = line + 1
+
+                if (line.gt.feature_params%num_features) then
+                    exit
+                end if
+            end do
+            close(unit=io_unit_read)
+        end subroutine read_features
 end module io

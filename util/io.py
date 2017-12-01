@@ -127,5 +127,6 @@ def _parse_configs_to_fortran(gip,set_type):
 
     shutil.rmtree(tmpdir) 
 
+
 class IoError(Exception):
     pass            

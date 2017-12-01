@@ -38,7 +38,10 @@ fwrap_files="features.f95 init.f95"
 # functions to take from wrapped files #
 #--------------------------------------#
 
-fwrap_functions="calculate_distance_distributions initialise_net init_configs_from_disk"
+fwrap_functions="calculate_distance_distributions"
+fwrap_functions+=" initialise_net"
+fwrap_functions+=" init_configs_from_disk"
+fwrap_functions+=" init_features_from_disk"
 
 # clear previous build
 rm $f1"o" $f1"mod"

@@ -43,22 +43,22 @@ module feature_config
         !         4 = normal anisotropic                        !
         !=======================================================!
         integer :: ftype                    ! feature type
-        real(8) :: rcut                     ! interaction cut off 
-        real(8) :: rs                       ! iso exp offset
-        real(8) :: fs                       ! tapering smoothness
-        real(8) :: eta                      ! iso
-        real(8) :: xi                       ! ani
-        real(8) :: lambda                   ! ani
-        real(8) :: sqrt_det                 ! precision matrix determinant
+        real(8) :: rcut     = 0.0d0         ! interaction cut off 
+        real(8) :: rs       = 0.0d0         ! iso exp offset
+        real(8) :: fs       = 0.0d0         ! tapering smoothness
+        real(8) :: eta      = 0.0d0         ! iso
+        real(8) :: xi       = 0.0d0         ! ani
+        real(8) :: lambda   = 0.0d0         ! ani
+        real(8) :: sqrt_det = 0.0d0         ! precision matrix determinant
         real(8), allocatable :: prec(:,:)   ! normal precision
         real(8), allocatable :: mean(:)     ! normal mean
-        real(8) :: za                       ! central atomic number
-        real(8) :: zb                       ! neighbour atomic number
+        real(8) :: za       = 0.0d0         ! central atomic number
+        real(8) :: zb       = 0.0d0         ! neighbour atomic number
     end type feature_
 
     type,public :: feature_info
         type(feature_),allocatable,public :: info(:)
-        integer :: num_features
+        integer :: num_features = 0
         logical :: pca
         real(8) :: pca_threshold
     end type feature_info

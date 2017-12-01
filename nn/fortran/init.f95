@@ -2,7 +2,7 @@ module init
     use config
     use util
     use feature_config
-    use io, only : read_natm, read_config
+    use io, only : read_natm, read_config, read_nfeatures, read_features, info_features
 
     implicit none
     
@@ -208,6 +208,25 @@ module init
                 call read_config(set_type,conf,files(conf))
             end do
         end subroutine init_configs_from_disk
+
+        subroutine init_features_from_disk(filepath)
+            implicit none
+
+            character(len=1024),intent(in) :: filepath
+
+            if (feature_params%num_features.ne.0) then
+                !* overwrite previous features
+                deallocate(feature_params%info)
+            end if
+
+            feature_params%num_features = read_nfeatures(filepath)
+
+            allocate(feature_params%info(feature_params%num_features))
+
+            call read_features(filepath)
+
+            call info_features()
+        end subroutine init_features_from_disk
 
         subroutine finalize()
             implicit none
