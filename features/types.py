@@ -8,6 +8,11 @@ import tempfile
 import shutil
 from copy import deepcopy
 from io import TextIOWrapper
+from sklearn import mixture
+from scipy import optimize
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 class feature():
     """feature
@@ -180,7 +185,7 @@ class features():
         self.maxrcut = {'twobody':6.0,'threebody':4.0}
 
         # fraction of bonds sampled for bond distribution
-        self.sample_rate = {'twobody':0.5,'threebody':0.5}
+        self.sample_rate = {'twobody':0.5,'threebody':0.1}
 
         # parse data into fortran structure
         self.set_configuration(gip=self.data["train"],set_type="train")
@@ -235,13 +240,13 @@ class features():
     
         # update maxrcut
 
-    def bond_distribution(self,set_type):
+    def bond_distribution(self,set_type="train"):
         """
         Calculate the two body and three body distributions
         
         Parameters
         ----------
-        set_type : String, allowed values = ['test','train']
+        set_type : String, allowed values = ['test','train'], default = train
             The data set type
         """
         set_type = set_type.lower()
@@ -270,7 +275,7 @@ class features():
                 sample_rate=_sample_rate,twobody_dist=twobody,threebody_dist=threebody)
 
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
-
+   
     def calculate(self):
         raise NotImplementedError
 
@@ -293,6 +298,199 @@ class features():
         getattr(f95_api,"f90wrap_init_features_from_disk")(filepath)
 
         shutil.os.remove(tmpfile.name)
+
+    def generate_gmm_features(self,n_comp_two=None,n_comp_three=None,set_type="train"):
+        """
+        Generate two and three body features using a Guassian Mixture Model
+        for inference of component means and precisions. 
+
+        Automatic selection of number of components for each distribution
+        is available using Bayesian GMM and a data-heavy weight prior for
+        the three body distribution (drij,drik,dtheta_ijk) and use of the
+        bic measure for model comparison for the two body feature 
+        (drij,drik).
+
+        Parameters
+        ----------
+        n_comp_two : int, default = None
+            The number of components to use for the two body distribution
+
+        n_comp_three : int, default = None
+            The number of components to use for the three body 
+            distribution
+
+        set_type : String, default = 'train'
+            The data set to fit the GMMs to
+        
+        Examples
+        --------
+        >>> import parsers
+        >>> import nnp
+        >>> training_data = parsers.GeneralInputParser()
+        >>> training_data.parse_all('./training_data/')
+        >>> features = nnp.features.types.features(training_data)
+        >>> # Generate x40 two body features only from training set
+        >>> features.generate_gmm_features(n_comp_two=40,n_comp_three=0)
+        """
+
+        self._generate_twobody_gmm(num_components=n_comp_two,set_type=set_type)
+        self._generate_threebody_gmm(num_components=n_comp_three,set_type=set_type)
+
+    def _generate_twobody_gmm(self,num_components=None,set_type="train"):
+        """
+        Generate a Gaussian Mixture Model from twobody (distance-distance)
+        distribution of given set.
+        
+        Parameters
+        ----------
+        num_components : int, default = None
+            Number of components to use in GMM. If None, automatic selection
+            is attempted by independant classical (EM) inferences using
+            gic measure for model comparison. Bounded local minima solver 
+            used to approximate true number of components for iid. data
+
+        set_type : String, allowed values = 'train','test', default = 'train'
+            Data set to fit GMM to
+        """
+        def _bic_fun_wrapper(_K):
+            """
+            retrun bic measure for model comparison for classical (EM) GMM
+            using _K components
+            """
+            gmm = mixture.GaussianMixture(n_components=int(_K),covariance_type='full',\
+                    tol=1e-3,max_iter=200)
+
+            # do EM on mean,precision,mixing coeffs.
+            gmm.fit(X=np.reshape(twobody_dist,(-1,1)))
+            
+            return gmm.bic(X=np.reshape(twobody_dist,(-1,1)))
+
+        set_type = set_type.lower()
+        if self.data[set_type] is None:
+            raise FeaturesError("data for the data set: {} has not been set yet")
+      
+        automatic_selection = False 
+        if num_components is None:
+            automatic_selection = True
+            num_components = 100 
+        elif num_components == 0:
+            return
+        if isinstance(num_components,(int,np.int16,np.int32))!=True:
+            raise FeaturesError("num_components is not an int : {}".format(type(num_components)))
+       
+        
+        # collect atom-atom distance distribution
+        twobody_dist,_ = self.bond_distribution(set_type=set_type)
+       
+        if automatic_selection:
+            # minimize bic measure wrt. n_components - Bayesian GMM doesn't converge 
+            opt_result = optimize.minimize_scalar(fun=_bic_fun_wrapper,bounds=[1,num_components],\
+                    method='bounded',options={'xatol':1.0})
+
+            if opt_result.success!=True:
+                raise FeaturesError("Optimize of n_components for classical (EM) gmm has not converged")
+
+            num_components = int(opt_result.x)
+
+
+        gmm = mixture.GaussianMixture(n_components=num_components,covariance_type='full',\
+                tol=1e-3,max_iter=200)
+
+        # do EM on mean,precision,mixing coeffs.
+        gmm.fit(X=np.reshape(twobody_dist,(-1,1)))
+
+        means = gmm.means_
+        precisions = gmm.precisions_
+
+        for _component in range(means.shape[0]):
+            self.add_feature(feature(feature_type="acsf_normal-b2",params={"rcut":self.maxrcut["twobody"],\
+                    "fs":0.2,"mean":means[_component,0],"prec":precisions[_component,0,0],\
+                    "za":1.0,"zb":1.0}))
+    
+    def _generate_threebody_gmm(self,num_components=None,set_type="train"):
+        """
+        Generate a Gaussian Mixture Model from three body distribution
+        (drij,drik,dtheta_ijk) of given set.
+        
+        Parameters
+        ----------
+        num_components : int, default = None
+            Number of components to use in GMM
+
+        set_type : String, allowed values = 'train','test', default = 'train'
+            Data set to fit GMM to
+        """
+        set_type = set_type.lower()
+        if self.data[set_type] is None:
+            raise FeaturesError("data for the data set: {} has not been set yet")
+        
+        automatic_selection = False
+        if num_components is None:
+            # attempt automatic component selection using 
+            num_components = 150
+            automatic_selection = True
+        elif num_components == 0:
+            return
+        if isinstance(num_components,(int,np.int16,np.int32))!=True:
+            raise FeaturesError("num_components is not an int : {}".format(type(num_components)))
+       
+        # initialise mixture
+        gmm = mixture.BayesianGaussianMixture(n_components=num_components,covariance_type='full',\
+                weight_concentration_prior=1.0/num_components)
+        
+        # collect atom-atom distance distribution
+        _,unsymmetric_dist = self.bond_distribution(set_type=set_type)
+
+        # distribution is only for \sum_i \sum_j \sum_{k>j}
+        tmp1 = np.hstack((unsymmetric_dist[:,0],unsymmetric_dist[:,1]))
+        tmp2 = np.hstack((unsymmetric_dist[:,1],unsymmetric_dist[:,0]))
+        tmp3 = np.hstack((unsymmetric_dist[:,2],unsymmetric_dist[:,2]))
+
+        # mirror plane down [:,0]=[:,1]
+        symmetric_dist = np.vstack((np.vstack((tmp1,tmp2)),tmp3)).T
+
+        # take lower diagonal
+        symmetric_dist = np.asarray(list(filter(lambda x : True if x[0]>=x[1] else False, symmetric_dist)))
+       
+        # do EM on mean,precision,mixing coeffs.
+        gmm.fit(symmetric_dist)
+
+        if gmm.converged_!=True:
+            raise FeaturesError("GMM inference did not converge. Change tol or num_components.")
+
+        means = gmm.means_
+        precisions = gmm.precisions_
+
+
+        if automatic_selection:
+            # remove components by mixture coefficient magnitude
+            
+            threshold = 1e-3
+            idx = np.nonzero(gmm.weights_ > np.max(gmm.weights_)*threshold)[0]
+
+            # crop components with mixing coefficient less than threshold*max_mix_coeff.
+            means = means[idx]
+            precisions = precisions[idx]
+
+            if abs(means.shape[0]-num_components)/num_components<0.1:
+                # check that more than 10% of components are being pruned
+                raise FeaturesError("{} of {} components selected automatically, increse initial \
+                        number of components in mixture and rerun.".format(means.shape[0],num_components))
+
+        #fig,ax = plt.subplots()
+
+        for _component in range(means.shape[0]):
+            self.add_feature(feature(feature_type="acsf_normal-b3",params={"rcut":self.maxrcut["threebody"],\
+                    "fs":0.2,"mean":means[_component,:],"prec":precisions[_component,:,:],\
+                    "za":1.0,"zb":1.0}))
+
+        #    circle = patches.Circle(tuple(means[_component,:2]),0.05,facecolor='red',alpha=0.4)
+        #    ax.add_artist(circle)
+        #plt.hist2d(symmetric_dist[:,0],symmetric_dist[:,1],30)
+        #plt.plot([np.min(symmetric_dist[:,0]),np.max(symmetric_dist[:,0])],\
+        #        [np.min(symmetric_dist[:,0]),np.max(symmetric_dist[:,0])],color='r')
+        #plt.axis('equal')
+        #plt.show()
 
 class FeatureError(Exception):
     pass
