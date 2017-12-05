@@ -7,7 +7,7 @@ FC="gfortran"
 f_suffix="f95"
 o_suffix="o"
 
-FFLAGS="-O2 -llapack -lblas"
+FFLAGS="-O2 -llapack -lblas -lgomp"
 DEBUG="-fcheck=all -W -Wall -pedantic"
 
 f1="config."
