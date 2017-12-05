@@ -10,12 +10,12 @@ module measures
 
     contains
 
-        real(8) function loss(flat_weights,nw,set_type)
+        real(8) function loss(flat_weights,set_type)
             
             implicit none
 
-            integer,intent(in) :: nw,set_type
-            real(8),intent(in) :: flat_weights(1:nw)
+            integer,intent(in) :: set_type
+            real(8),intent(in) :: flat_weights(:)
 
             !* scratch
             integer :: conf,atm
@@ -38,13 +38,13 @@ module measures
             loss = tmp_energy + tmp_forces + tmp_reglrn
         end function loss
 
-        subroutine loss_jacobian(flat_weights,nw,set_type,jacobian)
+        subroutine loss_jacobian(flat_weights,set_type,jacobian)
 
             implicit none
             
-            integer,intent(in) :: nw,set_type
-            real(8),intent(in) :: flat_weights(1:nw)
-            real(8),intent(out) :: jacobian(1:nw)
+            integer,intent(in) :: set_type
+            real(8),intent(in) :: flat_weights(:)
+            real(8),intent(out) :: jacobian(:)
 
             !* scratch
             integer :: conf,atm
@@ -52,7 +52,7 @@ module measures
 
             type(weights) :: loss_jac
             type(weights) :: tmp_jac
-
+            
             call allocate_weights(loss_jac)
             call allocate_weights(tmp_jac)
         
@@ -101,7 +101,7 @@ module measures
 
                 deallocate(dydx)
             end do !* end loop over confs
-
+            
             !-------------------------------!
             !* regularization contribution *!
             !-------------------------------!
@@ -125,7 +125,7 @@ module measures
             integer :: conf
 
             tot_energy_loss = 0.0d0
-
+            
             do conf=1,data_sets(set_type)%nconf,1
     
                 !* 1/Natm

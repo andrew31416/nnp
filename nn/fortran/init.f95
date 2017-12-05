@@ -44,15 +44,28 @@ module init
             call random_weights()
           
             !* type of loss norm (l1 or l2)
-            loss_norm_type = 1
+            !loss_norm_type = 1
 
-            !* some constants for types of loss
-            loss_const_energy = 1.0d0
-            loss_const_forces = 1.0d0
-            loss_const_reglrn = 1.0d0
+            !!!* some constants for types of loss
+            !loss_const_energy = 1.0d0
+            !loss_const_forces = 1.0d0
+            !loss_const_reglrn = 1.0d0
 
             call check_input()
         end subroutine initialise_net
+
+        subroutine init_loss(k_energy,k_forces,k_reglrn,norm_type)
+            implicit none
+
+            real(8),intent(in) :: k_energy,k_forces,k_reglrn
+            integer,intent(in) :: norm_type
+
+            loss_const_energy = k_energy
+            loss_const_forces = k_forces
+            loss_const_reglrn = k_reglrn
+
+            loss_norm_type = norm_type
+        end subroutine
   
         subroutine allocate_weights(weights_in)
             implicit none

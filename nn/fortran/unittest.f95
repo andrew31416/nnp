@@ -326,6 +326,7 @@ program unittest
             real(8) :: dw,w0,dloss,tmp
             real(8),dimension(:),allocatable :: num_jac,anl_jac,original_weights
             logical :: deriv_ok,all_ok
+            integer :: loss_norm_type
 
             allocate(num_jac(nwght))
             allocate(anl_jac(nwght))
@@ -338,6 +339,7 @@ program unittest
             atm = 1
             set_type = 1
 
+            loss_norm_type = 1
             dloss = 0.0d0
 
             do ii=1,3,1
@@ -355,11 +357,14 @@ program unittest
                     loss_const_reglrn = 1.0d0
                 end if
                 
+                !* set loss function parameters
+                call init_loss(loss_const_energy,loss_const_forces,loss_const_reglrn,loss_norm_type)
+                
                 !-------------------------------!
                 !* analytical jacobian of loss *!
                 !-------------------------------!
 
-                call loss_jacobian(original_weights,nwght,set_type,anl_jac)
+                call loss_jacobian(original_weights,set_type,anl_jac)
                 
                 all_ok = .true.
 
@@ -379,7 +384,7 @@ program unittest
                                 original_weights(jj) = w0 - dw
                             end if
                             
-                            tmp = loss(original_weights,nwght,set_type)
+                            tmp = loss(original_weights,set_type)
 
                             if (kk.eq.1) then
                                 dloss = tmp
@@ -400,7 +405,7 @@ program unittest
 
                     if (deriv_ok.neqv..true.) then
                         all_ok = .false.
-                        write(*,*) ' failing because of',jj
+                        !write(*,*) ' failing because of',jj,ii
                     end if
 
                 end do !* end loop over weights

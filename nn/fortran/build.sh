@@ -32,7 +32,7 @@ f10="features."
 # files to create f2py pragma from #
 #----------------------------------#
 
-fwrap_files="features.f95 init.f95 util.f95"
+fwrap_files="features.f95 init.f95 util.f95 measures.f95"
 
 #--------------------------------------#
 # functions to take from wrapped files #
@@ -45,6 +45,8 @@ fwrap_functions+=" init_configs_from_disk"
 fwrap_functions+=" init_features_from_disk"
 fwrap_functions+=" init_feature_vectors"
 fwrap_functions+=" num_threads"
+fwrap_functions+=" loss"
+fwrap_functions+=" loss_jacobian"
 
 # clear previous build
 rm $f1"o" $f1"mod"

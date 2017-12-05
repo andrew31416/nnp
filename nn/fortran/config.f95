@@ -86,7 +86,7 @@ module config
     real(8),allocatable,public :: dydx(:,:)
 
     !* type of loss norm (l1 or l2)
-    integer,public :: loss_norm_type
+    integer,public :: loss_norm_type = 1
 
     !* loss constants
     real(8),public :: loss_const_energy
