@@ -2,7 +2,7 @@ module init
     use config
     use util
     use feature_config
-    use io, only : read_natm, read_config, read_nfeatures, read_features, info_features
+    use io, only : read_natm, read_config, read_nfeatures, read_features, info_features, error
 
     implicit none
     
@@ -220,11 +220,85 @@ module init
             end if
 
             feature_params%num_features = read_nfeatures(filepath)
+            D = feature_params%num_features
 
             allocate(feature_params%info(feature_params%num_features))
 
             call read_features(filepath)
         end subroutine init_features_from_disk
+
+        subroutine init_feature_vectors(init_type)
+            !=======================================================!
+            ! Configuration data and feature information must       !
+            ! already be set                                        !
+            !                                                       !
+            ! Parameters                                            !
+            ! ----------                                            !
+            ! init_type : int, allowed values = 0,1,2               !
+            !     If init_type=0, initialise feature vectors for    !
+            !     both data sets, if init_type=1, initialise only   !
+            !     for training data, else for test data             !
+            !=======================================================!
+            
+            implicit none
+
+            !* args
+            integer,intent(in) :: init_type
+            
+            !* scratch 
+            integer :: set_type,set_lim1,set_lim2,conf
+            integer :: dim(1:2)
+   
+            set_lim1 = -1
+            set_lim2 = -1
+            if (feature_params%num_features.le.0) then
+                call error("init_feature_vectors","features have not been set")
+            else
+                do set_type=1,2
+                    if ( (init_type.eq.0).or.(init_type.eq.set_type) ) then
+                        if (data_sets(set_type)%nconf.eq.0) then
+                            call error("init_feature_vectors","data for set has not been initialised")
+                        end if
+                    end if
+                end do !* loop over sets
+
+                if (D.ne.feature_params%num_features) then
+                    call error("init_feature_vectors","mismatch has occured in number of features")
+                end if
+            end if
+
+            if (init_type.eq.0) then
+                set_lim1 = 1
+                set_lim2 = 2
+            else if (init_type.le.2) then
+                set_lim1 = init_type
+                set_lim2 = init_type
+            else
+                call error("init_feature_vectors","unsupported arg value for init_type")
+            end if
+
+            do set_type = set_lim1,set_lim2,1
+                do conf=1,data_sets(set_type)%nconf,1
+                    !* check if arrays need deallocating
+                    dim = shape(data_sets(set_type)%configs(conf)%x)
+                    if ( (dim(1).ne.0).or.(dim(2).ne.0) ) then
+                        deallocate(data_sets(set_type)%configs(conf)%x)
+                    end if
+                    !* check if arrays need deallocating
+                    dim = shape(data_sets(set_type)%configs(conf)%x_deriv)
+                    if ( (dim(1).ne.0).or.(dim(2).ne.0) ) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv)
+                    end if
+                    
+                    !* feature vector
+                    allocate(data_sets(set_type)%configs(conf)%x(D+1,data_sets(set_type)%configs(conf)%n))
+                    
+                    !* feature derivative type
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(D,data_sets(set_type)%configs(conf)%n))
+                end do !* end loop over confs
+            end do !* end loop over data sets
+
+        end subroutine init_feature_vectors
 
         subroutine finalize()
             implicit none
