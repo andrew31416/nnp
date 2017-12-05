@@ -163,4 +163,36 @@ module util
             end if
             scalar_equal = equal
         end function scalar_equal
+
+        logical function any_nan_oned(array)
+            real(8),intent(in) :: array(:)
+
+            integer :: dim(1:1),ii
+
+            dim = shape(array)
+
+            do ii=1,dim(1)
+                if (isnan(array(ii))) then
+                    any_nan_oned = .true.
+                end if
+            end do
+            any_nan_oned = .false.
+        end function any_nan_oned
+        
+        logical function any_nan_twod(array)
+            real(8),intent(in) :: array(:,:)
+
+            integer :: dim(1:2),ii,jj
+
+            dim = shape(array)
+
+            do jj=1,dim(2)
+                do ii=1,dim(1)
+                    if (isnan(array(ii,jj))) then
+                        any_nan_twod = .true.
+                    end if
+                end do
+            end do
+            any_nan_twod = .false.
+        end function any_nan_twod
 end module util

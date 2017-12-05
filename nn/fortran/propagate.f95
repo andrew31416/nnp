@@ -2,6 +2,7 @@ module propagate
     use config
     use io
     use feature_util, only : int_in_intarray
+    use util, only : allocate_dydx
 
     implicit none
 
@@ -21,6 +22,12 @@ module propagate
             !------------------!
             !* hidden layer 1 *!
             !------------------!
+do ii=1,D+1
+if (isnan(data_sets(set_type)%configs(conf)%x(ii,atm))) then
+write(*,*) 'Nan found in x : atm ',atm,'i=',ii
+call exit(0)
+end if
+end do
             
             nrow = D  + 1
             ncol = net_dim%hl1
@@ -36,7 +43,6 @@ module propagate
                 !* nonlinear map of linear models
                 net_units%z%hl1(ii+1) = activation(net_units%a%hl1(ii))
             end do
-           
             !------------------!
             !* hidden layer 2 *!
             !------------------!
@@ -59,11 +65,14 @@ module propagate
             !-------------------------!
             !* final layer to output *!
             !-------------------------!
-
+            
             !* predicted energy
             data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
                     &net_units%z%hl2,1)
-       
+if (isnan(data_sets(set_type)%configs(conf)%current_ei(atm))) then
+    write(*,*) 'Nan computed for energy:',conf,atm
+    call exit(0)
+end if       
             !* must compute forces seperately once have iterated over all atoms in conf 
         end subroutine
 
@@ -80,7 +89,7 @@ module propagate
             !* scratch
             integer :: ii,jj,kk
             real(8) :: tmp1
-
+            
             !-------------------!
             !* delta back prop *!
             !-------------------!
@@ -91,7 +100,6 @@ module propagate
             do ii=1,net_dim%hl2,1
                 !* activation derivatives
                 net_units%a_deriv%hl2(ii) = activation_deriv(net_units%a%hl2(ii))
-
                 !* bias does not have node
                 net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
             end do
@@ -101,6 +109,7 @@ module propagate
             !* delta_i^(1) = h'(a_i^(1)) * sum_j w_ij^(2) delta_i^(2)
             call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:net_dim%hl1+1,1:net_dim%hl2),&
                     &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
+            
             do ii=1,net_dim%hl1,1
                 !* activation derivatives
                 net_units%a_deriv%hl1(ii) = activation_deriv(net_units%a%hl1(ii))
@@ -143,11 +152,13 @@ module propagate
             
             call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
                     &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
-
+            
             !---------------------------!
             !* derivative wrt features *!
             !---------------------------!
+            
             dydx(:,atm) = 0.0d0
+            
             do jj=1,net_dim%hl2
                 do  ii=1,net_dim%hl1
                     tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(ii+1,jj)*&
@@ -170,7 +181,7 @@ module propagate
 
             !* scratch
             integer :: atm,natm,ii,jj,deriv_idx
-
+            
             natm = data_sets(set_type)%configs(conf)%n
 
             data_sets(set_type)%configs(conf)%current_fi = 0.0d0
@@ -214,12 +225,19 @@ module propagate
 
             !* scratch
             integer :: atm,conf
-
+            
             do conf=1,data_sets(set_type)%nconf,1
+                if (allocated(dydx)) then
+                    deallocate(dydx)
+                end if
+                call allocate_dydx(set_type,conf)
+
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
                     call backward_propagate(conf,atm,set_type)
                 end do 
                 call calculate_forces(set_type,conf)
+
+                deallocate(dydx)
             end do
         end subroutine backprop_all_forces
 

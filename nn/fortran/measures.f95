@@ -20,7 +20,7 @@ module measures
             !* scratch
             integer :: conf,atm
             real(8) :: tmp_energy,tmp_forces,tmp_reglrn
-
+            
             !* read in NN weights
             call parse_array_to_structure(flat_weights,net_weights)
 
@@ -31,10 +31,13 @@ module measures
                 end do
             end do
 
+            !* calculate predicted forces
+            call backprop_all_forces(set_type)
+
             tmp_energy = loss_energy(set_type)
             tmp_forces = loss_forces(set_type)
             tmp_reglrn = loss_reglrn(flat_weights)
-
+            
             loss = tmp_energy + tmp_forces + tmp_reglrn
         end function loss
 
@@ -60,6 +63,10 @@ module measures
 
             !* read in supplied weights
             call parse_array_to_structure(flat_weights,net_weights)
+
+            if(allocated(dydx)) then
+                deallocate(dydx)
+            end if
 
             do conf=1,data_sets(set_type)%nconf,1
                 call allocate_dydx(set_type,conf)
@@ -166,7 +173,7 @@ module measures
                     do ii=1,3,1
                         tmp = abs(data_sets(set_type)%configs(conf)%current_fi(ii,atm) - &
                         & data_sets(set_type)%configs(conf)%ref_fi(ii,atm))
-
+                        
                         if (loss_norm_type.eq.1) then
                             tot_forces_loss = tot_forces_loss + tmp
                         else
@@ -175,7 +182,6 @@ module measures
                     end do
                 end do
             end do
-
             loss_forces = tot_forces_loss * 0.5d0 * loss_const_forces
         end function loss_forces
 
@@ -203,7 +209,6 @@ module measures
                 do jj=1,D+1
                     loss_jac%hl1(jj,ii) = loss_jac%hl1(jj,ii) + net_weights%hl1(jj,ii)*&
                             &loss_const_reglrn
-                            !&dydw%hl1(jj,ii)*loss_const_reglrn
                 end do
             end do
             
@@ -212,13 +217,11 @@ module measures
                 do jj=1,net_dim%hl1+1
                     loss_jac%hl2(jj,ii) = loss_jac%hl2(jj,ii) + net_weights%hl2(jj,ii)*&
                             &loss_const_reglrn
-                            !&dydw%hl2(jj,ii)*loss_const_reglrn
                 end do
             end do
 
             !* final layer
             do ii=1,net_dim%hl2+1,1
-                !loss_jac%hl3(ii) = loss_jac%hl3(ii) + net_weights%hl3(ii)*dydw%hl3(ii)*&
                 loss_jac%hl3(ii) = loss_jac%hl3(ii) + net_weights%hl3(ii)*&
                             &loss_const_reglrn
             end do
