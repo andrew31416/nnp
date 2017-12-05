@@ -196,6 +196,33 @@ module propagate
             end do !* end loop over local cell atoms
         end subroutine calculate_forces
 
+        subroutine backprop_all_forces(set_type)
+            !===================================================!
+            ! Assumes that net has been forward propagated on   !
+            ! all configurations in set_type                    !
+            !                                                   !
+            ! Parameters                                        !
+            ! ----------                                        !
+            ! set_type : int, allowed values = 1,2              !
+            !     The data set to compute forces for            !  
+            !===================================================!
+            
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type
+
+            !* scratch
+            integer :: atm,conf
+
+            do conf=1,data_sets(set_type)%nconf,1
+                do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    call backward_propagate(conf,atm,set_type)
+                end do 
+                call calculate_forces(set_type,conf)
+            end do
+        end subroutine backprop_all_forces
+
         real(8) function activation(ain)
             implicit none
 

@@ -24,15 +24,32 @@ module init
 
             call allocate_weights(net_weights)
             call allocate_weights(dydw)
-            
+           
+            if (allocated(net_units%a%hl1)) then
+                deallocate(net_units%a%hl1)
+                deallocate(net_units%a%hl2)
+                deallocate(net_units%a_deriv%hl1)
+                deallocate(net_units%a_deriv%hl2)
+            end if
+
             allocate(net_units%a%hl1(net_dim%hl1))
             allocate(net_units%a%hl2(net_dim%hl2))
             allocate(net_units%a_deriv%hl1(net_dim%hl1))
             allocate(net_units%a_deriv%hl2(net_dim%hl2))
+           
+            if (allocated(net_units%z%hl1)) then
+                deallocate(net_units%z%hl1)
+                deallocate(net_units%z%hl2)
+            end if
             
             !* include null value for bias
             allocate(net_units%z%hl1(net_dim%hl1+1))
             allocate(net_units%z%hl2(net_dim%hl2+1))
+           
+            if (allocated(net_units%delta%hl1)) then
+                deallocate(net_units%delta%hl1)
+                deallocate(net_units%delta%hl2)
+            end if
             
             allocate(net_units%delta%hl1(net_dim%hl1))
             allocate(net_units%delta%hl2(net_dim%hl2))
@@ -42,14 +59,6 @@ module init
 
             !* initialise NN weights
             call random_weights()
-          
-            !* type of loss norm (l1 or l2)
-            !loss_norm_type = 1
-
-            !!!* some constants for types of loss
-            !loss_const_energy = 1.0d0
-            !loss_const_forces = 1.0d0
-            !loss_const_reglrn = 1.0d0
 
             call check_input()
         end subroutine initialise_net
@@ -71,6 +80,10 @@ module init
             implicit none
 
             type(weights),intent(inout) :: weights_in
+
+            if(allocated(weights_in%hl1)) then
+                call deallocate_weights(weights_in)
+            end if
 
             !* include bias for each node
             allocate(weights_in%hl1(D+1,net_dim%hl1))
