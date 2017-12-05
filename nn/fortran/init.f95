@@ -247,7 +247,6 @@ module init
             
             !* scratch 
             integer :: set_type,set_lim1,set_lim2,conf
-            integer :: dim(1:2)
    
             set_lim1 = -1
             set_lim2 = -1
@@ -280,13 +279,10 @@ module init
             do set_type = set_lim1,set_lim2,1
                 do conf=1,data_sets(set_type)%nconf,1
                     !* check if arrays need deallocating
-                    dim = shape(data_sets(set_type)%configs(conf)%x)
-                    if ( (dim(1).ne.0).or.(dim(2).ne.0) ) then
+                    if (allocated(data_sets(set_type)%configs(conf)%x)) then
                         deallocate(data_sets(set_type)%configs(conf)%x)
                     end if
-                    !* check if arrays need deallocating
-                    dim = shape(data_sets(set_type)%configs(conf)%x_deriv)
-                    if ( (dim(1).ne.0).or.(dim(2).ne.0) ) then
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv)) then
                         deallocate(data_sets(set_type)%configs(conf)%x_deriv)
                     end if
                     

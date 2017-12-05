@@ -176,6 +176,12 @@ module io
             end do
         end subroutine
 
+        subroutine get_features(set_type)
+            implicit none
+
+            integer,intent(in) :: set_type
+        end subroutine get_features
+
         subroutine read_feature_info(filepath)
             implicit none
 

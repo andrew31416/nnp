@@ -32,7 +32,9 @@ class feature():
     Examples
     --------
     >>> import nnp
-    >>> _feature = nnp.features.types.feature('atomic_number')
+    >>> _feature1 = nnp.features.types.feature('atomic_number')
+    >>> _feature2 = nnp.features.types.feature('acsf_behler-g2')
+    >>> _feature2.set_params({'rcut':5.2,'fs':0.5,'eta':1.2,'rs':4.5,'za':1.0,'zb':0.6})
     """
     def __init__(self,feature_type,params=None):
         self.supp_types = ['atomic_number',
@@ -239,6 +241,17 @@ class features():
         self.features.append(feature)
     
         # update maxrcut
+        if feature.type in ['atomic_number']:
+            pass
+        elif feature.type in ['acsf_behler-g1','acsf_behler-g2','acsf_normal-b2']:
+            # two body feature
+            if feature.params["rcut"] > self.maxrcut["twobody"]:
+                self.set_rcut({"twobody":feature.params["rcut"]})
+        else:
+            # three body feature
+            if feature.params["rcut"] > self.maxrcut["threebody"]:
+                self.set_rcut({"threebody":feature.params["rcut"]})
+
 
     def bond_distribution(self,set_type="train"):
         """
@@ -276,8 +289,53 @@ class features():
 
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
    
-    def calculate(self):
-        raise NotImplementedError
+    def calculate(self,set_type="train",derivatives=False):
+        """
+        Compute the value of all features for the given set type
+        
+        Parameters
+        ----------
+        set_type : String, default = 'train'
+            The data set to calculate feature vectors for
+
+        derivatives : Boolean, default = False
+            Whether or not to calculate feature derivatives as 
+            well
+    
+        Examples
+        --------
+        >>> import parsers
+        >>> import nnp
+        >>>
+        >>> gip = parsers.GeneralInputParser()
+        >>> gip.parse_all('./training_data')
+        >>>
+        >>> features = nnp.features.types.features(gip)
+        >>>
+        >>> # use automatic GMM-based feature generation
+        >>> features.generate_gmm_features()
+        >>>
+        >>> # compute feature vectors for training set
+        >>> features.calculate()
+        """
+        if len(self.features)==0:
+            raise FeaturesError("There are no features to compute")
+        elif set_type.lower() not in ['train','test']:
+            raise FeaturesError("set type {} not supported".format(set_type))
+
+        set_type = set_type.lower()
+
+        # parse features to fortran data structures
+        self._parse_features_to_fortran()
+
+        _map = {"train":1,"test":2}
+        
+        # initialise feature vector mem. and derivatives wrt. atoms
+        getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=_map[set_type])
+        
+        # compute features (and their derivatives wrt. atoms) 
+        getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],derivatives=derivatives)
+
 
     def _parse_features_to_fortran(self):
         """
@@ -328,7 +386,9 @@ class features():
         >>> import nnp
         >>> training_data = parsers.GeneralInputParser()
         >>> training_data.parse_all('./training_data/')
+        >>>
         >>> features = nnp.features.types.features(training_data)
+        >>>
         >>> # Generate x40 two body features only from training set
         >>> features.generate_gmm_features(n_comp_two=40,n_comp_three=0)
         """

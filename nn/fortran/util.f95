@@ -3,6 +3,8 @@ module util
 
     implicit none
 
+    integer,external :: omp_get_max_threads
+
     contains
         
         subroutine parse_array_to_structure(data_in,data_out)
@@ -104,6 +106,12 @@ module util
             weights_out%hl2 = 0.0d0
             weights_out%hl3 = 0.0d0
         end subroutine zero_weights
+
+        integer function num_threads()
+            implicit none
+
+            num_threads = omp_get_max_threads()
+        end function num_threads
 
         logical function array_equal(arr1,arr2,ftol,rtol,verbose)
             implicit none

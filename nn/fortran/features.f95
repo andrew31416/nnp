@@ -13,45 +13,61 @@ module features
         subroutine calculate_features()
             implicit none
 
-            integer :: set_type,conf
+            integer :: set_type
+
+            do set_type=1,2
+                call calculate_features_singleset(set_type,.true.)
+            end do
+        end subroutine calculate_features
+        
+        subroutine calculate_features_singleset(set_type,derivatives)
+            implicit none
+
+            integer,intent(in) :: set_type
+            logical,intent(in) :: derivatives
+            
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
             integer,allocatable :: ultra_idx(:)
             real(8) :: mxrcut
             logical :: calc_threebody
+            integer :: conf
 
             !* max cut off of all interactions
             mxrcut = maxrcut(0)
             
             !* whether threebody interactions are present
             calc_threebody = threebody_features_present()
+            
+            !* set whether or not to calculate feature derivatives
+            calc_feature_derivatives = derivatives
+            
+            do conf=1,data_sets(set_type)%nconf
 
-            do set_type=1,2
-                do conf=1,data_sets(set_type)%nconf
-                    call get_ultracell(mxrcut,5000,set_type,conf,&
-                            &ultra_cart,ultra_idx,ultra_z)
+                call get_ultracell(mxrcut,5000,set_type,conf,&
+                        &ultra_cart,ultra_idx,ultra_z)
 
-                    !* always calc. two-body info for features
-                    call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                !* always calc. two-body info for features
+                call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+            
+                if (calc_threebody) then
+                    !* calc. threebody info
+                    call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                end if
                 
-                    if (calc_threebody) then
-                        !* calc. threebody info
-                        call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
-                    end if
-                    
 
-                    !* calculate features and their derivatives
-                    call calculate_all_features(set_type,conf)
+                !* calculate features and their derivatives
+                call calculate_all_features(set_type,conf)
 
-                    deallocate(ultra_z)
-                    deallocate(ultra_idx)
-                    deallocate(ultra_cart)
-                    deallocate(feature_isotropic)
+                deallocate(ultra_z)
+                deallocate(ultra_idx)
+                deallocate(ultra_cart)
+                deallocate(feature_isotropic)
+                if (calc_threebody) then
                     deallocate(feature_threebody_info)
-                end do
-            end do
-
-        end subroutine calculate_features
+                end if
+            end do !* end loop over configurations
+        end subroutine calculate_features_singleset
 
         subroutine calculate_distance_distributions(set_type,sample_rate,twobody_dist,threebody_dist,&
                 &num_two,num_three)
