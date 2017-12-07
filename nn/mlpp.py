@@ -93,6 +93,7 @@ class MultiLayerPerceptronPotential():
             self.jacobian = None
             self.num_weights = None
             self.D = None
+            self.OptimizeResult = None
             
             self.set_layer_size(hidden_layer_sizes)
    
@@ -197,9 +198,10 @@ class MultiLayerPerceptronPotential():
         import nnp.nn.fortran.nn_f95 as f95_api 
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
+       
+        _map = {"train":1,"test":2} 
+        tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type])
         
-        tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=set_type)
-
         if np.isnan(tmp):
             raise MlppError("Nan returned from loss calculation")
         return tmp
@@ -214,14 +216,15 @@ class MultiLayerPerceptronPotential():
         weights : np.ndarray, dtype=np.float64,order='F'
             A 1d array of net weights
 
-        set_type : int,np.int16,np.int32 , allowed values = 1,2
-            Which data set to produce the jacobian of loss for
+        set_type : String, allowed values = 'train','test'
+            Identifier of which set type to compute jacobian for
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
         
-        getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,set_type=set_type,\
+        _map = {"train":1,"test":2} 
+        getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,set_type=_map[set_type],\
                 jacobian=self.jacobian)
         
         if np.isnan(self.jacobian).any():
@@ -274,17 +277,19 @@ class MultiLayerPerceptronPotential():
         >>> mlpp = nnp.nn.mlpp.MultiLayerPerceptron()
         >>> mlpp.set_features(_features)
         >>> # regress net weights
-        >>> mlpp.fit(training_data)
+        >>> training_loss = mlpp.fit(training_data)
         """
 
         self._prepare_data_structures(X=X,set_type="train")
 
-        _map = {"train":1,"test":2}
-        print('initial weights : {}'.format(self.weights[:5])) 
-        opt_result = optimize.minimize(fun=self._loss,x0=self.weights,\
-                method=self.solver,args=(_map["train"]),jac=self._loss_jacobian)
+        self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
+                method=self.solver,args=("train"),jac=self._loss_jacobian)
 
-        print(opt_result.success)
+        # store optimized weights 
+        self.weights = self.OptimizeResult.get("x")
+
+        # return loss
+        return self.OptimizeResult.get("fun")
 
     def predict(self,X):
         """
@@ -298,20 +303,39 @@ class MultiLayerPerceptronPotential():
 
         Returns
         -------
-        predicted_gip : parsers.GeneralInputParser
+        parsers.GeneralInputParser
             A configurations data structure containing the predicted total 
             energy and atom forces
-        """ 
-        import nnp.nn.fortran.nn_f95 as f95_api 
         
+        Examples
+        --------
+        >>> import parsers
+        >>> import nnp
+        >>> training_data = parsers.GeneralInputParser('./training_data')
+        >>>
+        >>> _features = nnp.features.types.features(training_data)
+        >>> # Gaussian features
+        >>> _features.generate_gmm_features()
+        >>> # atomic number 
+        >>> _features.add(nnp.features.types.feature('atomic_number'))
+        >>>
+        >>> mlpp = nnp.nn.mlpp.MultiLayerPerceptron()
+        >>> mlpp.set_features(_features)
+        >>> # regress net weights
+        >>> training_loss = mlpp.fit(training_data)
+        >>>
+        >>> test_data = parsers.GeneralInputParser('./test_data')
+        >>> testing_loss = mlpp.predict(test_data)
+        """
+        import nnp.nn.fortran.nn_f95 as f95_api 
+       
         self._prepare_data_structures(X=X,set_type="test")
 
         # forward propagate
         loss = self._loss(weights=self.weights,set_type="test")
 
-        _map = {"train":1,"test":2}
-        # backward propagate and calculate forces
-        getattr(f95_api,"f90wrap_backprop_all_forces")(set_type=_map[set_type])
+        # return loss
+        return loss
 
 class MlppError(Exception):
     pass    
