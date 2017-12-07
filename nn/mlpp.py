@@ -1,6 +1,7 @@
 import numpy as np
 import nnp
 from scipy import optimize
+import time
 
 class MultiLayerPerceptronPotential():
     """Fully connected feed forward multi layer perceptron for empirical 
@@ -96,7 +97,7 @@ class MultiLayerPerceptronPotential():
             self.OptimizeResult = None
             
             self.set_layer_size(hidden_layer_sizes)
-   
+    
     def _update_num_weights(self):
         # biases included in weights array
         self.num_weights = (self.D+1)*self.hidden_layer_sizes[0]
@@ -198,7 +199,7 @@ class MultiLayerPerceptronPotential():
         import nnp.nn.fortran.nn_f95 as f95_api 
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
-       
+        
         _map = {"train":1,"test":2} 
         tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type])
         
@@ -331,7 +332,7 @@ class MultiLayerPerceptronPotential():
        
         self._prepare_data_structures(X=X,set_type="test")
 
-        # forward propagate
+        # forward and backward propagate to calc. all forces
         loss = self._loss(weights=self.weights,set_type="test")
 
         # return loss

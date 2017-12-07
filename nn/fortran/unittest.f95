@@ -244,7 +244,10 @@ program unittest
             conf = 1
             set_type = 1
             atm = 1
-
+    
+            if (allocated(dydx)) then
+                deallocate(dydx)
+            end if
             call allocate_dydx(set_type,conf)
 
             dy = 0.0d0
@@ -432,7 +435,10 @@ program unittest
                 do conf=1,data_sets(set_type)%nconf
                     allocate(log_atms(data_sets(set_type)%configs(conf)%n))
                     allocate(num_dydx(D))
-                   
+                  
+                    if (allocated(dydx)) then
+                        deallocate(dydx)
+                    end if 
                     call allocate_dydx(set_type,conf)
                     
                     do atm=1,data_sets(set_type)%configs(conf)%n
@@ -945,6 +951,9 @@ program unittest
                 allocate(conf_ok(data_sets(set_type)%nconf))
 
                 do conf=1,data_sets(set_type)%nconf,1
+                    if (allocated(dydx)) then
+                        deallocate(dydx)
+                    end if
                     call allocate_dydx(set_type,conf)
                     
                     !* make sure we'are calculating derivatives

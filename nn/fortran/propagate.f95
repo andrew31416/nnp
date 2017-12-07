@@ -2,13 +2,19 @@ module propagate
     use config
     use io
     use feature_util, only : int_in_intarray
-    use util, only : allocate_dydx
+    use util, only : allocate_dydx, zero_weights
+    use init, only : allocate_weights
 
     implicit none
 
     external :: dgemv
     external :: dgemm
+    external :: dcopy
     real(8),external :: ddot
+            
+    type(weights),public,allocatable :: d2ydxdw(:,:)
+    real(8),public,allocatable :: sub_A1(:,:),sub_A2(:,:)
+    real(8),public,allocatable :: sub_B(:,:),sub_C(:,:),sub_D(:,:)
 
     contains
         subroutine forward_propagate(conf,atm,set_type)
@@ -18,6 +24,11 @@ module propagate
 
             !* scratch
             integer :: nrow,ncol,ii
+            real(8) :: x_atom(1:D+1)
+
+    
+            !* copy feature vector (inlcuding null for bias)
+            call dcopy(D+1,data_sets(set_type)%configs(conf)%x(:,atm),1,x_atom,1)
 
             !------------------!
             !* hidden layer 1 *!
@@ -28,7 +39,7 @@ module propagate
 
             !* x includes null dimension for bias
             call dgemv('t',nrow,ncol,1.0d0,net_weights%hl1(:,:),nrow,&
-                    &data_sets(set_type)%configs(conf)%x(:,atm),1,0.0d0,net_units%a%hl1,1)
+                    &x_atom,1,0.0d0,net_units%a%hl1,1)
 
             !* null value for bias
             net_units%z%hl1(1) = 1.0d0
@@ -104,13 +115,6 @@ module propagate
                 !* activation derivatives
                 net_units%a_deriv%hl1(ii) = activation_deriv(net_units%a%hl1(ii))
 
-                if (isnan(net_units%a%hl1(ii))) then
-                    write(*,*) 'a(',ii,') is nan'
-                    call exit(0)
-                else if (isnan(net_units%a_deriv%hl1(ii))) then
-                    write(*,*) 'h_prime(',net_units%a%hl1(ii),')=',net_units%a_deriv%hl1(ii)
-                    call exit(0)
-                end if
                 net_units%delta%hl1(ii) = net_units%a_deriv%hl1(ii)*net_units%delta%hl1(ii)
             end do
             !* derivative of output wrt. weights *!
@@ -149,48 +153,6 @@ module propagate
             call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
                     &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
 
-do ii=1,D+1
-    if (isnan(data_sets(set_type)%configs(conf)%x(ii,atm))) then
-        write(*,*) 'Nan found in x(',ii,')'
-        call exit(0)
-    end if
-end do
-do ii=1,net_dim%hl2
-    if (isnan(net_units%delta%hl2(ii))) then
-        write(*,*) 'Nan found in delta_2(',ii,')'
-        call exit(0)
-    end if
-end do
-
-do ii=1,net_dim%hl1
-    if (isnan(net_units%delta%hl1(ii))) then
-        write(*,*) 'Nan found in delta_1(',ii,')'
-        call exit(0)
-    end if
-end do
-
-do ii=1,net_dim%hl1,1
-    do jj=1,D+1
-        if (isnan(dydw%hl1(jj,ii))) then
-            write(*,*) 'Nan found in dydw%hl1(',jj,',',ii,')'
-            call exit(0)
-        end if
-    end do
-end do
-do ii=1,net_dim%hl2,1
-    do jj=1,net_dim%hl1+1
-        if (isnan(dydw%hl2(jj,ii))) then
-            write(*,*) 'Nan found in dydw%hl2(',jj,',',ii,')'
-            call exit(0)
-        end if
-    end do
-end do
-do ii=1,net_dim%hl2+1,1
-    if (isnan(dydw%hl3(ii))) then
-        write(*,*) 'Nan found in dydw%hl3(',ii,')'
-        call exit(0)
-    end if
-end do
             
             !---------------------------!
             !* derivative wrt features *!
@@ -212,6 +174,53 @@ end do
 
         end subroutine backward_propagate
 
+        subroutine init_forceloss_subsidiary_mem()
+            implicit none
+
+            allocate(sub_A1(net_dim%hl1,D))
+            allocate(sub_A2(net_dim%hl2,net_dim%hl1))
+            allocate(sub_B(net_dim%hl1,D))
+            allocate(sub_C(net_dim%hl2,net_dim%hl1))
+            allocate(sub_D(D,net_dim%hl1))
+        end subroutine init_forceloss_subsidiary_mem
+
+        subroutine deallocate_forceloss_subsidiary_mem()
+            implicit none
+            deallocate(sub_A1)
+            deallocate(sub_A2)
+            deallocate(sub_B)
+            deallocate(sub_C)
+            deallocate(sub_D)
+        end subroutine deallocate_forceloss_subsidiary_mem
+
+        subroutine forceloss_weight_derivative_subsidiary()
+            implicit none
+
+            !* compute matrices A_1,A_2,B,C for conf,atm
+    
+            integer :: ii,jj
+            
+            do ii=1,net_dim%hl1
+                do jj=1,net_dim%hl2
+                    sub_A2(jj,ii) = net_units%a_deriv%hl2(jj)*net_weights%hl2(jj,ii)
+                end do
+            end do
+
+            do ii=1,D
+                do jj=1,net_dim%hl1
+                    sub_A1(jj,ii) = net_units%a_deriv%hl1(jj)*net_weights%hl1(jj,ii)
+                end do
+            end do
+        end subroutine forceloss_weight_derivative_subsidiary
+
+
+        subroutine compute_forceloss_weight_derivatives()
+            implicit none
+
+            
+
+        end subroutine compute_forceloss_weight_derivatives
+
         subroutine calculate_forces(set_type,conf)
             implicit none
 
@@ -220,7 +229,7 @@ end do
 
             !* scratch
             integer :: atm,natm,ii,jj,deriv_idx
-            
+           
             natm = data_sets(set_type)%configs(conf)%n
 
             data_sets(set_type)%configs(conf)%current_fi = 0.0d0
@@ -246,39 +255,54 @@ end do
             end do !* end loop over local cell atoms
         end subroutine calculate_forces
 
-        subroutine backprop_all_forces(set_type)
-            !===================================================!
-            ! Assumes that net has been forward propagated on   !
-            ! all configurations in set_type                    !
-            !                                                   !
-            ! Parameters                                        !
-            ! ----------                                        !
-            ! set_type : int, allowed values = 1,2              !
-            !     The data set to compute forces for            !  
-            !===================================================!
-            
-            implicit none
-
-            !* args
-            integer,intent(in) :: set_type
-
-            !* scratch
-            integer :: atm,conf
-            
-            do conf=1,data_sets(set_type)%nconf,1
-                if (allocated(dydx)) then
-                    deallocate(dydx)
-                end if
-                call allocate_dydx(set_type,conf)
-
-                do atm=1,data_sets(set_type)%configs(conf)%n,1
-                    call backward_propagate(conf,atm,set_type)
-                end do 
-                call calculate_forces(set_type,conf)
-
-                deallocate(dydx)
-            end do
-        end subroutine backprop_all_forces
+!        subroutine backprop_all_forces(set_type)
+!            !===================================================!
+!            ! Assumes that net has been forward propagated on   !
+!            ! all configurations in set_type                    !
+!            !                                                   !
+!            ! Parameters                                        !
+!            ! ----------                                        !
+!            ! set_type : int, allowed values = 1,2              !
+!            !     The data set to compute forces for            !  
+!            !===================================================!
+!            
+!            implicit none
+!
+!            !* args
+!            integer,intent(in) :: set_type
+!
+!            !* scratch
+!            integer :: atm,conf,ii
+!            type(weights),allocatable :: d2ydxdw(:,:)
+!        
+!            call init_forceloss_subsidiary_mem()
+!            call forceloss_weight_derivative_subsidiary()
+!            
+!            do conf=1,data_sets(set_type)%nconf,1
+!                if (allocated(dydx)) then
+!                    deallocate(dydx)
+!                end if
+!                call allocate_dydx(set_type,conf)
+!
+!                if (allocated(d2ydxdw)) then
+!                    deallocate(d2ydxdw)
+!                end if
+!                allocate(d2ydxdw(data_sets(set_type)%configs(conf)%n,D)) 
+!                do ii=1,D
+!                    do atm=1,data_sets(set_type)%configs(conf)%n
+!                        call allocate_weights(d2ydxdw(atm,ii))
+!                        call zero_weights(d2ydxdw(atm,ii))
+!                    end do
+!                end do
+!
+!                do atm=1,data_sets(set_type)%configs(conf)%n,1
+!                    call backward_propagate(conf,atm,set_type)
+!                end do 
+!                call calculate_forces(set_type,conf)
+!
+!                deallocate(dydx)
+!            end do
+!        end subroutine backprop_all_forces
 
         real(8) function activation(ain)
             implicit none

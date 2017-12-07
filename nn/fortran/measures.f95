@@ -25,14 +25,25 @@ module measures
             call parse_array_to_structure(flat_weights,net_weights)
 
             do conf=1,data_sets(set_type)%nconf,1
+                if (allocated(dydx)) then
+                    deallocate(dydx)
+                end if
+                call allocate_dydx(set_type,conf)
+                
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
-                    !* forward prop on training data
+                    !* forward prop on data
                     call forward_propagate(conf,atm,set_type)
+                    
+                    !* backward prop on data
+                    call backward_propagate(conf,atm,set_type)
                 end do
+
+                !* calculate forces in configuration
+                call calculate_forces(set_type,conf)
             end do
 
             !* calculate predicted forces
-            call backprop_all_forces(set_type)
+            !call backprop_all_forces(set_type)
 
             tmp_energy = loss_energy(set_type)
             tmp_forces = loss_forces(set_type)
@@ -64,11 +75,13 @@ module measures
             !* read in supplied weights
             call parse_array_to_structure(flat_weights,net_weights)
 
-            if(allocated(dydx)) then
-                deallocate(dydx)
-            end if
+            !* initialise force loss subsidiary mem.
+            call init_forceloss_subsidiary_mem()
 
             do conf=1,data_sets(set_type)%nconf,1
+                if(allocated(dydx)) then
+                    deallocate(dydx)
+                end if
                 call allocate_dydx(set_type,conf)
                 
                 call zero_weights(tmp_jac)
@@ -120,6 +133,7 @@ module measures
 
             call deallocate_weights(loss_jac)
             call deallocate_weights(tmp_jac)
+            call deallocate_forceloss_subsidiary_mem()                
         end subroutine loss_jacobian
 
         real(8) function loss_energy(set_type)
