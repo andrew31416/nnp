@@ -349,7 +349,7 @@ program unittest
                     loss_const_reglrn = 0.0d0
                 else if (ii.eq.2) then
                     loss_const_energy = 0.0d0
-                    loss_const_forces = 0.0d0
+                    loss_const_forces = 1.0d0
                     loss_const_reglrn = 0.0d0
                 else
                     loss_const_energy = 0.0d0

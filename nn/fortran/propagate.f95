@@ -22,12 +22,6 @@ module propagate
             !------------------!
             !* hidden layer 1 *!
             !------------------!
-do ii=1,D+1
-if (isnan(data_sets(set_type)%configs(conf)%x(ii,atm))) then
-write(*,*) 'Nan found in x : atm ',atm,'i=',ii
-call exit(0)
-end if
-end do
             
             nrow = D  + 1
             ncol = net_dim%hl1
@@ -69,10 +63,6 @@ end do
             !* predicted energy
             data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
                     &net_units%z%hl2,1)
-if (isnan(data_sets(set_type)%configs(conf)%current_ei(atm))) then
-    write(*,*) 'Nan computed for energy:',conf,atm
-    call exit(0)
-end if       
             !* must compute forces seperately once have iterated over all atoms in conf 
         end subroutine
 
@@ -114,9 +104,15 @@ end if
                 !* activation derivatives
                 net_units%a_deriv%hl1(ii) = activation_deriv(net_units%a%hl1(ii))
 
+                if (isnan(net_units%a%hl1(ii))) then
+                    write(*,*) 'a(',ii,') is nan'
+                    call exit(0)
+                else if (isnan(net_units%a_deriv%hl1(ii))) then
+                    write(*,*) 'h_prime(',net_units%a%hl1(ii),')=',net_units%a_deriv%hl1(ii)
+                    call exit(0)
+                end if
                 net_units%delta%hl1(ii) = net_units%a_deriv%hl1(ii)*net_units%delta%hl1(ii)
             end do
-            
             !* derivative of output wrt. weights *!
 
             !---------------!
@@ -152,6 +148,49 @@ end if
             
             call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
                     &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
+
+do ii=1,D+1
+    if (isnan(data_sets(set_type)%configs(conf)%x(ii,atm))) then
+        write(*,*) 'Nan found in x(',ii,')'
+        call exit(0)
+    end if
+end do
+do ii=1,net_dim%hl2
+    if (isnan(net_units%delta%hl2(ii))) then
+        write(*,*) 'Nan found in delta_2(',ii,')'
+        call exit(0)
+    end if
+end do
+
+do ii=1,net_dim%hl1
+    if (isnan(net_units%delta%hl1(ii))) then
+        write(*,*) 'Nan found in delta_1(',ii,')'
+        call exit(0)
+    end if
+end do
+
+do ii=1,net_dim%hl1,1
+    do jj=1,D+1
+        if (isnan(dydw%hl1(jj,ii))) then
+            write(*,*) 'Nan found in dydw%hl1(',jj,',',ii,')'
+            call exit(0)
+        end if
+    end do
+end do
+do ii=1,net_dim%hl2,1
+    do jj=1,net_dim%hl1+1
+        if (isnan(dydw%hl2(jj,ii))) then
+            write(*,*) 'Nan found in dydw%hl2(',jj,',',ii,')'
+            call exit(0)
+        end if
+    end do
+end do
+do ii=1,net_dim%hl2+1,1
+    if (isnan(dydw%hl3(ii))) then
+        write(*,*) 'Nan found in dydw%hl3(',ii,')'
+        call exit(0)
+    end if
+end do
             
             !---------------------------!
             !* derivative wrt features *!
@@ -277,12 +316,14 @@ end if
         end function logistic
 
         real(8) function logistic_deriv(x)
+            !* compute using logarithm to avoid 1/0 for large x
+            
             real(8),intent(in) :: x
 
             !* scratch
             real(8) :: tmp
             tmp = exp(-x)
-            logistic_deriv = tmp/((1.0d0+tmp)**2)
+            logistic_deriv = exp(-(x+2.0d0*log(tmp+1.0d0)) )
         end function logistic_deriv
 
         real(8) function tanh_deriv(x)

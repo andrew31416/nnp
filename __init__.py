@@ -1,5 +1,5 @@
 from nnp.features import *
-from nnp.observables import *
+#from nnp.observables import *
 from nnp.nn import *
 from nnp.util import *
 #from nnp.nn.fortran import interface as f95

@@ -101,7 +101,7 @@ module measures
 
                 !* constant scaling
                 tmpE = tmpE * 0.5d0 * loss_const_energy
-
+                
                 loss_jac%hl1 = loss_jac%hl1 + tmp_jac%hl1 * tmpE
                 loss_jac%hl2 = loss_jac%hl2 + tmp_jac%hl2 * tmpE
                 loss_jac%hl3 = loss_jac%hl3 + tmp_jac%hl3 * tmpE
@@ -130,6 +130,11 @@ module measures
             !* scratch
             real(8) :: tmp1,tmp2,tot_energy_loss
             integer :: conf
+
+            if (scalar_equal(loss_const_energy,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
+                loss_energy = 0.0d0
+                return
+            end if
 
             tot_energy_loss = 0.0d0
             
@@ -163,7 +168,12 @@ module measures
             !* scratch
             integer :: conf,atm,ii
             real(8) :: tmp,tot_forces_loss
-
+            
+            if (scalar_equal(loss_const_forces,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
+                loss_forces = 0.0d0
+                return
+            end if
+            
             tot_forces_loss = 0.0d0
 
             !* could fill 1-d arrays and use lapack here
@@ -189,6 +199,11 @@ module measures
             implicit none
 
             real(8),intent(in) :: flat_weights(:)
+            
+            if (scalar_equal(loss_const_reglrn,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
+                loss_reglrn = 0.0d0
+                return
+            end if
 
             !* l2 norm**2 = w.T w
             loss_reglrn = dnrm2(size(flat_weights),flat_weights,1)**2 * 0.5d0 * &
@@ -203,6 +218,10 @@ module measures
 
             !* scratch
             integer :: ii,jj
+
+            if (scalar_equal(loss_const_reglrn,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
+                return
+            end if
             
             !* layer 1
             do ii=1,net_dim%hl1
@@ -231,10 +250,13 @@ module measures
             implicit none
 
             type(weights),intent(inout) :: tmp_jac
+            
+            if (scalar_equal(loss_const_energy,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
+                return
+            end if
 
             tmp_jac%hl1 = tmp_jac%hl1 + dydw%hl1
             tmp_jac%hl2 = tmp_jac%hl2 + dydw%hl2
             tmp_jac%hl3 = tmp_jac%hl3 + dydw%hl3
-            
         end subroutine loss_energy_jacobian
 end module measures

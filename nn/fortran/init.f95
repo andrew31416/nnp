@@ -179,7 +179,7 @@ module init
             net_weights%hl2(2:,:) = ( net_weights%hl2(2:,:)-0.5d0)*0.001d0
             net_weights%hl3(2:)   = ( net_weights%hl3(2:)  -0.5d0)*0.001d0
 
-            !* biases
+            !* biases - NOT SURE IF THIS IS CORRECT
             net_weights%hl1(1,:) = 0.0d0
             net_weights%hl2(1,:) = 0.0d0
             net_weights%hl3(1)  = 0.0d0
