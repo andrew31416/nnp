@@ -23,6 +23,8 @@ module measures
             
             !* read in NN weights
             call parse_array_to_structure(flat_weights,net_weights)
+            call copy_weights_to_nobiasT()
+            
 
             do conf=1,data_sets(set_type)%nconf,1
                 if (allocated(dydx)) then
@@ -74,7 +76,7 @@ module measures
 
             !* read in supplied weights
             call parse_array_to_structure(flat_weights,net_weights)
-
+            call copy_weights_to_nobiasT()
             !* initialise force loss subsidiary mem.
             call init_forceloss_subsidiary_mem()
 
@@ -238,23 +240,23 @@ module measures
             end if
             
             !* layer 1
-            do ii=1,net_dim%hl1
-                do jj=1,D+1
+            do ii=0,D
+                do jj=1,net_dim%hl1
                     loss_jac%hl1(jj,ii) = loss_jac%hl1(jj,ii) + net_weights%hl1(jj,ii)*&
                             &loss_const_reglrn
                 end do
             end do
             
             !* layer 2
-            do ii=1,net_dim%hl2
-                do jj=1,net_dim%hl1+1
+            do ii=0,net_dim%hl1
+                do jj=1,net_dim%hl2
                     loss_jac%hl2(jj,ii) = loss_jac%hl2(jj,ii) + net_weights%hl2(jj,ii)*&
                             &loss_const_reglrn
                 end do
             end do
 
             !* final layer
-            do ii=1,net_dim%hl2+1,1
+            do ii=0,net_dim%hl2
                 loss_jac%hl3(ii) = loss_jac%hl3(ii) + net_weights%hl3(ii)*&
                             &loss_const_reglrn
             end do

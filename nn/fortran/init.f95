@@ -23,6 +23,7 @@ module init
             nlf = nlf_type
 
             call allocate_weights(net_weights)
+            call allocate_weights_nobiasT(net_weights_nobiasT)
             call allocate_weights(dydw)
            
             if (allocated(net_units%a%hl1)) then
@@ -43,8 +44,8 @@ module init
             end if
             
             !* include null value for bias
-            allocate(net_units%z%hl1(net_dim%hl1+1))
-            allocate(net_units%z%hl2(net_dim%hl2+1))
+            allocate(net_units%z%hl1(0:net_dim%hl1))
+            allocate(net_units%z%hl2(0:net_dim%hl2))
            
             if (allocated(net_units%delta%hl1)) then
                 deallocate(net_units%delta%hl1)
@@ -86,10 +87,34 @@ module init
             end if
 
             !* include bias for each node
-            allocate(weights_in%hl1(D+1,net_dim%hl1))
-            allocate(weights_in%hl2(net_dim%hl1+1,net_dim%hl2))
-            allocate(weights_in%hl3(net_dim%hl2+1))
+            
+            allocate(weights_in%hl1(1:net_dim%hl1,0:D))
+            allocate(weights_in%hl2(1:net_dim%hl2,0:net_dim%hl1))
+            allocate(weights_in%hl3(0:net_dim%hl2))
+            
+            !allocate(weights_in%hl1(D+1,net_dim%hl1))
+            !allocate(weights_in%hl2(net_dim%hl1+1,net_dim%hl2))
+            !allocate(weights_in%hl3(net_dim%hl2+1))
         end subroutine
+        
+        subroutine allocate_weights_nobiasT(weights_in)
+            implicit none
+
+            type(weights),intent(inout) :: weights_in
+
+            if(allocated(weights_in%hl1)) then
+                call deallocate_weights(weights_in)
+            end if
+
+            !* do NOT include bias
+            allocate(weights_in%hl1(1:D,1:net_dim%hl1))
+            allocate(weights_in%hl2(1:net_dim%hl1,1:net_dim%hl2))
+            allocate(weights_in%hl3(1:net_dim%hl2))
+            
+            !allocate(weights_in%hl1(D+1,net_dim%hl1))
+            !allocate(weights_in%hl2(net_dim%hl1+1,net_dim%hl2))
+            !allocate(weights_in%hl3(net_dim%hl2+1))
+        end subroutine allocate_weights_nobiasT
 
         subroutine deallocate_weights(weights_in)
             implicit none
@@ -171,18 +196,21 @@ module init
             call srand(seed)
           
             !* feature weights
-            call random_number(net_weights%hl1(2:,:))
-            call random_number(net_weights%hl2(2:,:))
-            call random_number(net_weights%hl3(2:))
+            call random_number(net_weights%hl1(:,:))
+            call random_number(net_weights%hl2(:,:))
+            call random_number(net_weights%hl3(:))
 
-            net_weights%hl1(2:,:) = ( net_weights%hl1(2:,:)-0.5d0)*0.001d0
-            net_weights%hl2(2:,:) = ( net_weights%hl2(2:,:)-0.5d0)*0.001d0
-            net_weights%hl3(2:)   = ( net_weights%hl3(2:)  -0.5d0)*0.001d0
+            net_weights%hl1(:,:) = ( net_weights%hl1(:,:)-0.5d0)*0.001d0
+            net_weights%hl2(:,:) = ( net_weights%hl2(:,:)-0.5d0)*0.001d0
+            net_weights%hl3(:)   = ( net_weights%hl3(:)  -0.5d0)*0.001d0
 
-            !* biases - NOT SURE IF THIS IS CORRECT
-            net_weights%hl1(1,:) = 0.0d0
-            net_weights%hl2(1,:) = 0.0d0
-            net_weights%hl3(1)  = 0.0d0
+            !* set biases to zero
+            net_weights%hl1(:,0) = 0.0d0
+            net_weights%hl2(:,0) = 0.0d0
+            net_weights%hl3(0)  = 0.0d0
+
+            !* transpose with no bias
+            call copy_weights_to_nobiasT()
         end subroutine random_weights
 
         subroutine check_input()

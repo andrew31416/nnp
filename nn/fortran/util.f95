@@ -18,16 +18,16 @@ module util
             cntr = 1
             
             !* hidden layer 1 
-            do ii=1,net_dim%hl1,1
-                do jj=1,D+1,1
+            do ii=0,D,1
+                do jj=1,net_dim%hl1,1
                     data_out%hl1(jj,ii) = data_in(cntr) 
                     cntr = cntr + 1
                 end do !* loop features
             end do !* loop linear models
             
             !* hidden layer 2
-            do ii=1,net_dim%hl2,1
-                do jj=1,net_dim%hl1+1,1
+            do ii=0,net_dim%hl1,1
+                do jj=1,net_dim%hl2,1
                     !* include bias in weights
                     data_out%hl2(jj,ii) = data_in(cntr)
                     cntr = cntr + 1
@@ -35,7 +35,7 @@ module util
             end do !* loop linear models
        
             !* final output weights
-            do ii=1,net_dim%hl2+1,1
+            do ii=0,net_dim%hl2,1
                 !* include bias in weights
                 data_out%hl3(ii) = data_in(cntr)
                 cntr = cntr + 1
@@ -52,16 +52,16 @@ module util
             cntr = 1
             
             !* hidden layer 1 
-            do ii=1,net_dim%hl1,1
-                do jj=1,D+1,1
+            do ii=0,D,1
+                do jj=1,net_dim%hl1,1
                     data_out(cntr) = data_in%hl1(jj,ii)
                     cntr = cntr + 1
                 end do !* loop features
             end do !* loop linear models
             
             !* hidden layer 2
-            do ii=1,net_dim%hl2,1
-                do jj=1,net_dim%hl1+1,1
+            do ii=0,net_dim%hl1,1
+                do jj=1,net_dim%hl2,1
                     !* include bias in weights
                     data_out(cntr) = data_in%hl2(jj,ii)
                     cntr = cntr + 1
@@ -69,12 +69,29 @@ module util
             end do !* loop linear models
        
             !* final output weights
-            do ii=1,net_dim%hl2+1,1
+            do ii=0,net_dim%hl2,1
                 !* include bias in weights
                 data_out(cntr) = data_in%hl3(ii)
                 cntr = cntr + 1
             end do
         end subroutine parse_structure_to_array
+
+        subroutine copy_weights_to_nobiasT()
+            implicit none
+
+            integer :: ii,jj
+
+            do ii=1,net_dim%hl1
+                do jj=1,D
+                    net_weights_nobiasT%hl1(jj,ii) = net_weights%hl1(ii,jj)
+                end do
+            end do
+            do ii=1,net_dim%hl2
+                do jj=1,net_dim%hl1
+                    net_weights_nobiasT%hl2(jj,ii) = net_weights%hl2(ii,jj)
+                end do
+            end do
+        end subroutine copy_weights_to_nobiasT
 
         integer function total_num_weights()
             implicit none

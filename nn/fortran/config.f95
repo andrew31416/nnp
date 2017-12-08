@@ -60,6 +60,7 @@ module config
 
     !* net weights
     type(weights)  ,public,save :: net_weights
+    type(weights)  ,public,save :: net_weights_nobiasT
 
     !* total number of net weights
     integer,public :: nwght

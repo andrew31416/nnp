@@ -26,45 +26,50 @@ module propagate
             integer :: nrow,ncol,ii
             real(8) :: x_atom(1:D+1)
 
-    
             !* copy feature vector (inlcuding null for bias)
             call dcopy(D+1,data_sets(set_type)%configs(conf)%x(:,atm),1,x_atom,1)
-
+            
             !------------------!
             !* hidden layer 1 *!
             !------------------!
             
-            nrow = D  + 1
-            ncol = net_dim%hl1
+            ncol = D  + 1
+            nrow = net_dim%hl1
 
-            !* x includes null dimension for bias
-            call dgemv('t',nrow,ncol,1.0d0,net_weights%hl1(:,:),nrow,&
+            !* a^1_m = \sum_k=0^K w_mk^1 gamma_k
+            call dgemv('n',nrow,ncol,1.0d0,net_weights%hl1,nrow,&
                     &x_atom,1,0.0d0,net_units%a%hl1,1)
+            !call dgemv('t',nrow,ncol,1.0d0,net_weights%hl1(:,:),nrow,&
+            !        &x_atom,1,0.0d0,net_units%a%hl1,1)
 
             !* null value for bias
-            net_units%z%hl1(1) = 1.0d0
+            net_units%z%hl1(0) = 1.0d0
+            !net_units%z%hl1(1) = 1.0d0
 
             do ii=1,net_dim%hl1,1
-                !* nonlinear map of linear models
-                net_units%z%hl1(ii+1) = activation(net_units%a%hl1(ii))
+                !* non-linear activation
+                net_units%z%hl1(ii) = activation(net_units%a%hl1(ii))
             end do
+
             !------------------!
             !* hidden layer 2 *!
             !------------------!
 
-            nrow = net_dim%hl1 + 1
-            ncol = net_dim%hl2
+            ncol = net_dim%hl1 + 1
+            nrow = net_dim%hl2
 
-            !* x includes null dimension for bias
-            call dgemv('t',nrow,ncol,1.0d0,net_weights%hl2(:,:),nrow,net_units%z%hl1,&
+            !* a^2_l = \sum_{m=0}^N1 w^2_lm z^1_m
+            !call dgemv('t',nrow,ncol,1.0d0,net_weights%hl2(:,:),nrow,net_units%z%hl1,&
+            !    &1,0.0d0,net_units%a%hl2,1)
+            call dgemv('n',nrow,ncol,1.0d0,net_weights%hl2,nrow,net_units%z%hl1,&
                 &1,0.0d0,net_units%a%hl2,1)
 
             !* null value for bias
-            net_units%z%hl2(1) = 1.0d0
+            net_units%z%hl2(0) = 1.0d0
 
             do ii=1,net_dim%hl2,1
                 !* nonlinear map of linear models
-                net_units%z%hl2(ii+1) = activation(net_units%a%hl2(ii))
+                net_units%z%hl2(ii) = activation(net_units%a%hl2(ii))
             end do
 
             !-------------------------!
@@ -90,6 +95,16 @@ module propagate
             !* scratch
             integer :: ii,jj,kk
             real(8) :: tmp1
+            real(8) :: x_atom(1:D+1)
+real(8) :: tmp_w2(1:net_dim%hl1,1:net_dim%hl2)
+do ii=1,net_dim%hl1
+    do jj=1,net_dim%hl2
+        tmp_w2(ii,jj) = net_weights%hl2(jj,ii)
+    end do
+end do
+    
+            !* copy feature vector (inlcuding null for bias)
+            call dcopy(D+1,data_sets(set_type)%configs(conf)%x(:,atm),1,x_atom,1)
             
             !-------------------!
             !* delta back prop *!
@@ -102,14 +117,22 @@ module propagate
                 !* activation derivatives
                 net_units%a_deriv%hl2(ii) = activation_deriv(net_units%a%hl2(ii))
                 !* bias does not have node
-                net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
+                net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii)
+                !net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
             end do
             
             !* layer 1 *!
             
-            !* delta_i^(1) = h'(a_i^(1)) * sum_j w_ij^(2) delta_i^(2)
-            call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:net_dim%hl1+1,1:net_dim%hl2),&
+            !* delta_i^(1) = h'(a_i^(1)) * sum_j w_ji^(2) delta_j^(2)
+            call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights_nobiasT%hl2,&
                     &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
+            !call dgemv('t',net_dim%hl2,net_dim%hl2,1.0d0,tmp_w2,&
+            !        &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
+            
+            !net_units%delta%hl1 = net_units%delta%hl1*net_units%a_deriv%hl1
+            !call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:net_dim%hl1+1,1:net_dim%hl2),&
+            !        &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
+
             
             do ii=1,net_dim%hl1,1
                 !* activation derivatives
@@ -123,52 +146,80 @@ module propagate
             !* final layer *!
             !---------------!
 
-            !* bias
-            dydw%hl3(1) = 1.0d0
-
-            do ii=1,net_dim%hl2,1
-                dydw%hl3(ii+1) = net_units%z%hl2(ii+1)
-            end do
+            !* dydw%hl3 = z%hl2 , shape=(N2+1,)
+            call dcopy(net_dim%hl2+1,net_units%z%hl2,1,dydw%hl3,1)
+            !dydw%hl3(1) = 1.0d0
+            !do ii=1,net_dim%hl2,1
+                !dydw%hl3(ii+1) = net_units%z%hl2(ii+1)
+            !end do
+            
             !----------------!
             !* second layer *!
             !----------------!
-          
-            !* bias
-            do ii=1,net_dim%hl2,1
-                dydw%hl2(1,ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
-            end do
+         
+            ! dydw%hl2_lm =  delta%hl2_l  *  z%hl1_m   l=[1,N2] , m=[0,N1]
+            call dgemm('n','n',net_dim%hl2,net_dim%hl1+1,1,1.0d0,net_units%delta%hl2,net_dim%hl2,&
+                    &net_units%z%hl1,1,0.0d0,dydw%hl2,net_dim%hl2)
 
-            call dgemm('n','n',net_dim%hl1,net_dim%hl2,1,1.0d0,net_units%z%hl1(2),&
-                    &net_dim%hl1,net_units%delta%hl2,1,0.0d0,dydw%hl2(2:net_dim%hl1+1,1:net_dim%hl2),net_dim%hl1)
+            !* bias
+            !do ii=1,net_dim%hl2,1
+            !    dydw%hl2(1,ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
+            !end do
+            !
+            !call dgemm('n','n',net_dim%hl1,net_dim%hl2,1,1.0d0,net_units%z%hl1(2),&
+            !        &net_dim%hl1,net_units%delta%hl2,1,0.0d0,dydw%hl2(2:net_dim%hl1+1,1:net_dim%hl2),net_dim%hl1)
+            
             !---------------!
             !* first layer *!
             !---------------!
 
+            call dgemm('n','n',net_dim%hl1,D+1,1,1.0d0,net_units%delta%hl1,net_dim%hl1,&
+                    &x_atom,1,0.0d0,dydw%hl1,net_dim%hl1)
+
+!write(*,*) 'matrix:'
+!write(*,*) dydw%hl1
+!
+!do ii=0,D
+!    do jj=1,net_dim%hl1
+!        dydw%hl1(jj,ii) = net_units%delta%hl1(jj)*x_atom(ii+1)
+!    end do
+!end do
+!
+!write(*,*) 'norm:'
+!write(*,*) dydw%hl1
+
             !* bias
-            do ii=1,net_dim%hl1,1
-                dydw%hl1(1,ii) = net_units%a_deriv%hl1(ii)*&
-                        &sum(net_weights%hl2(ii+1,:)*net_units%delta%hl2)
-            end do
-            
-            call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
-                    &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
+            !do ii=1,net_dim%hl1,1
+            !    dydw%hl1(1,ii) = net_units%a_deriv%hl1(ii)*&
+            !            &sum(net_weights%hl2(ii+1,:)*net_units%delta%hl2)
+            !end do
+            !
+            !call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
+            !        &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
 
             
             !---------------------------!
             !* derivative wrt features *!
             !---------------------------!
-            
-            dydx(:,atm) = 0.0d0
-            
-            do jj=1,net_dim%hl2
-                do  ii=1,net_dim%hl1
-                    tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(ii+1,jj)*&
-                            &net_units%a_deriv%hl1(ii)
-                    do kk=1,D,1
-                        dydx(kk,atm) = dydx(kk,atm) + tmp1*net_weights%hl1(kk+1,ii)
-                    end do
-                end do
-            end do
+           
+            !* dydx_i = sum_j delta_j w^1_ji
+            call dgemv('n',D,net_dim%hl1,1.0d0,net_weights_nobiasT%hl1,D,net_units%delta%hl1,1,0.0d0,&
+                    &dydx(:,atm),1)
+!write(*,*) 'matrix:'
+!write(*,*) dydx(:,atm)           
+! dydx seems OK - dydw not working            
+!            dydx(:,atm) = 0.0d0
+!            do jj=1,net_dim%hl2
+!                do  ii=1,net_dim%hl1
+!                    tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(jj,ii)*&
+!                            &net_units%a_deriv%hl1(ii)
+!                    do kk=1,D,1
+!                        dydx(kk,atm) = dydx(kk,atm) + tmp1*net_weights%hl1(ii,kk)
+!                    end do
+!                end do
+!            end do
+!write(*,*) 'normal:'
+!write(*,*) dydx(:,atm)            
             !call dgemm("n","n",D,net_dim%hl2,net_dim%hl1,1.0d0,&
             !        &net_weights%hl2(2:D+1,1:net_dim%net_dim%hl2),D,tmp_array,net_dim%hl1,dydx)
 

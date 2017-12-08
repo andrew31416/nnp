@@ -287,6 +287,7 @@ program unittest
                         
                         !* read in weights
                         call parse_array_to_structure(original_weights,net_weights)
+                        call copy_weights_to_nobiasT()
                         
                         !* forward propagate
                         call forward_propagate(conf,atm,set_type)
@@ -306,12 +307,13 @@ program unittest
                
                     !* return to initial value
                     original_weights(ii) = w0
-                end do
+                end do !* end loop over finite differences
                
                 if (deriv_ok.neqv..true.) then
                     all_ok = .false.
+                    write(*,*) ii,'of',nwght,'not OK'
                 end if    
-            end do !* end loop over finite differences
+            end do !* end loop over weights
 
             deallocate(dydx)
             test_dydw = all_ok
