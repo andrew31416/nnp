@@ -2,7 +2,7 @@ module propagate
     use config
     use io
     use feature_util, only : int_in_intarray
-    use util, only : allocate_dydx, zero_weights
+    use util, only : allocate_dydx, zero_weights, scalar_equal
     use init, only : allocate_weights
 
     implicit none
@@ -245,7 +245,6 @@ module propagate
             !* compute matrices A_1,A_2,B,C for conf,atm
     
             integer :: ii,jj
-integer :: kk
             
             do ii=1,net_dim%hl1
                 do jj=1,net_dim%hl2
@@ -262,8 +261,8 @@ integer :: kk
             end do
 
             !* A2A1_ij = \sum_k A2_{ik} A1_{kj}  - Have checked
-            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,sub_A2,net_dim%hl2,sub_A1,net_dim%hl1,0.0d0,sub_A2A1,&
-                    &net_dim%hl2)
+            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,sub_A2,net_dim%hl2,sub_A1,net_dim%hl1,&
+                    &0.0d0,sub_A2A1,net_dim%hl2)
 
 
             !* B_ij = \sum_k w^2_ik A^1_kj
@@ -278,7 +277,22 @@ integer :: kk
             integer,intent(in) :: atm
 
             integer :: ii,jj,kk
+            real(8) :: hprimeprime_2(1:net_dim%hl2),hprimeprime_1(1:net_dim%hl1)
+            real(8) :: tmp1
+
             ! d^2 y / dwdx = d2ydxdw(atm,feature)%hl*
+        
+            !* subsidiaries
+            do ii=1,net_dim%hl1
+                !* h''(a^(1)))
+                hprimeprime_1(ii) = activation_derivderiv(net_units%a%hl1(ii))
+            end do
+            do ii=1,net_dim%hl2
+                !* h''(a^(2))
+                hprimeprime_2(ii) = activation_derivderiv(net_units%a%hl2(ii))
+            end do
+
+
             
             !===========!
             !* layer 3 *!
@@ -291,8 +305,27 @@ integer :: kk
                 d2ydxdw(atm,kk)%hl3(0) = 0.0d0
             end do
 
+            !===========!
+            !* layer 2 *!
+            !===========!
+        
             do kk=1,D
-                d2ydxdw(atm,kk)%hl2(:,:) = 0.0d0
+                do ii=0,net_dim%hl1
+                    do jj=1,net_dim%hl2
+                        if (ii.eq.0) then
+                            !* bias
+                            tmp1 = 0.0d0
+                        else
+                            tmp1 = sub_A1(ii,kk)*net_units%delta%hl2(jj)
+                        end if
+
+                        d2ydxdw(atm,kk)%hl2(jj,ii) = net_weights%hl3(jj)*hprimeprime_2(jj)*&
+                                &net_units%z%hl1(ii)*sub_B(jj,kk) + tmp1
+                    end do !* end loop over jj
+                end do !* end loop over ii
+            end do !* end loop over features kk
+
+            do kk=1,D
                 d2ydxdw(atm,kk)%hl1(:,:) = 0.0d0
             end do
         end subroutine forceloss_weight_derivative_subsidiary2
@@ -410,6 +443,21 @@ integer :: kk
             end if
         end function activation_deriv
 
+        real(8) function activation_derivderiv(ain)
+            implicit none
+
+            real(8),intent(in) :: ain
+
+            if (nlf.eq.1) then
+                activation_derivderiv = logistic_derivderiv(ain)
+            else if (nlf.eq.2) then
+                activation_derivderiv = tanh_derivderiv(ain)
+            else
+                call error("activation_derivderiv","unsupported nonlinear function")
+                call exit(0)
+            end if
+        end function activation_derivderiv
+
         real(8) function logistic(x)
             real(8),intent(in) :: x
             logistic = 1.0d0/(1.0d0 + exp(-x))
@@ -426,9 +474,40 @@ integer :: kk
             logistic_deriv = exp(-(x+2.0d0*log(tmp+1.0d0)) )
         end function logistic_deriv
 
+        real(8) function logistic_derivderiv(x)
+            implicit none
+
+            real(8),intent(in) :: x
+
+            real(8) :: tmp1,tmp2
+
+            tmp1 = exp(x)
+            !* compute in log-space for stability as |x| -> inf.
+            tmp2 = x + log(tmp1-1.0d0) - 3.0d0*log(tmp1+1.0d0)
+
+            logistic_derivderiv = -exp(tmp2)
+        end function logistic_derivderiv
+
         real(8) function tanh_deriv(x)
             real(8),intent(in) :: x
             !tanh_deriv = 1.0d0 - (tanh(x)**2)
             tanh_deriv = (1.0d0/cosh(x))**2
         end function tanh_deriv
+
+        real(8) function tanh_derivderiv(x)
+            implicit none
+
+            real(8),intent(in) :: x
+
+            real(8) :: tmp
+
+            tmp = tanh(x)
+
+            if (scalar_equal(tmp,0.0d0,dble(1e-10),dble(1e-16)**2,.false.)) then
+                tanh_derivderiv = 0.0d0
+                return
+            end if
+
+            tanh_derivderiv = -2.0d0*tmp/(cosh(x)**2)
+        end function tanh_derivderiv
 end module propagate

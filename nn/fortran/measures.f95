@@ -305,7 +305,7 @@ module measures
             type(weights),intent(inout) :: tmp_jac
             
             integer :: atm,kk,num_neigh,ii,idx,dd
-            real(8) :: vec(1:3),tmp,sgn(1:3)
+            real(8) :: vec(1:3),sgn(1:3)
 
             if (scalar_equal(loss_const_forces,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
                 return

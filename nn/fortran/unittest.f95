@@ -373,7 +373,7 @@ program unittest
                 
                 all_ok = .true.
 
-                do jj=nwght-net_dim%hl2,nwght,1
+                do jj=net_dim%hl1*(D+1)+1,nwght,1
                     w0 = original_weights(jj)
                 
                     deriv_ok = .false.
@@ -402,7 +402,7 @@ program unittest
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
 
-                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.true.)) then
+                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.false.)) then
                             deriv_ok = .true.
                         end if
 
