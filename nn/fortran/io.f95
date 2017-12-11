@@ -180,6 +180,10 @@ module io
             implicit none
 
             integer,intent(in) :: set_type
+
+            integer :: conf
+
+            conf=set_type
         end subroutine get_features
 
         subroutine read_feature_info(filepath)

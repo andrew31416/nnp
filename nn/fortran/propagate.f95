@@ -13,7 +13,7 @@ module propagate
     real(8),external :: ddot
             
     type(weights),public,allocatable :: d2ydxdw(:,:)
-    real(8),public,allocatable :: sub_A1(:,:),sub_A2(:,:)
+    real(8),public,allocatable :: sub_A1(:,:),sub_A2(:,:),sub_A2A1(:,:)
     real(8),public,allocatable :: sub_B(:,:),sub_C(:,:),sub_D(:,:)
 
     contains
@@ -93,15 +93,8 @@ module propagate
             integer,intent(in) :: conf,atm,set_type
 
             !* scratch
-            integer :: ii,jj,kk
-            real(8) :: tmp1
+            integer :: ii
             real(8) :: x_atom(1:D+1)
-real(8) :: tmp_w2(1:net_dim%hl1,1:net_dim%hl2)
-do ii=1,net_dim%hl1
-    do jj=1,net_dim%hl2
-        tmp_w2(ii,jj) = net_weights%hl2(jj,ii)
-    end do
-end do
     
             !* copy feature vector (inlcuding null for bias)
             call dcopy(D+1,data_sets(set_type)%configs(conf)%x(:,atm),1,x_atom,1)
@@ -230,6 +223,7 @@ end do
 
             allocate(sub_A1(net_dim%hl1,D))
             allocate(sub_A2(net_dim%hl2,net_dim%hl1))
+            allocate(sub_A2A1(net_dim%hl2,D))
             allocate(sub_B(net_dim%hl1,D))
             allocate(sub_C(net_dim%hl2,net_dim%hl1))
             allocate(sub_D(D,net_dim%hl1))
@@ -239,38 +233,69 @@ end do
             implicit none
             deallocate(sub_A1)
             deallocate(sub_A2)
+            deallocate(sub_A2A1)
             deallocate(sub_B)
             deallocate(sub_C)
             deallocate(sub_D)
         end subroutine deallocate_forceloss_subsidiary_mem
 
-        subroutine forceloss_weight_derivative_subsidiary()
+        subroutine forceloss_weight_derivative_subsidiary1()
             implicit none
 
             !* compute matrices A_1,A_2,B,C for conf,atm
     
             integer :: ii,jj
+integer :: kk
             
             do ii=1,net_dim%hl1
                 do jj=1,net_dim%hl2
+                    !* A2_ji = h'(a^2_j)*w^2_ji
                     sub_A2(jj,ii) = net_units%a_deriv%hl2(jj)*net_weights%hl2(jj,ii)
                 end do
             end do
 
             do ii=1,D
                 do jj=1,net_dim%hl1
+                    !* A1_ji = h'(a^1_j)*w^1_ji
                     sub_A1(jj,ii) = net_units%a_deriv%hl1(jj)*net_weights%hl1(jj,ii)
                 end do
             end do
-        end subroutine forceloss_weight_derivative_subsidiary
+
+            !* A2A1_ij = \sum_k A2_{ik} A1_{kj}  - Have checked
+            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,sub_A2,net_dim%hl2,sub_A1,net_dim%hl1,0.0d0,sub_A2A1,&
+                    &net_dim%hl2)
 
 
-        subroutine compute_forceloss_weight_derivatives()
+            !* B_ij = \sum_k w^2_ik A^1_kj
+            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,net_weights%hl2(:,1:),net_dim%hl2,sub_A1,&
+                    &D,0.0d0,sub_B,net_dim%hl2)
+        end subroutine forceloss_weight_derivative_subsidiary1
+
+
+        subroutine forceloss_weight_derivative_subsidiary2(atm)
             implicit none
 
-            
+            integer,intent(in) :: atm
 
-        end subroutine compute_forceloss_weight_derivatives
+            integer :: ii,jj,kk
+            ! d^2 y / dwdx = d2ydxdw(atm,feature)%hl*
+            
+            !===========!
+            !* layer 3 *!
+            !===========!
+        
+            do kk=1,D
+                do ii=1,net_dim%hl2
+                    d2ydxdw(atm,kk)%hl3(ii) = sub_A2A1(ii,kk)
+                end do
+                d2ydxdw(atm,kk)%hl3(0) = 0.0d0
+            end do
+
+            do kk=1,D
+                d2ydxdw(atm,kk)%hl2(:,:) = 0.0d0
+                d2ydxdw(atm,kk)%hl1(:,:) = 0.0d0
+            end do
+        end subroutine forceloss_weight_derivative_subsidiary2
 
         subroutine calculate_forces(set_type,conf)
             implicit none

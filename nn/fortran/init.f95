@@ -116,6 +116,29 @@ module init
             !allocate(weights_in%hl3(net_dim%hl2+1))
         end subroutine allocate_weights_nobiasT
 
+        subroutine allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
+            implicit none
+
+            integer,intent(in) :: conf,set_type
+            type(weights),intent(inout),allocatable :: d2ydxdw(:,:)
+
+            integer :: natm,ii,kk
+
+            natm = data_sets(set_type)%configs(conf)%n
+
+            if (allocated(d2ydxdw)) then
+                deallocate(d2ydxdw)
+            end if
+
+            allocate(d2ydxdw(natm,D))
+
+            do kk=1,D
+                do ii=1,natm
+                    call allocate_weights(d2ydxdw(ii,kk))
+                end do
+            end do
+        end subroutine allocate_d2ydxdw_mem
+
         subroutine deallocate_weights(weights_in)
             implicit none
             
@@ -124,7 +147,7 @@ module init
             deallocate(weights_in%hl1)
             deallocate(weights_in%hl2)
             deallocate(weights_in%hl3)
-        end subroutine
+        end subroutine deallocate_weights
 
         subroutine initialise_set(set_type,nconf,ntot,slice_idxs,xin,fin,ein)
             use io, only : error

@@ -354,7 +354,7 @@ program unittest
                     loss_const_reglrn = 0.0d0
                 else if (ii.eq.2) then
                     loss_const_energy = 0.0d0
-                    loss_const_forces = 0.0d0
+                    loss_const_forces = 1.0d0
                     loss_const_reglrn = 0.0d0
                 else
                     loss_const_energy = 0.0d0
@@ -373,7 +373,7 @@ program unittest
                 
                 all_ok = .true.
 
-                do jj=1,nwght,1
+                do jj=nwght-net_dim%hl2,nwght,1
                     w0 = original_weights(jj)
                 
                     deriv_ok = .false.
@@ -402,7 +402,7 @@ program unittest
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
 
-                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.false.)) then
+                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.true.)) then
                             deriv_ok = .true.
                         end if
 
@@ -410,7 +410,7 @@ program unittest
 
                     if (deriv_ok.neqv..true.) then
                         all_ok = .false.
-                        !write(*,*) ' failing because of',jj,ii
+                        write(*,*) ' failing weight',jj,'of',nwght
                     end if
 
                 end do !* end loop over weights
