@@ -373,7 +373,9 @@ program unittest
                 
                 all_ok = .true.
 
-                do jj=net_dim%hl1*(D+1)+1,nwght,1
+                do jj=nwght-net_dim%hl2,nwght,1
+                !do jj=net_dim%hl1*(D+1),nwght,1
+                !do jj=1,nwght,1
                     w0 = original_weights(jj)
                 
                     deriv_ok = .false.
@@ -404,13 +406,14 @@ program unittest
 
                         if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.false.)) then
                             deriv_ok = .true.
+                            !write(*,*) num_jac(jj),anl_jac(jj),'are equal for weight :',jj
                         end if
 
                     end do !* end loop over +/- dw
 
                     if (deriv_ok.neqv..true.) then
                         all_ok = .false.
-                        write(*,*) ' failing weight',jj,'of',nwght
+                        write(*,*) ' failing weight',jj,'of',nwght,'in loss type',ii
                     end if
 
                 end do !* end loop over weights
@@ -627,7 +630,7 @@ program unittest
                                                     if ( scalar_equal(num_dxdr(kk,jj),&
                                                     &anl_deriv(kk,jj)%vec(dd,ll),dble(1e-7),&
                                                     &dble(1e-7),.false.) ) then
-                                                        deriv_matches = .true.     
+                                                        deriv_matches = .true.    
                                                     end if
                                                 end if  
                                             end do !* end loop over contributing atoms to (kk,jj)

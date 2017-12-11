@@ -271,21 +271,31 @@ module propagate
         end subroutine forceloss_weight_derivative_subsidiary1
 
 
-        subroutine forceloss_weight_derivative_subsidiary2(atm)
+        subroutine forceloss_weight_derivative_subsidiary2(set_type,conf,atm)
             implicit none
 
-            integer,intent(in) :: atm
+            integer,intent(in) :: set_type,conf,atm
 
             integer :: ii,jj,kk
             real(8) :: hprimeprime_2(1:net_dim%hl2),hprimeprime_1(1:net_dim%hl1)
+            real(8) :: tmp_l1(1:net_dim%hl1)
             real(8) :: tmp1
-
+            real(8) :: sub_BT(1:D,1:net_dim%hl2)
+integer :: ll,mm,pp,qq 
+real(8) :: tmp2           
             ! d^2 y / dwdx = d2ydxdw(atm,feature)%hl*
         
             !* subsidiaries
             do ii=1,net_dim%hl1
                 !* h''(a^(1)))
-                hprimeprime_1(ii) = activation_derivderiv(net_units%a%hl1(ii))
+                hprimeprime_1(ii) = activation_derivderiv(net_units%a%hl1(ii)) 
+
+                if (scalar_equal(hprimeprime_1(ii),0.0d0,dble(1e-10),dble(1e-10)**2,.false.)) then
+                    !* avoid 1/0
+                    tmp_l1(ii) = 0.0d0
+                else
+                    tmp_l1(ii) = hprimeprime_1(ii)/net_units%a%hl1(ii) * net_units%delta%hl1(ii)
+                end if
             end do
             do ii=1,net_dim%hl2
                 !* h''(a^(2))
@@ -325,9 +335,86 @@ module propagate
                 end do !* end loop over ii
             end do !* end loop over features kk
 
-            do kk=1,D
-                d2ydxdw(atm,kk)%hl1(:,:) = 0.0d0
+return
+write(*,*) 'SHOULD NOT BE HERE'
+call exit(0)
+            !===========!
+            !* layer 1 *!
+            !===========!
+
+            !* C_lp =  w^(3)_l * h''(a^(2)_l) * w^(2)_lp * h'(a^(1)_p)
+            do ii=1,net_dim%hl1
+                do jj=1,net_dim%hl2
+                    sub_C(jj,ii) = net_weights%hl3(jj)*hprimeprime_2(jj)*net_weights%hl2(jj,ii)*&
+                            &net_units%a_deriv%hl1(ii)
+                end do
             end do
+
+            !* for some reason can't work dgemm with 't' , must transpose by hand
+            do ii=1,D
+                do jj=1,net_dim%hl2
+                    sub_BT(ii,jj) = sub_B(jj,ii)
+                end do
+            end do
+            !* D_km = sum_l^N2 B^T_kl * C_lm
+            call dgemm('n','n',D,net_dim%hl1,net_dim%hl2,1.0d0,sub_BT,D,sub_C,net_dim%hl2,0.0d0,sub_D,D)
+
+            !* D_km = sum_l^N2 B^T_kl * C_lm
+            !call dgemm('T','n',D,net_dim%hl1,net_dim%hl2,1.0d0,sub_B,net_dim%hl2,sub_C,net_dim%hl2,0.0d0,&
+            !        &sub_D,D)
+
+
+            do kk=1,D
+                do ii=0,D
+                    if (ii.eq.0) then
+                        !* bias
+                        tmp1 = 1.0d0
+                    else
+                        tmp1 = 0.0d0
+                    end if
+
+                    do jj=1,net_dim%hl1
+
+                        d2ydxdw(atm,kk)%hl1(jj,ii) = data_sets(set_type)%configs(conf)%x(ii+1,atm)*sub_D(kk,jj) +&
+                                &tmp_l1(jj)*data_sets(set_type)%configs(conf)%x(ii+1,atm)*net_weights%hl1(jj,kk)+&
+                                &tmp1*net_units%delta%hl1(jj)
+
+                    end do !* end loop jj over 1st layer index
+                end do !* end loop ii over feature index
+            end do !* end loop kk over feature index
+
+
+
+            do kk=1,D
+                d2ydxdw(atm,kk)%hl1 = 0.0d0
+                do qq=0,D
+                    do pp=1,net_dim%hl1
+                        tmp2 = 0.0d0 
+                        
+                        do ll=1,net_dim%hl2
+
+                            tmp1 = 0.0d0
+                            do mm=1,net_dim%hl1
+                                tmp1 = tmp1 + net_weights%hl2(ll,mm)*net_units%a_deriv%hl1(mm)*&
+                                    &net_weights%hl1(mm,kk)
+                            end do
+
+                            tmp2 = tmp2+net_weights%hl3(ll)*hprimeprime_2(ll)*net_weights%hl2(ll,pp)*&
+                                    &net_units%a_deriv%hl1(pp)*data_sets(set_type)%configs(conf)%x(qq+1,atm)
+
+                            tmp2 = tmp2 + net_weights%hl3(ll)*net_units%a_deriv%hl2(ll)*net_weights%hl2(ll,pp)*&
+                                    &hprimeprime_1(pp)*net_weights%hl1(pp,kk)*&
+                                    &data_sets(set_type)%configs(conf)%x(qq+1,atm)
+
+                            if (qq.eq.kk) then
+                                tmp2 = tmp2 + net_weights%hl3(ll)*net_units%a_deriv%hl2(ll)*&
+                                        &net_weights%hl2(ll,pp)*net_units%a_deriv%hl1(pp)
+                            end if
+                        end do !* ll
+                        d2ydxdw(atm,kk)%hl1(pp,qq) = tmp2
+                    end do !* pp
+                end do !* qq
+            end do !* kk
         end subroutine forceloss_weight_derivative_subsidiary2
 
         subroutine calculate_forces(set_type,conf)

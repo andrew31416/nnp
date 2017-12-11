@@ -24,7 +24,6 @@ module measures
             !* read in NN weights
             call parse_array_to_structure(flat_weights,net_weights)
             call copy_weights_to_nobiasT()
-            
 
             do conf=1,data_sets(set_type)%nconf,1
                 if (allocated(dydx)) then
@@ -103,7 +102,7 @@ module measures
                     !* compute subsidiary matrices for force loss deriv.
                     call forceloss_weight_derivative_subsidiary1()
 
-                    call forceloss_weight_derivative_subsidiary2(atm)
+                    call forceloss_weight_derivative_subsidiary2(set_type,conf,atm)
                 end do
 
 
@@ -340,9 +339,9 @@ module measures
                         vec = data_sets(set_type)%configs(conf)%x_deriv(kk,atm)%vec(:,ii)
     
                         do dd=1,3
-                            tmp_jac%hl1 = tmp_jac%hl1 - vec(dd)*sgn(dd)*d2ydxdw(idx,kk)%hl1
-                            tmp_jac%hl2 = tmp_jac%hl2 - vec(dd)*sgn(dd)*d2ydxdw(idx,kk)%hl2
-                            tmp_jac%hl3 = tmp_jac%hl3 - vec(dd)*sgn(dd)*d2ydxdw(idx,kk)%hl3
+                            tmp_jac%hl1 = tmp_jac%hl1 - vec(dd)*sgn(dd)*d2ydxdw(atm,kk)%hl1
+                            tmp_jac%hl2 = tmp_jac%hl2 - vec(dd)*sgn(dd)*d2ydxdw(atm,kk)%hl2
+                            tmp_jac%hl3 = tmp_jac%hl3 - vec(dd)*sgn(dd)*d2ydxdw(atm,kk)%hl3
                         end do
                     end do !* end loop over neighbours to (kk,atm_loc)
                 end do !* end loop over features           
