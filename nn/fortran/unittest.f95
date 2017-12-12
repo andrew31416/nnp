@@ -373,9 +373,7 @@ program unittest
                 
                 all_ok = .true.
 
-                !do jj=nwght-net_dim%hl2,nwght,1
-                do jj=net_dim%hl1*(D+1)+1,nwght,1
-                !do jj=1,nwght,1
+                do jj=1,nwght,1
                     w0 = original_weights(jj)
                 
                     deriv_ok = .false.
@@ -404,16 +402,14 @@ program unittest
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
 
-                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-7),dble(1e-8),.false.)) then
+                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-10),dble(1e-10),.false.)) then
                             deriv_ok = .true.
-                            !write(*,*) num_jac(jj),anl_jac(jj),'are equal for weight :',jj
                         end if
 
                     end do !* end loop over +/- dw
 
                     if (deriv_ok.neqv..true.) then
                         all_ok = .false.
-                        write(*,*) ' failing weight',jj,'of',nwght,'in loss type',ii
                     end if
 
                 end do !* end loop over weights
