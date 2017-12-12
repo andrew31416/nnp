@@ -373,8 +373,8 @@ program unittest
                 
                 all_ok = .true.
 
-                do jj=nwght-net_dim%hl2,nwght,1
-                !do jj=net_dim%hl1*(D+1),nwght,1
+                !do jj=nwght-net_dim%hl2,nwght,1
+                do jj=net_dim%hl1*(D+1)+1,nwght,1
                 !do jj=1,nwght,1
                     w0 = original_weights(jj)
                 

@@ -224,7 +224,7 @@ module propagate
             allocate(sub_A1(net_dim%hl1,D))
             allocate(sub_A2(net_dim%hl2,net_dim%hl1))
             allocate(sub_A2A1(net_dim%hl2,D))
-            allocate(sub_B(net_dim%hl1,D))
+            allocate(sub_B(net_dim%hl2,D))
             allocate(sub_C(net_dim%hl2,net_dim%hl1))
             allocate(sub_D(D,net_dim%hl1))
         end subroutine init_forceloss_subsidiary_mem
@@ -260,14 +260,15 @@ module propagate
                 end do
             end do
 
-            !* A2A1_ij = \sum_k A2_{ik} A1_{kj}  - Have checked
+            !* A2A1_ij = \sum_k A2_{ik} A1_{kj} - Have checked
             call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,sub_A2,net_dim%hl2,sub_A1,net_dim%hl1,&
                     &0.0d0,sub_A2A1,net_dim%hl2)
 
 
-            !* B_ij = \sum_k w^2_ik A^1_kj
+            !* B_ij = \sum_k w^2_ik A^1_kj - Have checked
             call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,net_weights%hl2(:,1:),net_dim%hl2,sub_A1,&
-                    &D,0.0d0,sub_B,net_dim%hl2)
+                    &net_dim%hl1,0.0d0,sub_B,net_dim%hl2)
+
         end subroutine forceloss_weight_derivative_subsidiary1
 
 
@@ -320,24 +321,22 @@ real(8) :: tmp2
             !===========!
         
             do kk=1,D
-                do ii=0,net_dim%hl1
-                    do jj=1,net_dim%hl2
-                        if (ii.eq.0) then
+                do mm=0,net_dim%hl1
+                    do ll=1,net_dim%hl2
+                        if ( (mm.eq.0) ) then
                             !* bias
                             tmp1 = 0.0d0
                         else
-                            tmp1 = sub_A1(ii,kk)*net_units%delta%hl2(jj)
+                            tmp1 = sub_A1(mm,kk)*net_units%delta%hl2(ll)
                         end if
 
-                        d2ydxdw(atm,kk)%hl2(jj,ii) = net_weights%hl3(jj)*hprimeprime_2(jj)*&
-                                &net_units%z%hl1(ii)*sub_B(jj,kk) + tmp1
+                        d2ydxdw(atm,kk)%hl2(ll,mm) = net_weights%hl3(ll)*hprimeprime_2(ll)*&
+                                &net_units%z%hl1(mm)*sub_B(ll,kk) + tmp1
                     end do !* end loop over jj
                 end do !* end loop over ii
             end do !* end loop over features kk
 
 return
-write(*,*) 'SHOULD NOT BE HERE'
-call exit(0)
             !===========!
             !* layer 1 *!
             !===========!
@@ -571,7 +570,8 @@ call exit(0)
             tmp1 = exp(x)
             !* compute in log-space for stability as |x| -> inf.
             tmp2 = x + log(tmp1-1.0d0) - 3.0d0*log(tmp1+1.0d0)
-
+write(*,*) 'LOGISTIC DERIV NOT OK - fix'
+call exit(0)
             logistic_derivderiv = -exp(tmp2)
         end function logistic_derivderiv
 
