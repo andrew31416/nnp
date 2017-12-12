@@ -64,6 +64,7 @@ module measures
             !* scratch
             integer :: conf,atm
             real(8) :: tmpE
+            logical :: include_force_loss
 
             type(weights) :: loss_jac
             type(weights) :: tmp_jac
@@ -80,6 +81,13 @@ module measures
             call copy_weights_to_nobiasT()
             !* initialise force loss subsidiary mem.
             call init_forceloss_subsidiary_mem()
+
+            !* decide whether or not to compute force loss derivatives
+            if (scalar_equal(loss_const_forces,0.0d0,dble(1e-15),dble(1e-10)**2,.false.)) then
+                include_force_loss = .false.
+            else
+                include_force_loss = .true.
+            end if
 
             do conf=1,data_sets(set_type)%nconf,1
                 if(allocated(dydx)) then
@@ -98,11 +106,12 @@ module measures
                    
                     !* total energy contribution
                     call loss_energy_jacobian(tmp_jac)
-                    
-                    !* compute subsidiary matrices for force loss deriv.
-                    call forceloss_weight_derivative_subsidiary1()
-
-                    call forceloss_weight_derivative_subsidiary2(set_type,conf,atm)
+                   
+                    if (include_force_loss) then
+                        !* compute subsidiary matrices for force loss deriv.
+                        call forceloss_weight_derivative_subsidiary1()
+                        call forceloss_weight_derivative_subsidiary2(set_type,conf,atm)
+                    end if
                 end do
 
 
@@ -130,17 +139,20 @@ module measures
                 loss_jac%hl3 = loss_jac%hl3 + tmp_jac%hl3 * tmpE
 
             
-                !=======================!
-                !* forces contribution *!
-                !=======================!
-                
-                call calculate_forces(set_type,conf)
 
-                call loss_forces_jacobian(set_type,conf,tmp2_jac)
-                
-                loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
-                loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces * 0.5d0
-                loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces * 0.5d0
+                if (include_force_loss) then
+                    !=======================!
+                    !* forces contribution *!
+                    !=======================!
+                    
+                    call calculate_forces(set_type,conf)
+
+                    call loss_forces_jacobian(set_type,conf,tmp2_jac)
+                    
+                    loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
+                    loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces * 0.5d0
+                    loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces * 0.5d0
+                end if
 
                 deallocate(dydx)
             end do !* end loop over confs

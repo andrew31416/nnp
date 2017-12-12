@@ -1,3 +1,4 @@
+from nnp.util.log import NnpOptimizeResult
 import numpy as np
 import nnp
 from scipy import optimize
@@ -95,8 +96,20 @@ class MultiLayerPerceptronPotential():
             self.num_weights = None
             self.D = None
             self.OptimizeResult = None
-            
+           
             self.set_layer_size(hidden_layer_sizes)
+  
+            # data for optimization log 
+            self._njev = None
+            self._loss_log = None
+   
+    def _init_optimization_log(self):
+        """
+        Perform operations necessary to initialise log data for optimization
+        """
+
+        self._njev = 0
+        self._loss_log = []
     
     def _update_num_weights(self):
         # biases included in weights array
@@ -115,14 +128,12 @@ class MultiLayerPerceptronPotential():
         self.weights = np.asarray(np.random.normal(loc=0.0,scale=self.init_weight_var,\
                 size=self.num_weights),dtype=np.float64,order='F')
 
-        # bias weights = 0 by default
-        for ii in range(self.hidden_layer_sizes[0]):
-            self.weights[ii*(self.D+1)] = 0.0
-        offset = self.hidden_layer_sizes[0]*(self.D+1)
-        for ii in range(self.hidden_layer_sizes[1]):
-            self.weights[ii*(self.hidden_layer_sizes[0]+1)+offset] = 0.0
-        offset += (self.hidden_layer_sizes[0]+1)*(self.hidden_layer_sizes[1])
-        self.weights[offset] = 0.0
+        bias_idx = [ii for ii in range(self.hidden_layer_sizes[0])]
+        bias_idx += [self.hidden_layer_sizes[0]*(self.D+1)+ii for \
+                ii in range(self.hidden_layer_sizes[1])]
+        bias_idx.append(self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
+                self.hidden_layer_sizes[1])
+        self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
 
     def set_layer_size(self,hidden_layer_sizes):
         """
@@ -195,6 +206,12 @@ class MultiLayerPerceptronPotential():
                 k_forces=self.hyper_params["loss_forces"],k_reglrn=self.hyper_params["loss_regularization"],
                 norm_type=_map[self.loss_norm])
 
+    def _update_loss_log(self,loss):
+        """
+        Store most recent value of objective function during optimization
+        """
+        self._loss_log.append(loss)
+
     def _loss(self,weights,set_type):
         import nnp.nn.fortran.nn_f95 as f95_api 
         if np.isnan(weights).any():
@@ -202,6 +219,9 @@ class MultiLayerPerceptronPotential():
         
         _map = {"train":1,"test":2} 
         tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type])
+        
+        # book keeping
+        self._update_loss_log(tmp)
         
         if np.isnan(tmp):
             raise MlppError("Nan returned from loss calculation")
@@ -227,6 +247,9 @@ class MultiLayerPerceptronPotential():
         _map = {"train":1,"test":2} 
         getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,set_type=_map[set_type],\
                 jacobian=self.jacobian)
+      
+        # count number of jacobian evaluations 
+        self._njev += 1
         
         if np.isnan(self.jacobian).any():
             raise MlppError("Nan computed for jacobian of loss")
@@ -280,11 +303,22 @@ class MultiLayerPerceptronPotential():
         >>> # regress net weights
         >>> training_loss = mlpp.fit(training_data)
         """
+        # Scipy log class lacks objective function with iteration
+        self._init_optimization_log()
 
         self._prepare_data_structures(X=X,set_type="train")
 
         self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
                 method=self.solver,args=("train"),jac=self._loss_jacobian)
+
+        # book keeping
+        self.OptimizeResult.njev = self._njev
+
+        # use custom OptimizeResult class
+        self.OptimizeResult = NnpOptimizeResult(self.OptimizeResult)
+
+        # store loss with optimization iterations
+        self.OptimizeResult.loss_log = np.asarray(np.asarray(self._loss_log))
 
         # store optimized weights 
         self.weights = self.OptimizeResult.get("x")
