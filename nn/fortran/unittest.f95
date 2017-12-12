@@ -37,7 +37,7 @@ program unittest
             num_nodes(2) = 3
 
             !* nonlinear function
-            nlf_type = 2
+            nlf_type = 1
             
             !* features
             fD = 6

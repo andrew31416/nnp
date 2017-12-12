@@ -277,13 +277,12 @@ module propagate
 
             integer,intent(in) :: set_type,conf,atm
 
-            integer :: ii,jj,kk
+            integer :: ii,jj,kk,ll,mm
             real(8) :: hprimeprime_2(1:net_dim%hl2),hprimeprime_1(1:net_dim%hl1)
             real(8) :: tmp_l1(1:net_dim%hl1)
             real(8) :: tmp1
             real(8) :: sub_BT(1:D,1:net_dim%hl2)
-integer :: ll,mm,pp,qq 
-real(8) :: tmp2           
+            
             ! d^2 y / dwdx = d2ydxdw(atm,feature)%hl*
         
             !* subsidiaries
@@ -563,14 +562,18 @@ return
 
             real(8),intent(in) :: x
 
-            real(8) :: tmp1,tmp2
+            real(8) :: tmp1,tmp2,sgn
 
             tmp1 = exp(x)
-            !* compute in log-space for stability as |x| -> inf.
-            tmp2 = x + log(tmp1-1.0d0) - 3.0d0*log(tmp1+1.0d0)
-write(*,*) 'LOGISTIC DERIV NOT OK - fix'
-call exit(0)
-            logistic_derivderiv = -exp(tmp2)
+
+            sgn = sign(1.0d0,tmp1-1.0d0)
+            
+            !* y''(x) = -sgn(e^x - 1) * e^x abs(e^x -1 )/(e^x+1)^3
+            tmp2 = x + log(abs(tmp1-1.0d0)) - 3.0d0*log(tmp1+1.0d0)
+
+            tmp2 = -sgn*exp(tmp2)
+
+            logistic_derivderiv = tmp2
         end function logistic_derivderiv
 
         real(8) function tanh_deriv(x)
