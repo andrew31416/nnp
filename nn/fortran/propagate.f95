@@ -572,7 +572,11 @@ return
             tmp2 = x + log(abs(tmp1-1.0d0)) - 3.0d0*log(tmp1+1.0d0)
 
             tmp2 = -sgn*exp(tmp2)
-
+            
+            if (isnan(tmp2)) then
+                !* exp(x) not representable in double precision
+                tmp2 = 0.0d0
+            end if    
             logistic_derivderiv = tmp2
         end function logistic_derivderiv
 
