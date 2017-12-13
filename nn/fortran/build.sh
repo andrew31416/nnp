@@ -49,6 +49,9 @@ fwrap_functions+=" num_threads"
 fwrap_functions+=" loss"
 fwrap_functions+=" loss_jacobian"
 fwrap_functions+=" backprop_all_forces"
+fwrap_functions+=" get_config"
+fwrap_functions+=" get_nconf"
+fwrap_functions+=" get_natm"
 
 # clear previous build
 rm $f1"o" $f1"mod"

@@ -212,4 +212,42 @@ module util
             end do
             any_nan_twod = .false.
         end function any_nan_twod
+
+        real(8) function get_config(set_type,conf,cell,atomic_number,positions,forces)
+            implicit none
+
+            integer,intent(in) :: set_type,conf
+            real(8),intent(inout) :: cell(1:3,1:3),positions(:,:)
+            real(8),intent(inout) :: atomic_number(:),forces(:,:)
+
+            !* scratch
+            integer :: atm
+
+            cell(1:3,1:3) = data_sets(set_type)%configs(conf)%cell(1:3,1:3)
+            
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                forces(:,atm) = data_sets(set_type)%configs(conf)%current_fi(:,atm)
+                positions(:,atm) = data_sets(set_type)%configs(conf)%r(:,atm)
+                atomic_number(atm) = data_sets(set_type)%configs(conf)%z(atm)
+            end do
+
+            !* return total energy
+            get_config = sum(data_sets(set_type)%configs(conf)%current_ei)
+        end function get_config
+
+        integer function get_nconf(set_type)
+            implicit none
+
+            integer,intent(in) :: set_type
+
+            get_nconf = data_sets(set_type)%nconf
+        end function get_nconf
+
+        integer function get_natm(set_type,conf)
+            implicit none
+
+            integer,intent(in) :: set_type,conf
+
+            get_natm = data_sets(set_type)%configs(conf)%n
+        end function get_natm
 end module util

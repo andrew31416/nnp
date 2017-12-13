@@ -476,7 +476,7 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             do while(.true.)
                 if (line.eq.1) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) string           
-                else if ( (line.eq.2).and.(line.le.4) ) then
+                else if ( (line.ge.2).and.(line.le.4) ) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) lx,ly,lz 
                     data_sets(set_type)%configs(conf)%cell(1,line-1) = lx
                     data_sets(set_type)%configs(conf)%cell(2,line-1) = ly
