@@ -323,8 +323,11 @@ class MultiLayerPerceptronPotential():
         # store optimized weights 
         self.weights = self.OptimizeResult.get("x")
 
+        # predicted energies and forces
+        predicted_gip = nnp.util.io._parse_configs_from_fortran("train")
+
         # return loss
-        return self.OptimizeResult.get("fun")
+        return self.OptimizeResult.get("fun"),predicted_gip
 
     def predict(self,X):
         """
@@ -368,9 +371,12 @@ class MultiLayerPerceptronPotential():
 
         # forward and backward propagate to calc. all forces
         loss = self._loss(weights=self.weights,set_type="test")
+        
+        # predicted energies and forces
+        predicted_gip = nnp.util.io._parse_configs_from_fortran("train")
 
         # return loss
-        return loss
+        return loss,predicted_gip
 
 class MlppError(Exception):
     pass    

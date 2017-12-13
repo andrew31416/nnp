@@ -2,6 +2,7 @@ import numpy as np
 import tempfile
 import shutil
 import nnp.nn.fortran.nn_f95 as f95_api
+import parsers
 
 def _write_file(config,fname):
     """_write_file
@@ -128,5 +129,55 @@ def _parse_configs_to_fortran(gip,set_type):
     shutil.rmtree(tmpdir) 
 
 
+def _parse_configs_from_fortran(set_type):
+    """
+    Read fortran data and generate parsers.GeneralInputParser object containing
+    predicted forces and total energy for all configurations in the set_type
+    
+    Parameters
+    ----------
+    set_type : String, allowed values = 'test','train'
+        Which data set to parse
+    """
+
+    set_type = set_type.lower()
+    if set_type not in ['test','train']:
+        raise IoError("{} not a supported set type : {}".format(set_type,'test,train'))
+
+    _map = {'train':1,'test':2}
+    nconf = getattr(f95_api,"f90wrap_get_nconf")(set_type=_map[set_type])
+
+    gip = parsers.GeneralInputParser()
+    gip.supercells = []
+
+    for _conf in range(1,nconf+1):
+        natm = getattr(f95_api,"f90wrap_get_natm")(set_type=_map[set_type],conf=_conf)
+
+        forces = np.zeros((3,natm),dtype=np.float64,order='F')
+        postns = np.zeros((3,natm),dtype=np.float64,order='F')
+        atmnum = np.zeros(natm,dtype=np.float64,order='F')
+        cellvc = np.zeros((3,3),dtype=np.float64,order='F')
+
+        # parse config from fortran
+        toteng = getattr(f95_api,"f90wrap_get_config")(set_type=_map[set_type],conf=_conf,cell=cellvc,\
+                atomic_number=atmnum,positions=postns,forces=forces)
+
+        _s = parsers.structure_class.supercell()
+        _s["cell"] = np.asarray(cellvc.T,order='C')
+        _s["forces"] = np.asarray(forces.T,order='C')
+        _s["positions"] = np.asarray(np.dot(np.linalg.inv(cellvc),postns).T,dtype=np.float64,order='C')
+        _s["atomic_number"] = np.asarray(atmnum,dtype=np.int16,order='C')
+        species = [None for ii in range(_s["atomic_number"].shape[0])]
+        for ii,_z in enumerate(_s["atomic_number"]):
+            for _key in parsers.atomic_data.atomic_number.atomic_number:
+                if parsers.atomic_data.atomic_number.atomic_number[_key]==_z:
+                    species[ii] = _key
+            if species[ii] is None:
+                raise IoError("atomic number {} unknown".format(_z))
+        _s["species"] = species
+        _s["energy"] = toteng
+        gip.supercells.append(_s)
+    return gip
+    
 class IoError(Exception):
     pass            
