@@ -1,4 +1,6 @@
 import nnp.nn.fortran.nn_f95 as f95_api
+import os
+import numpy as np
 
 def num_threads():
     """
@@ -13,3 +15,7 @@ def num_threads():
     """
 
     return getattr(f95_api,"f90wrap_num_threads")()
+
+class GeneralUtilError(Exception):
+    pass    
+        

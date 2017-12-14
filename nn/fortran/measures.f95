@@ -42,7 +42,7 @@ module measures
                 
                 !* number of threads
                 num_threads = omp_get_max_threads()
-
+                
                 !* number of confs per thread (except final thread)
                 dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
                 
@@ -53,6 +53,7 @@ module measures
                 else
                     thread_end = (thread_idx+1)*dconf
                 end if 
+
             
                 do conf=thread_start,thread_end,1
                     call loss_confloop(set_type,conf)
@@ -160,9 +161,9 @@ module measures
                 call allocate_weights(dydw)
                 call zero_weights(loss_jac_local)
                 
-                
-                do conf=1,data_sets(set_type)%nconf,1
-                    call loss_jacobian_confloop(set_type,conf,include_force_loss,tmp1_jac,tmp2_jac,loss_jac_local)
+                do conf=thread_start,thread_end,1
+                    call loss_jacobian_confloop(set_type,conf,include_force_loss,&
+                            &tmp1_jac,tmp2_jac,loss_jac_local)
                 end do !* end loop over confs
                 
                 !* perform reduction of loss_jac_local -> loss_jac_shared
@@ -197,9 +198,9 @@ module measures
             !-------------------------------!
             !* regularization contribution *!
             !-------------------------------!
-        
+            
             call loss_reglrn_jacobian(loss_jac_shared)
-
+            
             !* structured to 1d
             call parse_structure_to_array(loss_jac_shared,jacobian)
 
