@@ -515,8 +515,6 @@ class features():
         # do EM on mean,precision,mixing coeffs.
         gmm.fit(symmetric_dist)
 
-        if gmm.converged_!=True:
-            raise FeaturesError("GMM inference did not converge. Change tol or num_components.")
 
         means = gmm.means_
         precisions = gmm.precisions_
