@@ -349,7 +349,7 @@ program unittest
             loss_norm_type = 1
             dloss = 0.0d0
 
-            do ii=4,4,1
+            do ii=1,4,1
                 if (ii.eq.1) then
                     loss_const_energy = 1.0d0
                     loss_const_forces = 0.0d0

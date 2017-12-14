@@ -92,6 +92,8 @@ module measures
             else
                 include_force_loss = .true.
             end if
+            
+            call allocate_weights(d2ydxdw)
 
             do conf=1,data_sets(set_type)%nconf,1
                 if(allocated(dydx)) then
@@ -100,25 +102,24 @@ module measures
                 call allocate_dydx(set_type,conf)
                 call zero_weights(tmp_jac)
                 call zero_weights(tmp2_jac)
-                call allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
+                !call allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
                 
                 
                 call forward_propagate(set_type,conf)
                 call backward_propagate(set_type,conf)
+                
+                if (include_force_loss) then
+                    call calculate_forces(set_type,conf)
+                end if
 
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    !* for energy contribuion to loss
                     call calculate_dydw(set_type,conf,atm)
                    
                     !* total energy contribution
                     call loss_energy_jacobian(tmp_jac)
-                   
-                    if (include_force_loss) then
-                        !* compute subsidiary matrices for force loss deriv.
-                        call forceloss_weight_derivative_subsidiary1(atm)
-                        call forceloss_weight_derivative_subsidiary2(set_type,conf,atm)
-                    end if
                 end do
-
+                
 
                 !-----------------------!
                 !* energy contribution *!
@@ -149,9 +150,6 @@ module measures
                     !=======================!
                     !* forces contribution *!
                     !=======================!
-                    
-                    call calculate_forces(set_type,conf)
-
                     call loss_forces_jacobian(set_type,conf,tmp2_jac)
                     
                     loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
@@ -173,6 +171,7 @@ module measures
 
             call deallocate_weights(loss_jac)
             call deallocate_weights(tmp_jac)
+            call deallocate_weights(tmp2_jac)
             call deallocate_forceloss_subsidiary_mem()                
         end subroutine loss_jacobian
 
@@ -321,18 +320,21 @@ module measures
             type(weights),intent(inout) :: tmp_jac
             
             integer :: atm,kk,num_neigh,ii,idx,dd
-            real(8) :: vec(1:3),sgn(1:3)
+            real(8) :: vec(1:3),sgns(1:3,1:data_sets(set_type)%configs(conf)%n)
+            real(8) :: tmp_buffer(1:3)
 
             if (scalar_equal(loss_const_forces,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
                 return
             end if
+            do atm=1,data_sets(set_type)%configs(conf)%n
+                do dd=1,3
+                    sgns(dd,atm) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,atm)-&
+                            &data_sets(set_type)%configs(conf)%ref_fi(dd,atm))
+                end do
+            end do
 
             do atm=1,data_sets(set_type)%configs(conf)%n
-                
-                !do dd=1,3
-                !    sgn(dd) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,atm)-&
-                !            &data_sets(set_type)%configs(conf)%ref_fi(dd,atm))
-                !end do
+                call forceloss_weight_derivative_subsidiary1(atm)
                 
                 do kk=1,D
                     num_neigh = data_sets(set_type)%configs(conf)%x_deriv(kk,atm)%n 
@@ -341,26 +343,40 @@ module measures
                         !* no atoms contribute to this feature
                         cycle
                     end if
+                    
+                    call forceloss_weight_derivative_subsidiary2(set_type,conf,atm,kk)
+
+                    tmp_buffer = 0.0d0
 
                     do ii=1,num_neigh
                         !* identity of neighbouring atom
                         idx = data_sets(set_type)%configs(conf)%x_deriv(kk,atm)%idx(ii)
                         
-                        
-                        do dd=1,3
-                            sgn(dd) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,idx)-&
-                                    &data_sets(set_type)%configs(conf)%ref_fi(dd,idx))
-                        end do
-
                         !* d feature / d r_idx
                         vec = data_sets(set_type)%configs(conf)%x_deriv(kk,atm)%vec(:,ii)
+                       
+                        do dd=1,3 
+                            tmp_buffer(dd) = tmp_buffer(dd) + vec(dd)*sgns(dd,idx)
+                        end do 
+                        !do dd=1,3
+                        !    sgn(dd) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,idx)-&
+                        !            &data_sets(set_type)%configs(conf)%ref_fi(dd,idx))
+                        !end do
+
     
-                        do dd=1,3
-                            tmp_jac%hl1 = tmp_jac%hl1 - vec(dd)*sgn(dd)*d2ydxdw(atm,kk)%hl1
-                            tmp_jac%hl2 = tmp_jac%hl2 - vec(dd)*sgn(dd)*d2ydxdw(atm,kk)%hl2
-                            tmp_jac%hl3 = tmp_jac%hl3 - vec(dd)*sgn(dd)*d2ydxdw(atm,kk)%hl3
-                        end do
+                        !do dd=1,3
+                        !    tmp_jac%hl1 = tmp_jac%hl1 - vec(dd)*sgns(dd,idx)*d2ydxdw(atm,kk)%hl1
+                        !    tmp_jac%hl2 = tmp_jac%hl2 - vec(dd)*sgns(dd,idx)*d2ydxdw(atm,kk)%hl2
+                        !    tmp_jac%hl3 = tmp_jac%hl3 - vec(dd)*sgns(dd,idx)*d2ydxdw(atm,kk)%hl3
+                        !end do
                     end do !* end loop over neighbours to (kk,atm_loc)
+                    
+                    do dd=1,3
+                        tmp_jac%hl1 = tmp_jac%hl1 - tmp_buffer(dd)*d2ydxdw%hl1
+                        tmp_jac%hl2 = tmp_jac%hl2 - tmp_buffer(dd)*d2ydxdw%hl2
+                        tmp_jac%hl3 = tmp_jac%hl3 - tmp_buffer(dd)*d2ydxdw%hl3
+                    end do
+
                 end do !* end loop over features           
             end do  !* end loop over atoms in local cell
         end subroutine loss_forces_jacobian
