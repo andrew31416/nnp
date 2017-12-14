@@ -17,7 +17,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:8)
+            logical :: tests(1:9)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -62,11 +62,11 @@ program unittest
             !----------------------!
             
             tests(1) = test_dydw()                  ! dydw
-            call test_loss_jac(tests(2:4))          ! d loss / dw
-            tests(5) = test_dydx()                  ! dydx
-            tests(6) = test_threebody_derivatives() ! d cos(angle) /dr_i etc.
-            tests(7) = test_dxdr()                  ! d feature / d atom position
-            tests(8) = test_forces()                ! - d E_tot / d r_atm 
+            call test_loss_jac(tests(2:5))          ! d loss / dw
+            tests(6) = test_dydx()                  ! dydx
+            tests(7) = test_threebody_derivatives() ! d cos(angle) /dr_i etc.
+            tests(8) = test_dxdr()                  ! d feature / d atom position
+            tests(9) = test_forces()                ! - d E_tot / d r_atm 
             
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -249,6 +249,7 @@ program unittest
                 deallocate(dydx)
             end if
             call allocate_dydx(set_type,conf)
+            call allocate_units(set_type,conf)
 
             dy = 0.0d0
 
@@ -259,10 +260,11 @@ program unittest
             !--------------------------!
 
             !* forward prop
-            call forward_propagate(conf,atm,set_type)
+            call forward_propagate(set_type,conf)
             
             !* back prop
-            call backward_propagate(conf,atm,set_type)
+            call backward_propagate(set_type,conf)
+            call calculate_dydw(set_type,conf,atm)
           
             !* parse dy/dw into 1d array
             call parse_structure_to_array(dydw,dydw_flat)
@@ -290,7 +292,7 @@ program unittest
                         call copy_weights_to_nobiasT()
                         
                         !* forward propagate
-                        call forward_propagate(conf,atm,set_type)
+                        call forward_propagate(set_type,conf)
 
                         if (jj.eq.1) then
                             dy = data_sets(set_type)%configs(conf)%current_ei(atm)
@@ -324,7 +326,7 @@ program unittest
 
             implicit none
 
-            logical,intent(out) :: test_result(1:3)
+            logical,intent(out) :: test_result(1:4)
 
             !* scratch
             integer :: ii,jj,kk,ww,conf,atm,set_type
@@ -347,7 +349,7 @@ program unittest
             loss_norm_type = 1
             dloss = 0.0d0
 
-            do ii=1,3,1
+            do ii=4,4,1
                 if (ii.eq.1) then
                     loss_const_energy = 1.0d0
                     loss_const_forces = 0.0d0
@@ -356,10 +358,14 @@ program unittest
                     loss_const_energy = 0.0d0
                     loss_const_forces = 1.0d0
                     loss_const_reglrn = 0.0d0
-                else
+                else if(ii.eq.3) then
                     loss_const_energy = 0.0d0
                     loss_const_forces = 0.0d0
                     loss_const_reglrn = 1.0d0
+                else
+                    loss_const_energy = 1.0d0
+                    loss_const_forces = 0.6d0
+                    loss_const_reglrn = 0.2d0
                 end if
                 
                 !* set loss function parameters
@@ -441,6 +447,7 @@ program unittest
                         deallocate(dydx)
                     end if 
                     call allocate_dydx(set_type,conf)
+                    call allocate_units(set_type,conf)
                     
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         log_atms(atm) = .true.
@@ -449,8 +456,8 @@ program unittest
                         !* analytical differential *!
                         !---------------------------!
                         
-                        call forward_propagate(conf,atm,set_type)
-                        call backward_propagate(conf,atm,set_type)
+                        call forward_propagate(set_type,conf)
+                        call backward_propagate(set_type,conf)
 
                         !--------------------------!
                         !* numerical differential *!
@@ -461,7 +468,7 @@ program unittest
 
                             deriv_ok = .false.
 
-                            do ww=2,2 
+                            do ww=2,4 
                                 !* finite difference for feature
                                 dw = 1.0d0/(10**ww)
 
@@ -472,7 +479,7 @@ program unittest
                                         data_sets(set_type)%configs(conf)%x(xx+1,atm) = x0 - dw
                                     end if
                                     
-                                    call forward_propagate(conf,atm,set_type)
+                                    call forward_propagate(set_type,conf)
                                     
                                     if (ii.eq.1) then
                                         num_dydx(xx) = data_sets(set_type)%configs(conf)%current_ei(atm)
@@ -956,6 +963,7 @@ program unittest
                         deallocate(dydx)
                     end if
                     call allocate_dydx(set_type,conf)
+                    call allocate_units(set_type,conf)
                     
                     !* make sure we'are calculating derivatives
                     calc_feature_derivatives = .true.
@@ -966,8 +974,8 @@ program unittest
                     allocate(anl_forces(3,data_sets(set_type)%configs(conf)%n))
                     
                     do atm=1,data_sets(set_type)%configs(conf)%n,1
-                        call forward_propagate(conf,atm,set_type)
-                        call backward_propagate(conf,atm,set_type)
+                        call forward_propagate(set_type,conf)
+                        call backward_propagate(set_type,conf)
                     end do
                     
                     !* analytical forces
@@ -1001,7 +1009,7 @@ program unittest
 
                                     !* have to propagate through all atoms
                                     do atm_prime=1,data_sets(set_type)%configs(conf)%n,1
-                                        call forward_propagate(conf,atm_prime,set_type)
+                                        call forward_propagate(set_type,conf)
                                    end do
 
                                     !* total energy

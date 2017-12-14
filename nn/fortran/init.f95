@@ -26,34 +26,34 @@ module init
             call allocate_weights_nobiasT(net_weights_nobiasT)
             call allocate_weights(dydw)
            
-            if (allocated(net_units%a%hl1)) then
-                deallocate(net_units%a%hl1)
-                deallocate(net_units%a%hl2)
-                deallocate(net_units%a_deriv%hl1)
-                deallocate(net_units%a_deriv%hl2)
-            end if
+            !if (allocated(net_units%a%hl1)) then
+            !    deallocate(net_units%a%hl1)
+            !    deallocate(net_units%a%hl2)
+            !    deallocate(net_units%a_deriv%hl1)
+            !    deallocate(net_units%a_deriv%hl2)
+            !end if
 
-            allocate(net_units%a%hl1(net_dim%hl1))
-            allocate(net_units%a%hl2(net_dim%hl2))
-            allocate(net_units%a_deriv%hl1(net_dim%hl1))
-            allocate(net_units%a_deriv%hl2(net_dim%hl2))
+            !allocate(net_units%a%hl1(net_dim%hl1))
+            !allocate(net_units%a%hl2(net_dim%hl2))
+            !allocate(net_units%a_deriv%hl1(net_dim%hl1))
+            !allocate(net_units%a_deriv%hl2(net_dim%hl2))
            
-            if (allocated(net_units%z%hl1)) then
-                deallocate(net_units%z%hl1)
-                deallocate(net_units%z%hl2)
-            end if
-            
-            !* include null value for bias
-            allocate(net_units%z%hl1(0:net_dim%hl1))
-            allocate(net_units%z%hl2(0:net_dim%hl2))
-           
-            if (allocated(net_units%delta%hl1)) then
-                deallocate(net_units%delta%hl1)
-                deallocate(net_units%delta%hl2)
-            end if
-            
-            allocate(net_units%delta%hl1(net_dim%hl1))
-            allocate(net_units%delta%hl2(net_dim%hl2))
+           ! if (allocated(net_units%z%hl1)) then
+           !     deallocate(net_units%z%hl1)
+           !     deallocate(net_units%z%hl2)
+           ! end if
+           ! 
+           ! !* include null value for bias
+           ! allocate(net_units%z%hl1(0:net_dim%hl1))
+           ! allocate(net_units%z%hl2(0:net_dim%hl2))
+           !
+           ! if (allocated(net_units%delta%hl1)) then
+           !     deallocate(net_units%delta%hl1)
+           !     deallocate(net_units%delta%hl2)
+           ! end if
+           ! 
+           ! allocate(net_units%delta%hl1(net_dim%hl1))
+           ! allocate(net_units%delta%hl2(net_dim%hl2))
 
             !* total number of net weights
             nwght = total_num_weights() 
@@ -388,5 +388,39 @@ module init
             deallocate(data_sets(1)%configs)
             deallocate(data_sets(2)%configs)
         end subroutine finalize
+
+        subroutine allocate_units(set_type,conf)
+            implicit none
+
+            integer,intent(in) :: set_type,conf
+
+            !* scratch
+            integer :: natm
+
+            natm = data_sets(set_type)%configs(conf)%n
+
+            if (allocated(net_units%a%hl1)) then
+               deallocate(net_units%a%hl1)
+               deallocate(net_units%a%hl2)
+               deallocate(net_units%a_deriv%hl1)
+               deallocate(net_units%a_deriv%hl2)
+               deallocate(net_units%z%hl1)
+               deallocate(net_units%z%hl2)
+               deallocate(net_units%delta%hl1)
+               deallocate(net_units%delta%hl2)
+            end if
+
+            !* layer 1
+            allocate(net_units%a%hl1(1:net_dim%hl1,1:natm)) 
+            allocate(net_units%a_deriv%hl1(1:net_dim%hl1,1:natm))
+            allocate(net_units%z%hl1(0:net_dim%hl1,1:natm))
+            allocate(net_units%delta%hl1(1:net_dim%hl1,1:natm))
+            
+            !* layer 2
+            allocate(net_units%a%hl2(1:net_dim%hl2,1:natm)) 
+            allocate(net_units%a_deriv%hl2(1:net_dim%hl2,1:natm))
+            allocate(net_units%z%hl2(0:net_dim%hl2,1:natm))
+            allocate(net_units%delta%hl2(1:net_dim%hl2,1:natm))
+        end subroutine allocate_units
 
 end module init

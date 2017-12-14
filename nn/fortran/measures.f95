@@ -18,7 +18,7 @@ module measures
             real(8),intent(in) :: flat_weights(:)
 
             !* scratch
-            integer :: conf,atm
+            integer :: conf
             real(8) :: tmp_energy,tmp_forces,tmp_reglrn
             
             !* read in NN weights
@@ -30,14 +30,18 @@ module measures
                     deallocate(dydx)
                 end if
                 call allocate_dydx(set_type,conf)
+                call allocate_units(set_type,conf)
+               
+                call forward_propagate(set_type,conf)
                 
-                do atm=1,data_sets(set_type)%configs(conf)%n,1
-                    !* forward prop on data
-                    call forward_propagate(conf,atm,set_type)
-                    
-                    !* backward prop on data
-                    call backward_propagate(conf,atm,set_type)
-                end do
+                call backward_propagate(set_type,conf)                
+                !do atm=1,data_sets(set_type)%configs(conf)%n,1
+                !    !* forward prop on data
+                !    call forward_propagate(conf,atm,set_type)
+                !    
+                !    !* backward prop on data
+                !    call backward_propagate(conf,atm,set_type)
+                !end do
 
                 !* calculate forces in configuration
                 call calculate_forces(set_type,conf)
@@ -97,19 +101,20 @@ module measures
                 call zero_weights(tmp_jac)
                 call zero_weights(tmp2_jac)
                 call allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
+                
+                
+                call forward_propagate(set_type,conf)
+                call backward_propagate(set_type,conf)
 
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
-                    !* forward prop on training data
-                    call forward_propagate(conf,atm,set_type)
-                    
-                    call backward_propagate(conf,atm,set_type)
+                    call calculate_dydw(set_type,conf,atm)
                    
                     !* total energy contribution
                     call loss_energy_jacobian(tmp_jac)
                    
                     if (include_force_loss) then
                         !* compute subsidiary matrices for force loss deriv.
-                        call forceloss_weight_derivative_subsidiary1()
+                        call forceloss_weight_derivative_subsidiary1(atm)
                         call forceloss_weight_derivative_subsidiary2(set_type,conf,atm)
                     end if
                 end do

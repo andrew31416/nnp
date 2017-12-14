@@ -17,206 +17,142 @@ module propagate
     real(8),public,allocatable :: sub_B(:,:),sub_C(:,:),sub_D(:,:)
 
     contains
-        subroutine forward_propagate(conf,atm,set_type)
+        subroutine forward_propagate(set_type,conf)
             implicit none
 
-            integer,intent(in) :: conf,atm,set_type
+            integer,intent(in) :: conf,set_type
 
             !* scratch
-            integer :: nrow,ncol,ii
-            real(8) :: x_atom(1:D+1)
+            integer :: ii,natm,atm
 
-            !* copy feature vector (inlcuding null for bias)
-            call dcopy(D+1,data_sets(set_type)%configs(conf)%x(:,atm),1,x_atom,1)
-            
+            natm = data_sets(set_type)%configs(conf)%n
+
             !------------------!
             !* hidden layer 1 *!
             !------------------!
             
-            ncol = D  + 1
-            nrow = net_dim%hl1
 
-            !* a^1_m = \sum_k=0^K w_mk^1 gamma_k
-            call dgemv('n',nrow,ncol,1.0d0,net_weights%hl1,nrow,&
-                    &x_atom,1,0.0d0,net_units%a%hl1,1)
-            !call dgemv('t',nrow,ncol,1.0d0,net_weights%hl1(:,:),nrow,&
-            !        &x_atom,1,0.0d0,net_units%a%hl1,1)
+            !* a^1_mI = \sum_k=0^K w_mk^1 gamma_kI
+            call dgemm('n','n',net_dim%hl1,natm,D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
+                    &data_sets(set_type)%configs(conf)%x,D+1,0.0d0,net_units%a%hl1,net_dim%hl1)
 
-            !* null value for bias
-            net_units%z%hl1(0) = 1.0d0
-            !net_units%z%hl1(1) = 1.0d0
+            do atm=1,natm,1
+                !* null value for bias
+                net_units%z%hl1(0,atm) = 1.0d0
 
-            do ii=1,net_dim%hl1,1
-                !* non-linear activation
-                net_units%z%hl1(ii) = activation(net_units%a%hl1(ii))
+                do ii=1,net_dim%hl1,1
+                    !* non-linear activation
+                    net_units%z%hl1(ii,atm) = activation(net_units%a%hl1(ii,atm))
+                end do
             end do
 
             !------------------!
             !* hidden layer 2 *!
             !------------------!
 
-            ncol = net_dim%hl1 + 1
-            nrow = net_dim%hl2
+            !* a^2_lI = \sum_{m=0}^N1 w^2_lm z^1_mI
+            call dgemm('n','n',net_dim%hl2,natm,net_dim%hl1+1,1.0d0,net_weights%hl2,net_dim%hl2,&
+                    &net_units%z%hl1,net_dim%hl1+1,0.0d0,net_units%a%hl2,net_dim%hl2)
 
-            !* a^2_l = \sum_{m=0}^N1 w^2_lm z^1_m
-            !call dgemv('t',nrow,ncol,1.0d0,net_weights%hl2(:,:),nrow,net_units%z%hl1,&
-            !    &1,0.0d0,net_units%a%hl2,1)
-            call dgemv('n',nrow,ncol,1.0d0,net_weights%hl2,nrow,net_units%z%hl1,&
-                &1,0.0d0,net_units%a%hl2,1)
+            do atm=1,natm,1
+                !* null value for bias
+                net_units%z%hl2(0,atm) = 1.0d0
 
-            !* null value for bias
-            net_units%z%hl2(0) = 1.0d0
-
-            do ii=1,net_dim%hl2,1
-                !* nonlinear map of linear models
-                net_units%z%hl2(ii) = activation(net_units%a%hl2(ii))
+                do ii=1,net_dim%hl2,1
+                    !* nonlinear map of linear models
+                    net_units%z%hl2(ii,atm) = activation(net_units%a%hl2(ii,atm))
+                end do
             end do
 
             !-------------------------!
             !* final layer to output *!
             !-------------------------!
-            
-            !* predicted energy
-            data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
-                    &net_units%z%hl2,1)
-            !* must compute forces seperately once have iterated over all atoms in conf 
+           
+            !* try to convert this to dgemv with 't'  
+            do atm=1,natm,1
+                data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
+                        &net_units%z%hl2(:,atm),1)
+            end do
         end subroutine
 
-        subroutine backward_propagate(conf,atm,set_type)
-            !===============================================!
-            ! calculate dy/dw for all weights               !
-            !===============================================!
-
-            
+        subroutine backward_propagate(set_type,conf)
             implicit none
 
-            integer,intent(in) :: conf,atm,set_type
+            integer,intent(in) :: conf,set_type
 
             !* scratch
-            integer :: ii
-            real(8) :: x_atom(1:D+1)
+            integer :: ii,atm,natm
     
-            !* copy feature vector (inlcuding null for bias)
-            call dcopy(D+1,data_sets(set_type)%configs(conf)%x(:,atm),1,x_atom,1)
+            natm = data_sets(set_type)%configs(conf)%n
             
             !-------------------!
             !* delta back prop *!
             !-------------------!
 
             !* layer 2 *!
-            
-            !* delta_i^(2) = h'(a_i^(2)) * w_i^(3) 
-            do ii=1,net_dim%hl2,1
-                !* activation derivatives
-                net_units%a_deriv%hl2(ii) = activation_deriv(net_units%a%hl2(ii))
-                !* bias does not have node
-                net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii)
-                !net_units%delta%hl2(ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
+           
+            do atm=1,natm,1 
+                !* delta_i^(2) = h'(a_i^(2)) * w_i^(3) 
+                do ii=1,net_dim%hl2,1
+                    !* activation derivatives
+                    net_units%a_deriv%hl2(ii,atm) = activation_deriv(net_units%a%hl2(ii,atm))
+                    
+                    net_units%delta%hl2(ii,atm) = net_units%a_deriv%hl2(ii,atm)*net_weights%hl3(ii)
+                end do
             end do
             
             !* layer 1 *!
             
-            !* delta_i^(1) = h'(a_i^(1)) * sum_j w_ji^(2) delta_j^(2)
-            call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights_nobiasT%hl2,&
-                    &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
-            !call dgemv('t',net_dim%hl2,net_dim%hl2,1.0d0,tmp_w2,&
-            !        &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
-            
-            !net_units%delta%hl1 = net_units%delta%hl1*net_units%a_deriv%hl1
-            !call dgemv('n',net_dim%hl1,net_dim%hl2,1.0d0,net_weights%hl2(2:net_dim%hl1+1,1:net_dim%hl2),&
-            !        &net_dim%hl1,net_units%delta%hl2,1,0.0d0,net_units%delta%hl1,1)
+            !* delta_iI^(1) = h'(a_i^(1)) * sum_j w_ji^(2) delta_jI^(2)
+            call dgemm('n','n',net_dim%hl1,natm,net_dim%hl2,1.0d0,net_weights_nobiasT%hl2,&
+                    &net_dim%hl1,net_units%delta%hl2,net_dim%hl2,0.0d0,net_units%delta%hl1,net_dim%hl1)
+           
+            do atm=1,natm,1 
+                do ii=1,net_dim%hl1,1
+                    !* activation derivatives
+                    net_units%a_deriv%hl1(ii,atm) = activation_deriv(net_units%a%hl1(ii,atm))
 
-            
-            do ii=1,net_dim%hl1,1
-                !* activation derivatives
-                net_units%a_deriv%hl1(ii) = activation_deriv(net_units%a%hl1(ii))
-
-                net_units%delta%hl1(ii) = net_units%a_deriv%hl1(ii)*net_units%delta%hl1(ii)
+                    net_units%delta%hl1(ii,atm) = net_units%a_deriv%hl1(ii,atm)*net_units%delta%hl1(ii,atm)
+                end do
             end do
-            !* derivative of output wrt. weights *!
+            
+            !-----------------------------------------!
+            !* derivative of net output wrt features *!
+            !-----------------------------------------!
+   
+            call dgemm('n','n',D,natm,net_dim%hl1,1.0d0,net_weights_nobiasT%hl1,D,net_units%delta%hl1,&
+                    &net_dim%hl1,0.0d0,dydx,D)
+
+        end subroutine backward_propagate
+
+        subroutine calculate_dydw(set_type,conf,atm)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf,atm
 
             !---------------!
-            !* final layer *!
+            !* third layer *!
             !---------------!
 
             !* dydw%hl3 = z%hl2 , shape=(N2+1,)
-            call dcopy(net_dim%hl2+1,net_units%z%hl2,1,dydw%hl3,1)
-            !dydw%hl3(1) = 1.0d0
-            !do ii=1,net_dim%hl2,1
-                !dydw%hl3(ii+1) = net_units%z%hl2(ii+1)
-            !end do
+            call dcopy(net_dim%hl2+1,net_units%z%hl2(:,atm),1,dydw%hl3,1)
             
             !----------------!
             !* second layer *!
             !----------------!
          
             ! dydw%hl2_lm =  delta%hl2_l  *  z%hl1_m   l=[1,N2] , m=[0,N1]
-            call dgemm('n','n',net_dim%hl2,net_dim%hl1+1,1,1.0d0,net_units%delta%hl2,net_dim%hl2,&
-                    &net_units%z%hl1,1,0.0d0,dydw%hl2,net_dim%hl2)
-
-            !* bias
-            !do ii=1,net_dim%hl2,1
-            !    dydw%hl2(1,ii) = net_units%a_deriv%hl2(ii)*net_weights%hl3(ii+1)
-            !end do
-            !
-            !call dgemm('n','n',net_dim%hl1,net_dim%hl2,1,1.0d0,net_units%z%hl1(2),&
-            !        &net_dim%hl1,net_units%delta%hl2,1,0.0d0,dydw%hl2(2:net_dim%hl1+1,1:net_dim%hl2),net_dim%hl1)
+            call dgemm('n','n',net_dim%hl2,net_dim%hl1+1,1,1.0d0,net_units%delta%hl2(:,atm),net_dim%hl2,&
+                    &net_units%z%hl1(:,atm),1,0.0d0,dydw%hl2,net_dim%hl2)
             
             !---------------!
             !* first layer *!
             !---------------!
 
-            call dgemm('n','n',net_dim%hl1,D+1,1,1.0d0,net_units%delta%hl1,net_dim%hl1,&
-                    &x_atom,1,0.0d0,dydw%hl1,net_dim%hl1)
-
-!write(*,*) 'matrix:'
-!write(*,*) dydw%hl1
-!
-!do ii=0,D
-!    do jj=1,net_dim%hl1
-!        dydw%hl1(jj,ii) = net_units%delta%hl1(jj)*x_atom(ii+1)
-!    end do
-!end do
-!
-!write(*,*) 'norm:'
-!write(*,*) dydw%hl1
-
-            !* bias
-            !do ii=1,net_dim%hl1,1
-            !    dydw%hl1(1,ii) = net_units%a_deriv%hl1(ii)*&
-            !            &sum(net_weights%hl2(ii+1,:)*net_units%delta%hl2)
-            !end do
-            !
-            !call dgemm('n','n',D,net_dim%hl1,1,1.0d0,data_sets(set_type)%configs(conf)%x(2:D+1,atm),&
-            !        &D,net_units%delta%hl1,1,0.0d0,dydw%hl1(2:D+1,1:net_dim%hl1),D)
-
-            
-            !---------------------------!
-            !* derivative wrt features *!
-            !---------------------------!
-           
-            !* dydx_i = sum_j delta_j w^1_ji
-            call dgemv('n',D,net_dim%hl1,1.0d0,net_weights_nobiasT%hl1,D,net_units%delta%hl1,1,0.0d0,&
-                    &dydx(:,atm),1)
-!write(*,*) 'matrix:'
-!write(*,*) dydx(:,atm)           
-! dydx seems OK - dydw not working            
-!            dydx(:,atm) = 0.0d0
-!            do jj=1,net_dim%hl2
-!                do  ii=1,net_dim%hl1
-!                    tmp1 = net_units%delta%hl2(jj)*net_weights%hl2(jj,ii)*&
-!                            &net_units%a_deriv%hl1(ii)
-!                    do kk=1,D,1
-!                        dydx(kk,atm) = dydx(kk,atm) + tmp1*net_weights%hl1(ii,kk)
-!                    end do
-!                end do
-!            end do
-!write(*,*) 'normal:'
-!write(*,*) dydx(:,atm)            
-            !call dgemm("n","n",D,net_dim%hl2,net_dim%hl1,1.0d0,&
-            !        &net_weights%hl2(2:D+1,1:net_dim%net_dim%hl2),D,tmp_array,net_dim%hl1,dydx)
-
-        end subroutine backward_propagate
+            call dgemm('n','n',net_dim%hl1,D+1,1,1.0d0,net_units%delta%hl1(:,atm),net_dim%hl1,&
+                    &data_sets(set_type)%configs(conf)%x(:,atm),1,0.0d0,dydw%hl1,net_dim%hl1)
+        end subroutine calculate_dydw
 
         subroutine init_forceloss_subsidiary_mem()
             implicit none
@@ -239,9 +175,10 @@ module propagate
             deallocate(sub_D)
         end subroutine deallocate_forceloss_subsidiary_mem
 
-        subroutine forceloss_weight_derivative_subsidiary1()
+        subroutine forceloss_weight_derivative_subsidiary1(atm)
             implicit none
 
+            integer,intent(in) :: atm
             !* compute matrices A_1,A_2,B,C for conf,atm
     
             integer :: ii,jj
@@ -249,14 +186,14 @@ module propagate
             do ii=1,net_dim%hl1
                 do jj=1,net_dim%hl2
                     !* A2_ji = h'(a^2_j)*w^2_ji
-                    sub_A2(jj,ii) = net_units%a_deriv%hl2(jj)*net_weights%hl2(jj,ii)
+                    sub_A2(jj,ii) = net_units%a_deriv%hl2(jj,atm)*net_weights%hl2(jj,ii)
                 end do
             end do
 
             do ii=1,D
                 do jj=1,net_dim%hl1
                     !* A1_ji = h'(a^1_j)*w^1_ji
-                    sub_A1(jj,ii) = net_units%a_deriv%hl1(jj)*net_weights%hl1(jj,ii)
+                    sub_A1(jj,ii) = net_units%a_deriv%hl1(jj,atm)*net_weights%hl1(jj,ii)
                 end do
             end do
 
@@ -288,18 +225,18 @@ module propagate
             !* subsidiaries
             do ii=1,net_dim%hl1
                 !* h''(a^(1)))
-                hprimeprime_1(ii) = activation_derivderiv(net_units%a%hl1(ii)) 
+                hprimeprime_1(ii) = activation_derivderiv(net_units%a%hl1(ii,atm)) 
 
                 if (scalar_equal(hprimeprime_1(ii),0.0d0,dble(1e-10),dble(1e-10)**2,.false.)) then
                     !* avoid 1/0
                     tmp_l1(ii) = 0.0d0
                 else
-                    tmp_l1(ii) = hprimeprime_1(ii)/net_units%a_deriv%hl1(ii) * net_units%delta%hl1(ii)
+                    tmp_l1(ii) = hprimeprime_1(ii)/net_units%a_deriv%hl1(ii,atm) * net_units%delta%hl1(ii,atm)
                 end if
             end do
             do ii=1,net_dim%hl2
                 !* h''(a^(2))
-                hprimeprime_2(ii) = activation_derivderiv(net_units%a%hl2(ii))
+                hprimeprime_2(ii) = activation_derivderiv(net_units%a%hl2(ii,atm))
             end do
 
 
@@ -326,11 +263,11 @@ module propagate
                             !* bias
                             tmp1 = 0.0d0
                         else
-                            tmp1 = sub_A1(mm,kk)*net_units%delta%hl2(ll)
+                            tmp1 = sub_A1(mm,kk)*net_units%delta%hl2(ll,atm)
                         end if
 
                         d2ydxdw(atm,kk)%hl2(ll,mm) = net_weights%hl3(ll)*hprimeprime_2(ll)*&
-                                &net_units%z%hl1(mm)*sub_B(ll,kk) + tmp1
+                                &net_units%z%hl1(mm,atm)*sub_B(ll,kk) + tmp1
                     end do !* end loop over jj
                 end do !* end loop over ii
             end do !* end loop over features kk
@@ -343,7 +280,7 @@ module propagate
             do ii=1,net_dim%hl1
                 do jj=1,net_dim%hl2
                     sub_C(jj,ii) = net_weights%hl3(jj)*hprimeprime_2(jj)*net_weights%hl2(jj,ii)*&
-                            &net_units%a_deriv%hl1(ii)
+                            &net_units%a_deriv%hl1(ii,atm)
                 end do
             end do
 
@@ -374,7 +311,7 @@ module propagate
 
                         d2ydxdw(atm,kk)%hl1(jj,ii) = data_sets(set_type)%configs(conf)%x(ii+1,atm)*sub_D(kk,jj) +&
                                 &tmp_l1(jj)*data_sets(set_type)%configs(conf)%x(ii+1,atm)*net_weights%hl1(jj,kk)+&
-                                &tmp1*net_units%delta%hl1(jj)
+                                &tmp1*net_units%delta%hl1(jj,atm)
 
                     end do !* end loop jj over 1st layer index
                 end do !* end loop ii over feature index

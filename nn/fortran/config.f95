@@ -18,8 +18,8 @@ module config
     end type num_nodes
 
     type,public :: unit_
-        real(8),dimension(:),allocatable :: hl1
-        real(8),dimension(:),allocatable :: hl2
+        real(8),dimension(:,:),allocatable :: hl1
+        real(8),dimension(:,:),allocatable :: hl2
     end type unit_
 
     type,public :: units
