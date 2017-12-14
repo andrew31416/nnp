@@ -102,6 +102,7 @@ module measures
                 call allocate_dydx(set_type,conf)
                 call zero_weights(tmp_jac)
                 call zero_weights(tmp2_jac)
+                call allocate_units(set_type,conf)
                 !call allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
                 
                 

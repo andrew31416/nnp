@@ -10,7 +10,7 @@ modname="nn_f95"
 lapack_dir="/usr/lib/atlas-base/atlas/"
 
 FFLAGS="-O2 -fPIC -llapack -lblas"
-DEBUG="-fcheck=all -W -Wall -pedantic"
+DEBUG="-W -Wall -pedantic"
 
 #--------------------------------------------#
 # all files to compile .o and .mod files for #
