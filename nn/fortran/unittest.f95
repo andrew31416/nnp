@@ -375,7 +375,7 @@ program unittest
                 !* analytical jacobian of loss *!
                 !-------------------------------!
 
-                call loss_jacobian(original_weights,set_type,anl_jac)
+                call loss_jacobian(original_weights,set_type,.false.,anl_jac)
                 
                 all_ok = .true.
 
@@ -395,7 +395,7 @@ program unittest
                                 original_weights(jj) = w0 - dw
                             end if
                             
-                            tmp = loss(original_weights,set_type)
+                            tmp = loss(original_weights,set_type,.false.)
 
                             if (kk.eq.1) then
                                 dloss = tmp

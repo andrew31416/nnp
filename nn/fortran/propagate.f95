@@ -4,6 +4,7 @@ module propagate
     use feature_util, only : int_in_intarray
     use util, only : allocate_dydx, zero_weights, scalar_equal
     use init, only : allocate_weights
+    use omp_lib
 
     implicit none
 
@@ -12,10 +13,23 @@ module propagate
     external :: dcopy
     real(8),external :: ddot
             
-    type(weights),public :: d2ydxdw
-    real(8),public,allocatable :: sub_A1(:,:),sub_A2(:,:),sub_A2A1(:,:)
-    real(8),public,allocatable :: sub_B(:,:),sub_C(:,:),sub_D(:,:),sub_BT(:,:)
-    real(8),public,allocatable :: hprimeprime_1(:),hprimeprime_2(:),tmp_l1(:)
+    type(weights),public,save :: d2ydxdw
+    real(8),public,allocatable,save :: sub_A1(:,:),sub_A2(:,:),sub_A2A1(:,:)
+    real(8),public,allocatable,save :: sub_B(:,:),sub_C(:,:),sub_D(:,:),sub_BT(:,:)
+    real(8),public,allocatable,save :: hprimeprime_1(:),hprimeprime_2(:),tmp_l1(:)
+
+    !$omp threadprivate(d2ydxdw)
+    !$omp threadprivate(sub_A1)
+    !$omp threadprivate(sub_A2)
+    !$omp threadprivate(sub_A2A1)
+    !$omp threadprivate(sub_B)
+    !$omp threadprivate(sub_C)
+    !$omp threadprivate(sub_D)
+    !$omp threadprivate(sub_BT)
+    !$omp threadprivate(hprimeprime_1)
+    !$omp threadprivate(hprimeprime_2)
+    !$omp threadprivate(tmp_l1)
+
 
     contains
         subroutine forward_propagate(set_type,conf)

@@ -96,6 +96,7 @@ class MultiLayerPerceptronPotential():
             self.num_weights = None
             self.D = None
             self.OptimizeResult = None
+            self.parallel = False
            
             self.set_layer_size(hidden_layer_sizes)
   
@@ -226,7 +227,8 @@ class MultiLayerPerceptronPotential():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
         
         _map = {"train":1,"test":2} 
-        tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type])
+        tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type],\
+                parallel=self.parallel)
         
         # book keeping
         self._update_loss_log(tmp)
@@ -254,7 +256,7 @@ class MultiLayerPerceptronPotential():
         
         _map = {"train":1,"test":2} 
         getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,set_type=_map[set_type],\
-                jacobian=self.jacobian)
+                parallel=self.parallel,jacobian=self.jacobian)
       
         # count number of jacobian evaluations 
         self._njev += 1

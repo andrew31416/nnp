@@ -10,45 +10,61 @@ module measures
 
     contains
 
-        real(8) function loss(flat_weights,set_type)
-            
+        real(8) function loss(flat_weights,set_type,parallel)
+            use omp_lib
+                        
             implicit none
 
             integer,intent(in) :: set_type
             real(8),intent(in) :: flat_weights(:)
+            logical,intent(in) :: parallel
 
             !* scratch
             integer :: conf
             real(8) :: tmp_energy,tmp_forces,tmp_reglrn
             
+            !* openMP variables
+            integer :: thread_start,thread_end,thread_idx,num_threads
+            integer :: dconf
+
             !* read in NN weights
             call parse_array_to_structure(flat_weights,net_weights)
             call copy_weights_to_nobiasT()
 
-            do conf=1,data_sets(set_type)%nconf,1
-                if (allocated(dydx)) then
-                    deallocate(dydx)
-                end if
-                call allocate_dydx(set_type,conf)
-                call allocate_units(set_type,conf)
-               
-                call forward_propagate(set_type,conf)
+            if (parallel) then
+                !$omp parallel num_threads(omp_get_max_threads()),&
+                !$omp& shared(data_sets,net_weights,net_weights_nobiasT,nwght,net_dim,nlf,D,set_type),&
+                !$omp& shared(loss_norm_type,loss_const_energy,loss_const_forces,loss_const_reglrn),&
+                !$omp& private(conf,thread_start,thread_end,thread_idx)
+
+                !* [0,num_threads-1]
+                thread_idx = omp_get_thread_num()
                 
-                call backward_propagate(set_type,conf)                
-                !do atm=1,data_sets(set_type)%configs(conf)%n,1
-                !    !* forward prop on data
-                !    call forward_propagate(conf,atm,set_type)
-                !    
-                !    !* backward prop on data
-                !    call backward_propagate(conf,atm,set_type)
-                !end do
+                !* number of threads
+                num_threads = omp_get_max_threads()
 
-                !* calculate forces in configuration
-                call calculate_forces(set_type,conf)
-            end do
+                !* number of confs per thread (except final thread)
+                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
+                
+                thread_start = thread_idx*dconf + 1
+                
+                if (thread_idx.eq.num_threads-1) then
+                    thread_end = data_sets(set_type)%nconf
+                else
+                    thread_end = (thread_idx+1)*dconf
+                end if 
+            
+                do conf=thread_start,thread_end,1
+                    call loss_confloop(set_type,conf)
+                end do
+                
+                !$omp end parallel
+            else
+                do conf=1,data_sets(set_type)%nconf,1
+                    call loss_confloop(set_type,conf)
+                end do
+            end if
 
-            !* calculate predicted forces
-            !call backprop_all_forces(set_type)
 
             tmp_energy = loss_energy(set_type)
             tmp_forces = loss_forces(set_type)
@@ -57,35 +73,53 @@ module measures
             loss = tmp_energy + tmp_forces + tmp_reglrn
         end function loss
 
-        subroutine loss_jacobian(flat_weights,set_type,jacobian)
+        subroutine loss_confloop(set_type,conf)
+            implicit none
 
+            integer,intent(in) :: set_type,conf
+                
+            if (allocated(dydx)) then
+                deallocate(dydx)
+            end if
+            call allocate_dydx(set_type,conf)
+            
+            call allocate_units(set_type,conf)
+           
+            call forward_propagate(set_type,conf)
+            
+            call backward_propagate(set_type,conf)                
+
+            !* calculate forces in configuration
+            call calculate_forces(set_type,conf)
+        end subroutine loss_confloop
+
+        subroutine loss_jacobian(flat_weights,set_type,parallel,jacobian)
+            use omp_lib
+            
             implicit none
             
             integer,intent(in) :: set_type
             real(8),intent(in) :: flat_weights(:)
+            logical,intent(in) :: parallel
             real(8),intent(out) :: jacobian(:)
 
             !* scratch
-            integer :: conf,atm
-            real(8) :: tmpE
+            integer :: conf
             logical :: include_force_loss
 
-            type(weights) :: loss_jac
-            type(weights) :: tmp_jac
+            type(weights) :: loss_jac_shared
+            type(weights) :: loss_jac_local
+            type(weights) :: tmp1_jac
             type(weights) :: tmp2_jac
             
-            call allocate_weights(loss_jac)
-            call allocate_weights(tmp_jac)
-            call allocate_weights(tmp2_jac)
-        
-            call zero_weights(loss_jac)
-
+            !* openMP variables
+            integer :: thread_start,thread_end,thread_idx,num_threads
+            integer :: dconf
+            
             !* read in supplied weights
             call parse_array_to_structure(flat_weights,net_weights)
             call copy_weights_to_nobiasT()
-            !* initialise force loss subsidiary mem.
-            call init_forceloss_subsidiary_mem()
-
+            
             !* decide whether or not to compute force loss derivatives
             if (scalar_equal(loss_const_forces,0.0d0,dble(1e-15),dble(1e-10)**2,.false.)) then
                 include_force_loss = .false.
@@ -93,88 +127,161 @@ module measures
                 include_force_loss = .true.
             end if
             
-            call allocate_weights(d2ydxdw)
+            call allocate_weights(loss_jac_shared)
+            call zero_weights(loss_jac_shared)
 
-            do conf=1,data_sets(set_type)%nconf,1
-                if(allocated(dydx)) then
-                    deallocate(dydx)
-                end if
-                call allocate_dydx(set_type,conf)
-                call zero_weights(tmp_jac)
-                call zero_weights(tmp2_jac)
-                call allocate_units(set_type,conf)
-                !call allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
+            if (parallel) then
+                !$omp parallel num_threads(omp_get_max_threads()),&
+                !$omp& default(shared),&
+                !$omp& private(conf,thread_start,thread_end,thread_idx,tmp1_jac,tmp2_jac,loss_jac_local)
+
+                !* [0,num_threads-1]
+                thread_idx = omp_get_thread_num()
+                
+                !* number of threads
+                num_threads = omp_get_max_threads()
+
+                !* number of confs per thread (except final thread)
+                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
+                
+                thread_start = thread_idx*dconf + 1
+                
+                if (thread_idx.eq.num_threads-1) then
+                    thread_end = data_sets(set_type)%nconf
+                else
+                    thread_end = (thread_idx+1)*dconf
+                end if 
+                !* initialise force loss subsidiary mem.
+                call init_forceloss_subsidiary_mem()
+                call allocate_weights(loss_jac_local)
+                call allocate_weights(tmp1_jac)
+                call allocate_weights(tmp2_jac)
+                call allocate_weights(d2ydxdw)
+                call allocate_weights(dydw)
+                call zero_weights(loss_jac_local)
                 
                 
-                call forward_propagate(set_type,conf)
-                call backward_propagate(set_type,conf)
+                do conf=1,data_sets(set_type)%nconf,1
+                    call loss_jacobian_confloop(set_type,conf,include_force_loss,tmp1_jac,tmp2_jac,loss_jac_local)
+                end do !* end loop over confs
                 
-                if (include_force_loss) then
-                    call calculate_forces(set_type,conf)
-                end if
-
-                do atm=1,data_sets(set_type)%configs(conf)%n,1
-                    !* for energy contribuion to loss
-                    call calculate_dydw(set_type,conf,atm)
-                   
-                    !* total energy contribution
-                    call loss_energy_jacobian(tmp_jac)
-                end do
+                !* perform reduction of loss_jac_local -> loss_jac_shared
+                !$omp critical
+                    loss_jac_shared%hl1 = loss_jac_shared%hl1 + loss_jac_local%hl1
+                    loss_jac_shared%hl2 = loss_jac_shared%hl2 + loss_jac_local%hl2
+                    loss_jac_shared%hl3 = loss_jac_shared%hl3 + loss_jac_local%hl3
+                !$omp end critical
                 
-
-                !-----------------------!
-                !* energy contribution *!
-                !-----------------------!
-
-                !* sgn( \sum_i E_i - E ) * \sum_i dE_i / dw
-                tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
-                        &-data_sets(set_type)%configs(conf)%ref_energy
-               
-                if(loss_norm_type.eq.1) then
-                    !* l1 norm
-                    tmpE = sign(1.0d0,tmpE) / dble(data_sets(set_type)%configs(conf)%n)
-                else if (loss_norm_type.eq.2) then
-                    !* l2 norm
-                    tmpE = sign(1.0d0,tmpE)*tmpE / dble(data_sets(set_type)%configs(conf)%n)
-                end if
-
-                !* constant scaling
-                tmpE = tmpE * 0.5d0 * loss_const_energy
+                call deallocate_weights(loss_jac_local)
+                call deallocate_weights(tmp1_jac)
+                call deallocate_weights(tmp2_jac)
+                call deallocate_forceloss_subsidiary_mem()               
                 
-                loss_jac%hl1 = loss_jac%hl1 + tmp_jac%hl1 * tmpE
-                loss_jac%hl2 = loss_jac%hl2 + tmp_jac%hl2 * tmpE
-                loss_jac%hl3 = loss_jac%hl3 + tmp_jac%hl3 * tmpE
+                !$omp end parallel 
+            else
+                !* initialise force loss subsidiary mem.
+                call init_forceloss_subsidiary_mem()
+                call allocate_weights(tmp1_jac)
+                call allocate_weights(tmp2_jac)
+                call allocate_weights(d2ydxdw)
+                
+                do conf=1,data_sets(set_type)%nconf,1
+                    call loss_jacobian_confloop(set_type,conf,include_force_loss,tmp1_jac,tmp2_jac,loss_jac_shared)
+                end do !* end loop over confs
 
-            
-
-                if (include_force_loss) then
-                    !=======================!
-                    !* forces contribution *!
-                    !=======================!
-                    call loss_forces_jacobian(set_type,conf,tmp2_jac)
-                    
-                    loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
-                    loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces * 0.5d0
-                    loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces * 0.5d0
-                end if
-
-                deallocate(dydx)
-            end do !* end loop over confs
+                call deallocate_weights(tmp1_jac)
+                call deallocate_weights(tmp2_jac)
+                call deallocate_forceloss_subsidiary_mem()                
+            end if
             
             !-------------------------------!
             !* regularization contribution *!
             !-------------------------------!
         
-            call loss_reglrn_jacobian(loss_jac)
+            call loss_reglrn_jacobian(loss_jac_shared)
 
             !* structured to 1d
-            call parse_structure_to_array(loss_jac,jacobian)
+            call parse_structure_to_array(loss_jac_shared,jacobian)
 
-            call deallocate_weights(loss_jac)
-            call deallocate_weights(tmp_jac)
-            call deallocate_weights(tmp2_jac)
-            call deallocate_forceloss_subsidiary_mem()                
         end subroutine loss_jacobian
+
+        subroutine loss_jacobian_confloop(set_type,conf,include_force_loss,&
+                &tmp1_jac,tmp2_jac,loss_jac)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf
+            logical,intent(in) :: include_force_loss
+            type(weights),intent(inout) :: tmp1_jac,tmp2_jac,loss_jac
+
+            !* scratch
+            real(8) :: tmpE
+            integer :: atm
+
+            if(allocated(dydx)) then
+                deallocate(dydx)
+            end if
+            call allocate_dydx(set_type,conf)
+            call zero_weights(tmp1_jac)
+            call zero_weights(tmp2_jac)
+            call allocate_units(set_type,conf)
+            !call allocate_d2ydxdw_mem(conf,set_type,d2ydxdw)
+            
+            
+            call forward_propagate(set_type,conf)
+            call backward_propagate(set_type,conf)
+            
+            if (include_force_loss) then
+                call calculate_forces(set_type,conf)
+            end if
+
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                !* for energy contribuion to loss
+                call calculate_dydw(set_type,conf,atm)
+               
+                !* total energy contribution
+                call loss_energy_jacobian(tmp1_jac)
+            end do
+            
+
+            !-----------------------!
+            !* energy contribution *!
+            !-----------------------!
+
+            !* sgn( \sum_i E_i - E ) * \sum_i dE_i / dw
+            tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
+                    &-data_sets(set_type)%configs(conf)%ref_energy
+           
+            if(loss_norm_type.eq.1) then
+                !* l1 norm
+                tmpE = sign(1.0d0,tmpE) / dble(data_sets(set_type)%configs(conf)%n)
+            else if (loss_norm_type.eq.2) then
+                !* l2 norm
+                tmpE = sign(1.0d0,tmpE)*tmpE / dble(data_sets(set_type)%configs(conf)%n)
+            end if
+
+            !* constant scaling
+            tmpE = tmpE * 0.5d0 * loss_const_energy
+            
+            loss_jac%hl1 = loss_jac%hl1 + tmp1_jac%hl1 * tmpE
+            loss_jac%hl2 = loss_jac%hl2 + tmp1_jac%hl2 * tmpE
+            loss_jac%hl3 = loss_jac%hl3 + tmp1_jac%hl3 * tmpE
+
+        
+
+            if (include_force_loss) then
+                !=======================!
+                !* forces contribution *!
+                !=======================!
+                call loss_forces_jacobian(set_type,conf,tmp2_jac)
+                
+                loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
+                loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces * 0.5d0
+                loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces * 0.5d0
+            end if
+
+            deallocate(dydx)
+        end subroutine loss_jacobian_confloop
 
         real(8) function loss_energy(set_type)
             implicit none

@@ -9,7 +9,7 @@ modname="nn_f95"
 
 lapack_dir="/usr/lib/atlas-base/atlas/"
 
-FFLAGS="-O2 -fPIC -llapack -lblas"
+FFLAGS="-O2 -fPIC -llapack -lblas -lgomp -fopenmp"
 DEBUG="-W -Wall -pedantic"
 
 #--------------------------------------------#

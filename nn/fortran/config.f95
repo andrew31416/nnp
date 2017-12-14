@@ -1,6 +1,7 @@
 module config
+    use omp_lib
+    
     implicit none
-
 
     !* private scope by default
     private
@@ -84,7 +85,7 @@ module config
     type(structures),public :: data_sets(1:2)
 
     !* derivative of net wrt features
-    real(8),allocatable,public :: dydx(:,:)
+    real(8),allocatable,public,save :: dydx(:,:)
 
     !* type of loss norm (l1 or l2)
     integer,public :: loss_norm_type = 1
@@ -96,4 +97,9 @@ module config
 
     !* (forward and back)-prop behaviour
     logical,public :: calc_feature_derivatives = .true.
+
+    !* openmp directives for private globally scoped variables
+    !$omp threadprivate(dydx)
+    !$omp threadprivate(dydw)
+    !$omp threadprivate(net_units)
 end module
