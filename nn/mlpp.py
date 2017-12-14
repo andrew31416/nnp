@@ -152,6 +152,14 @@ class MultiLayerPerceptronPotential():
             self._update_num_weights()
             
 
+    def set_solver(self,solver):
+        solver = solver.lower()
+
+        if solver not in ['nelder-mead','powell','cg','bfgs','l-bfgs-b','tnc','cobyla',\
+                'slsqp','dogleg','trust-ncg','trust-krylov','trust-exact']:
+            raise MlppError("solver {} not supported".format(solver))
+        self.solver = solver
+
     def set_features(self,features):
         """
         Set features to calculate during fitting
