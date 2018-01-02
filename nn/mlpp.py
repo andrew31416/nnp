@@ -313,6 +313,9 @@ class MultiLayerPerceptronPotential():
         >>> # regress net weights
         >>> training_loss = mlpp.fit(training_data)
         """
+        if self.features is None:
+            raise MlppError("set_features() must be called before fit()")
+        
         # Scipy log class lacks objective function with iteration
         self._init_optimization_log()
 

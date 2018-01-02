@@ -451,7 +451,6 @@ module feature_util
             integer :: maxbuffer
             type(feature_info_threebody) :: aniso_info
             logical :: any_rjk
-real(8) :: tmp
 
             !* dim(1) = number atoms in ultra cell
             dim = shape(ultraidx)
@@ -555,10 +554,6 @@ real(8) :: tmp
                         !---------------------------------!
                         !* atom-atom distance derivative *!
                         !---------------------------------!
-tmp = 0.0d0
-aniso_info%drdri(:,:,cntr) = 1.0d0/tmp
-sign_ij(:) = 1.0d0/tmp          
-sign_ik(:) = 1.0d0/tmp          
                  
                         ! d |rj-ri| / drj
                         if (ii.ne.ultraidx(jj)) then
