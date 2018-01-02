@@ -98,6 +98,7 @@ class MultiLayerPerceptronPotential():
             self.OptimizeResult = None
             self.parallel = False
             self.scale_features = False
+            self.set_weight_init_scheme("glorot")
            
             self.set_layer_size(hidden_layer_sizes)
   
@@ -126,9 +127,38 @@ class MultiLayerPerceptronPotential():
         self.jacobian = np.zeros(self.num_weights,dtype=np.float64,order='F')
 
     def _init_random_weights(self):
-        # update buffer for weights
-        self.weights = np.asarray(np.random.normal(loc=0.0,scale=self.init_weight_var,\
-                size=self.num_weights),dtype=np.float64,order='F')
+        if self.weight_init_scheme == 'xavier':
+            self.weights = np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(1.0/self.D),\
+                    size=self.hidden_layer_sizes[0]*(self.D+1)),order='F',dtype=np.float64)
+            
+            self.weights = np.hstack( (self.weights,np.asarray(np.random.normal(loc=0.0,\
+                    scale=np.sqrt(1.0/self.hidden_layer_sizes[0]),\
+                    size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)))) )
+
+            self.weights = np.hstack( (self.weights,np.asarray(np.random.normal(loc=0.0,\
+                    scale=np.sqrt(1.0/self.hidden_layer_sizes[1]),\
+                    size=self.hidden_layer_sizes[1]+1))) ) 
+
+            # update buffer for weights
+#            self.weights = np.asarray(np.random.normal(loc=0.0,scale=self.init_weight_var**2,\
+#                    size=self.num_weights),dtype=np.float64,order='F')
+        elif self.weight_init_scheme == "glorot":
+            self.weights = (np.asarray(np.random.random(size=self.hidden_layer_sizes[0]*(self.D+1)),\
+                    order='F',dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.D+self.hidden_layer_sizes[0]))
+            
+            self.weights = np.hstack(  ( self.weights,\
+                    (np.asarray(np.random.random(size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)),\
+                    order='F',dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.hidden_layer_sizes[1]+\
+                    self.hidden_layer_sizes[0])) )  )
+
+            self.weights = np.hstack(  ( self.weights,\
+                    (np.asarray(np.random.random(size=self.hidden_layer_sizes[1]+1),\
+                    order='F',dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.hidden_layer_sizes[1]+1)) )  )
+        else:
+            raise MlppError("Weight initialization scheme not supported")
+            
+        if self.weights.shape[0]!=self.num_weights:
+            raise MlppError("Sever implementation error")
 
         bias_idx = [ii for ii in range(self.hidden_layer_sizes[0])]
         bias_idx += [self.hidden_layer_sizes[0]*(self.D+1)+ii for \
@@ -136,6 +166,20 @@ class MultiLayerPerceptronPotential():
         bias_idx.append(self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                 self.hidden_layer_sizes[1])
         self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
+
+    def set_weight_init_scheme(self,scheme):
+        """
+        Set the scheme to use when initialisation neural net weights
+
+        Parameters
+        ----------
+        scheme : String, allowed values = xavier
+            The scheme to use when initialising weights before optimization
+        """
+        if scheme.lower() not in ["xavier","glorot"]:
+            raise MlppError("weight initialisation scheme {} not supported".format(scheme.lower()))
+
+        self.weight_init_scheme = scheme.lower()
 
     def set_layer_size(self,hidden_layer_sizes):
         """
@@ -323,7 +367,7 @@ class MultiLayerPerceptronPotential():
         self._prepare_data_structures(X=X,set_type="train")
 
         self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
-                method=self.solver,args=("train"),jac=self._loss_jacobian)
+                method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)
 
         # book keeping
         self.OptimizeResult.njev = self._njev
