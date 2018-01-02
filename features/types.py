@@ -194,8 +194,8 @@ class features():
 
         self.features = []
 
-        # max number of bonds considered for 2&3 body terms in dist. calc
-        self.buffer_size = 100000
+        # internal fortran mem. buffer size (GB)
+        self.buffer_size = 0.1
 
     def set_configuration(self,gip,set_type):
         """
@@ -266,6 +266,7 @@ class features():
         if self.data[set_type] is None:
             raise FeaturesError("data for the data set: {} has not been set yet")
 
+        remove_features = False
         if len(self.features)==0:
             # create toy features
            
@@ -274,12 +275,16 @@ class features():
 
             self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.1,\
                     'zb':4.2,'mean':np.ones(3),'prec':np.ones((3,3))}))
+            remove_features = True
 
         # populate fortran data structures
         self._parse_features_to_fortran()
+      
+        # convert buffer size (GB) to # of 64B floats
+        num64_floats = int(np.floor(10e9*self.buffer_size))
        
-        twobody = np.zeros((self.buffer_size),dtype=np.float64,order='F') 
-        threebody = np.zeros((3,self.buffer_size),dtype=np.float64,order='F') 
+        twobody = np.zeros((num64_floats),dtype=np.float64,order='F') 
+        threebody = np.zeros((3,int(num64_floats/3.)),dtype=np.float64,order='F') 
         _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],dtype=np.float64)
 
         _map = {"train":1,"test":2}
@@ -287,9 +292,12 @@ class features():
         n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(set_type=_map[set_type],\
                 sample_rate=_sample_rate,twobody_dist=twobody,threebody_dist=threebody)
 
+        if remove_features:
+            self.features = []
+
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
    
-    def calculate(self,set_type="train",derivatives=False):
+    def calculate(self,set_type="train",derivatives=False,scale=False):
         """
         Compute the value of all features for the given set type
         
@@ -334,7 +342,8 @@ class features():
         getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=_map[set_type])
         
         # compute features (and their derivatives wrt. atoms) 
-        getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],derivatives=derivatives)
+        getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],\
+                derivatives=derivatives,scale_features=scale)
 
 
     def _parse_features_to_fortran(self):

@@ -45,11 +45,14 @@ module propagate
             !------------------!
             !* hidden layer 1 *!
             !------------------!
-            
+!write(*,*) ''
+!write(*,*) 'x:'
+!write(*,*) data_sets(set_type)%configs(conf)%x(2:,1)            
 
             !* a^1_mI = \sum_k=0^K w_mk^1 gamma_kI
             call dgemm('n','n',net_dim%hl1,natm,D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
                     &data_sets(set_type)%configs(conf)%x,D+1,0.0d0,net_units%a%hl1,net_dim%hl1)
+
 
             do atm=1,natm,1
                 !* null value for bias
@@ -60,6 +63,7 @@ module propagate
                     net_units%z%hl1(ii,atm) = activation(net_units%a%hl1(ii,atm))
                 end do
             end do
+!write(*,*) 'first layer output:',net_units%z%hl1(:,1)            
 
             !------------------!
             !* hidden layer 2 *!
@@ -78,6 +82,7 @@ module propagate
                     net_units%z%hl2(ii,atm) = activation(net_units%a%hl2(ii,atm))
                 end do
             end do
+!write(*,*) 'second layer output:',net_units%z%hl1(:,1)            
 
             !-------------------------!
             !* final layer to output *!
@@ -88,6 +93,7 @@ module propagate
                 data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
                         &net_units%z%hl2(:,atm),1)
             end do
+!write(*,*) 'output:',data_sets(set_type)%configs(conf)%current_ei(1)            
         end subroutine
 
         subroutine backward_propagate(set_type,conf)

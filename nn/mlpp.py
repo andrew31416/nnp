@@ -97,6 +97,7 @@ class MultiLayerPerceptronPotential():
             self.D = None
             self.OptimizeResult = None
             self.parallel = False
+            self.scale_features = False
            
             self.set_layer_size(hidden_layer_sizes)
   
@@ -281,7 +282,7 @@ class MultiLayerPerceptronPotential():
         self.features.set_configuration(gip=X,set_type=set_type)
         
         # initialise feature mem and compute for set_type
-        self.features.calculate(set_type=set_type,derivatives=True)
+        self.features.calculate(set_type=set_type,derivatives=True,scale=self.scale_features)
     
         # initialise neural net data structures
         self._initialise_net(set_type=set_type)

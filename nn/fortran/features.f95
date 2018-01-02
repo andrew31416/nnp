@@ -14,17 +14,20 @@ module features
             implicit none
 
             integer :: set_type
+            logical :: scale_features
+
+            scale_features = .false.
 
             do set_type=1,2
-                call calculate_features_singleset(set_type,.true.)
+                call calculate_features_singleset(set_type,.true.,scale_features)
             end do
         end subroutine calculate_features
         
-        subroutine calculate_features_singleset(set_type,derivatives)
+        subroutine calculate_features_singleset(set_type,derivatives,scale_features)
             implicit none
 
             integer,intent(in) :: set_type
-            logical,intent(in) :: derivatives
+            logical,intent(in) :: derivatives,scale_features
             
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
@@ -67,6 +70,19 @@ module features
                     deallocate(feature_threebody_info)
                 end if
             end do !* end loop over configurations
+
+            if (scale_features) then
+                if (set_type.eq.1) then
+                    !* calculate max feature values 
+                    call computeall_feature_scaling_constants(set_type)
+
+                    !* and scale
+                    call scale_set_features(set_type) 
+                else
+                    !* scale using previously set max feature value
+                    call scale_set_features(set_type) 
+                end if
+            end if
         end subroutine calculate_features_singleset
 
         subroutine calculate_distance_distributions(set_type,sample_rate,twobody_dist,threebody_dist,&

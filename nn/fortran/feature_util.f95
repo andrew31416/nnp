@@ -813,4 +813,66 @@ module feature_util
                 end if
             end do
         end subroutine
+
+        subroutine computeall_feature_scaling_constants(set_type)
+            implicit none
+
+            integer,intent(in) :: set_type
+
+            !* scratch
+            integer :: ii,conf,atm
+            real(8) :: currentmax
+
+            do ii=1,feature_params%num_features,1
+                if (feature_params%info(ii)%ftype.eq.featureID_StringToInt("atomic_number")) then
+                    cycle
+                end if
+
+                currentmax = 0.0d0
+
+
+                do conf=1,data_sets(set_type)%nconf,1
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        if (abs(data_sets(set_type)%configs(conf)%x(ii+1,atm)).gt.currentmax) then
+                            currentmax = abs(data_sets(set_type)%configs(conf)%x(ii+1,atm))
+                        end if
+                    end do
+                end do
+            
+                feature_params%info(ii)%scl_cnst = 1.0d0/currentmax
+            end do
+        end subroutine computeall_feature_scaling_constants
+
+        subroutine scale_set_features(set_type)
+            implicit none
+
+            integer,intent(in) :: set_type
+
+            !* scratch
+            integer :: ii,conf,atm,jj
+            real(8) :: cnst
+
+            do ii=1,feature_params%num_features,1
+                if (feature_params%info(ii)%ftype.eq.featureID_StringToInt("atomic_number")) then 
+                    cycle
+                end if
+
+                cnst = feature_params%info(ii)%scl_cnst
+                
+                do conf=1,data_sets(set_type)%nconf,1
+                    data_sets(set_type)%configs(conf)%x(ii+1,:) = data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst
+                    
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
+                            cycle
+                        end if
+
+                        do jj=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
+                            data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) = cnst*&
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj)  
+                        end do !* end loop over neighbours to atm
+                    end do !* end loop over atoms
+                end do !* end loop over configurations
+            end do !* end loop over features
+        end subroutine
 end module        
