@@ -252,6 +252,14 @@ class features():
             if feature.params["rcut"] > self.maxrcut["threebody"]:
                 self.set_rcut({"threebody":feature.params["rcut"]})
 
+    def _threebody_feature_present(self):
+        if len(self.features)==0:
+            return False
+        present = False
+        for _feature in self.features:
+            if _feature.type in ['acsf_behler-g4','acsf_behler-g5','acsf_normal-b3']:
+                present = True
+        return present
 
     def bond_distribution(self,set_type="train"):
         """
@@ -266,7 +274,7 @@ class features():
         if self.data[set_type] is None:
             raise FeaturesError("data for the data set: {} has not been set yet")
 
-        remove_features = False
+        remove_features = 0
         if len(self.features)==0:
             # create toy features
            
@@ -275,26 +283,31 @@ class features():
 
             self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.1,\
                     'zb':4.2,'mean':np.ones(3),'prec':np.ones((3,3))}))
-            remove_features = True
+            remove_features = 2
+        elif self._threebody_feature_present()!=True:
+            self.add_feature(feature("acsf_normal-b3",{'rcut':self.maxrcut["threebody"],'fs':0.1,'za':4.1,\
+                    'zb':4.2,'mean':np.ones(3),'prec':np.ones((3,3))}))
+            remove_features = 1 
+
 
         # populate fortran data structures
         self._parse_features_to_fortran()
       
         # convert buffer size (GB) to # of 64B floats
-        num64_floats = int(np.floor(10e9*self.buffer_size))
+        num64_floats = int(np.floor(10e9*self.buffer_size/64.0))
        
         twobody = np.zeros((num64_floats),dtype=np.float64,order='F') 
         threebody = np.zeros((3,int(num64_floats/3.)),dtype=np.float64,order='F') 
         _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],dtype=np.float64)
-
+        
         _map = {"train":1,"test":2}
         # calculate 2&3 body distributions
         n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(set_type=_map[set_type],\
                 sample_rate=_sample_rate,twobody_dist=twobody,threebody_dist=threebody)
 
         if remove_features:
-            self.features = []
-
+            for ii in range(remove_features):
+                _ = self.features.pop()
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
    
     def calculate(self,set_type="train",derivatives=False,scale=False):
@@ -345,6 +358,8 @@ class features():
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],\
                 derivatives=derivatives,scale_features=scale)
 
+        # return [NxD] array of features
+        return self.get_features(set_type=set_type)
 
     def _parse_features_to_fortran(self):
         """
@@ -457,7 +472,8 @@ class features():
                     method='bounded',options={'xatol':1.0})
 
             if opt_result.success!=True:
-                raise FeaturesError("Optimize of n_components for classical (EM) gmm has not converged")
+                raise FeaturesError("Optimize of n_components for classical (EM) gmm \
+                        has not converged")
 
             num_components = int(opt_result.x)
 
@@ -472,7 +488,8 @@ class features():
         precisions = gmm.precisions_
 
         for _component in range(means.shape[0]):
-            self.add_feature(feature(feature_type="acsf_normal-b2",params={"rcut":self.maxrcut["twobody"],\
+            self.add_feature(feature(feature_type="acsf_normal-b2",\
+                    params={"rcut":self.maxrcut["twobody"],\
                     "fs":0.2,"mean":means[_component,0],"prec":precisions[_component,0,0],\
                     "za":1.0,"zb":1.0}))
     
@@ -520,7 +537,8 @@ class features():
 
         # take lower diagonal
         symmetric_dist = np.asarray(list(filter(lambda x : True if x[0]>=x[1] else False, symmetric_dist)))
-       
+      
+
         # do EM on mean,precision,mixing coeffs.
         gmm.fit(symmetric_dist)
 
@@ -542,22 +560,55 @@ class features():
             if abs(means.shape[0]-num_components)/num_components<0.1:
                 # check that more than 10% of components are being pruned
                 raise FeaturesError("{} of {} components selected automatically, increse initial \
-                        number of components in mixture and rerun.".format(means.shape[0],num_components))
-
-        #fig,ax = plt.subplots()
+                        number of components in mixture and rerun.".\
+                        format(means.shape[0],num_components))
 
         for _component in range(means.shape[0]):
-            self.add_feature(feature(feature_type="acsf_normal-b3",params={"rcut":self.maxrcut["threebody"],\
+            self.add_feature(feature(feature_type="acsf_normal-b3",\
+                    params={"rcut":self.maxrcut["threebody"],\
                     "fs":0.2,"mean":means[_component,:],"prec":precisions[_component,:,:],\
                     "za":1.0,"zb":1.0}))
 
-        #    circle = patches.Circle(tuple(means[_component,:2]),0.05,facecolor='red',alpha=0.4)
-        #    ax.add_artist(circle)
-        #plt.hist2d(symmetric_dist[:,0],symmetric_dist[:,1],30)
-        #plt.plot([np.min(symmetric_dist[:,0]),np.max(symmetric_dist[:,0])],\
-        #        [np.min(symmetric_dist[:,0]),np.max(symmetric_dist[:,0])],color='r')
-        #plt.axis('equal')
-        #plt.show()
+
+    def get_features(self,set_type="train"):
+        """
+        Return features once computed in fortran
+        
+        Example
+        -------
+        >>> import parsers
+        >>> import nnp
+        >>>
+        >>> # parse data
+        >>> gip = parsers.GeneralInputParser()
+        >>> gip.parse_all('./training_data/')
+        >>>
+        >>> features = nnp.features.types.features(gip)
+        >>> # generate descriptors
+        >>> features.generate_gmm_features()
+        >>> features.add_feature(nnp.features.types.feature("atomic_number"))
+        >>> # compute feature values
+        >>> _ = features.calculate()
+        >>>
+        >>> # return [N,D] array of computed features
+        >>> computed_features = features.get_features()
+        """
+        if set_type not in ["train","test"]:
+            raise FeaturesError("{} not in {}".format(set_type,"train,test"))
+        
+        # total number of atoms in set
+        tot_num_atoms = np.sum([_s["positions"].shape[0] for _s in self.data[set_type]])
+
+        # dimension of feature vector
+        num_dim = len(self.features)
+    
+        # array for all computed features in set
+        all_features = np.zeros((num_dim,tot_num_atoms),dtype=np.float64,order='F')
+
+        _map = {"train":1,"test":2}
+        getattr(f95_api,"f90wrap_get_features")(_map[train],all_features)
+        
+        return np.asarray(all_features.T,order='C')
 
 class FeatureError(Exception):
     pass

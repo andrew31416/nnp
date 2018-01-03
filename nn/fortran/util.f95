@@ -250,4 +250,54 @@ module util
 
             get_natm = data_sets(set_type)%configs(conf)%n
         end function get_natm
+
+        subroutine get_features(set_type,features_out)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type
+            real(8),intent(inout) :: features_out(:,:)
+
+            !* scratch
+            integer :: dim(1:2),conf,atm,cntr
+
+            !* [D,N]
+            dim = shape(features_out)
+
+            if (dim(1).ne.D) then
+                call error_util("get_features","supplied output array is too small")
+            end if
+    
+            cntr = 0
+
+            do conf=1,data_sets(set_type)%nconf,1
+                do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    !* cumulative number of atoms
+                    cntr = cntr + 1
+
+                    if (cntr.gt.dim(2)) then
+                        call error_util("get_features","supplied output array is too small")            
+                    end if
+
+                    features_out(:,cntr) = data_sets(set_type)%configs(conf)%x(2:,atm)
+                end do !* end loop over atoms
+            end do !* end loop over configs
+        end subroutine get_features
+        
+        subroutine error_util(routine,message)
+            implicit none
+
+            character(len=*),intent(in) :: routine,message
+            character,dimension(1:len(routine)+26) :: header
+            header(:) = "*"
+
+            write(*,*) '' 
+            write(*,*) header
+            write(*,*) 'error raised in routine : ',routine
+            write(*,*) header
+            write(*,*) ''
+            write(*,*) 'Error : ',message
+            write(*,*) ''
+            call exit(0)
+        end subroutine error_util
 end module util

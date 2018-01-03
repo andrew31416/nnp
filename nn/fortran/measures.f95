@@ -54,7 +54,6 @@ module measures
                     thread_end = (thread_idx+1)*dconf
                 end if 
 
-            
                 do conf=thread_start,thread_end,1
                     call loss_confloop(set_type,conf)
                 end do
@@ -261,8 +260,8 @@ module measures
                 tmpE = sign(1.0d0,tmpE)*tmpE / dble(data_sets(set_type)%configs(conf)%n)
             end if
 
-            !* constant scaling
-            tmpE = tmpE * 0.5d0 * loss_const_energy
+            !* normalise by # confs in set
+            tmpE = tmpE * loss_const_energy / dble(data_sets(set_type)%nconf)
             
             loss_jac%hl1 = loss_jac%hl1 + tmp1_jac%hl1 * tmpE
             loss_jac%hl2 = loss_jac%hl2 + tmp1_jac%hl2 * tmpE
@@ -318,8 +317,9 @@ module measures
                 end if
 
             end do
-            
-            loss_energy = tot_energy_loss * 0.5d0 * loss_const_energy 
+
+            !* noramlise by # confs in set            
+            loss_energy = tot_energy_loss * loss_const_energy / dble(data_sets(set_type)%nconf)
         end function loss_energy
 
         real(8) function loss_forces(set_type)
