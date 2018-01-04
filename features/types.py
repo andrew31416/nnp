@@ -606,9 +606,86 @@ class features():
         all_features = np.zeros((num_dim,tot_num_atoms),dtype=np.float64,order='F')
 
         _map = {"train":1,"test":2}
-        getattr(f95_api,"f90wrap_get_features")(_map[train],all_features)
+        getattr(f95_api,"f90wrap_get_features")(_map[set_type],all_features)
         
         return np.asarray(all_features.T,order='C')
+
+    def save(self,sysname=None):
+        """
+        Save self.features to a pckl file sysname.features
+        
+        Parameters
+        ----------
+        sysname : String, default value = year-month-day.features
+            Save self.features to sysname.features
+
+        Examples
+        --------
+        >>> import nnp
+        >>> import parsers
+        >>> gip = parsers.GeneralInputParser()
+        >>> gip.parse_all('./training_set-graphene/')
+        >>> features = nnp.features.types.features(gip)
+        >>>
+        >>> # this may take some time
+        >>> features.generate_gmm_features()
+        >>> 
+        >>> # save generated list of nnp.features.types.feature() instances
+        >>> features.save('graphene')
+        """
+        import datetime
+        import pickle
+
+        if sysname is None:
+            sysname = datetime.datetime.today().split()[0]
+
+        with open(sysname+'.features','wb') as f:
+            pickle.dump({'features':self.features})
+        f.close()
+
+    def load(self,sysname=None):
+        """
+        Load a previously computed set of descriptors from pckl file
+
+        Parameters
+        ----------
+        sysname : String, default value = None
+            Load sysname.features as a dictionary with key 'features', 
+            attributing this to self.features. If sysname=None, any .features 
+            files present in the working directory will be read. 
+        
+        Examples
+        --------
+        >>> import nnp
+        >>> import parsers
+        >>> gip = parsers.GeneralInputParser()
+        >>> gip.parse_all('./training_set-graphene/')
+        >>>
+        >>> features = nnp.features.types.features()
+        >>>
+        >>> # load features from previous run
+        >>> features.load(sysname='graphene')
+        """
+        import pickle
+
+        if sysname is None:
+            files = os.listdir('.')
+
+            pckl_files = [_file.split('.')[-1]=='features' for _file in files]
+
+            if np.sum(pckl_files)!=1:
+                raise FeaturesError("Could not automatically load .features file")         
+
+            sysname = '.'.join(files[np.nonzero(pckl_files)[0]].split('.')[:-1])
+
+        with open(sysname+'.features','rb') as f:
+            try:
+                self.features = pickle.load(f)['features']
+            except KeyError or TypeError:
+                raise FeaturesError("features pckl file {} appears to be corrupted".\
+                        format(sysname+'.features'))
+        f.close()
+
 
 class FeatureError(Exception):
     pass
