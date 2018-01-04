@@ -640,7 +640,7 @@ class features():
             sysname = datetime.datetime.today().split()[0]
 
         with open(sysname+'.features','wb') as f:
-            pickle.dump({'features':self.features})
+            pickle.dump({'features':self.features},f)
         f.close()
 
     def load(self,sysname=None):
