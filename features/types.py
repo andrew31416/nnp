@@ -8,11 +8,10 @@ import tempfile
 import shutil
 from copy import deepcopy
 from io import TextIOWrapper
+from os import listdir
 from sklearn import mixture
 from scipy import optimize
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 class feature():
     """feature
@@ -669,14 +668,14 @@ class features():
         import pickle
 
         if sysname is None:
-            files = os.listdir('.')
+            files = listdir('.')
 
             pckl_files = [_file.split('.')[-1]=='features' for _file in files]
 
             if np.sum(pckl_files)!=1:
                 raise FeaturesError("Could not automatically load .features file")         
 
-            sysname = '.'.join(files[np.nonzero(pckl_files)[0]].split('.')[:-1])
+            sysname = '.'.join(files[np.nonzero(pckl_files)[0][0]].split('.')[:-1])
 
         with open(sysname+'.features','rb') as f:
             try:
