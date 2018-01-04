@@ -52,6 +52,7 @@ fwrap_functions+=" backprop_all_forces"
 fwrap_functions+=" get_config"
 fwrap_functions+=" get_nconf"
 fwrap_functions+=" get_natm"
+fwrap_functions+=" get_features"
 
 # clear previous build
 rm $f1"o" $f1"mod"
