@@ -1,5 +1,6 @@
 import numpy as np
 import warnings
+from scipy.optimize import OptimizeResult
 
 def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
     """
@@ -19,10 +20,10 @@ def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
 
 
     # run optimization
-    optimizer.minimize()
+    optimisation_result = optimizer.minimize()
 
     # return final coordinates
-    return optimizer.x
+    return optimisation_result
 
 class Adam():
     """
@@ -129,25 +130,38 @@ class Adam():
 
         batch_loss = np.zeros(1)
 
+        opt_res = OptimizeResult()
+        opt_res["success"] = False
+        opt_res["nfev"] = 0
+        opt_res["njev"] = 0
+
         for _it in range(self.max_iter):
             for ii,_batch in enumerate([1]):
                 # iterate over mini batches of training data
 
                 batch_loss[ii] = self.fun(self.x,self.args)
-                
+                opt_res["nfev"] += 1
+
                 self.update_params()
+                opt_res["njev"]
        
             # take average objective function over mini batches
             self.loss_log.append(np.average(batch_loss))
+            opt_res["fun"] = self.loss_log[-1]
 
             # book keeping 
             self.niter += 1
 
             if self._no_improvement_count > 2:
+                opt_res["success"] = True
                 break
             if self.niter == self.max_iter:
+                opt_res["status"] = "Stochastic optimization reached max. iterations"
                 warnings.warn('Stochastic optimization reached max iterations {} and did not converge'.\
                         format(self.max_iter))
+        opt_res["x"] = self.x
+        opt_res["niter"] = self.niter
 
+        return opt_res
 class StochasticOptimizersError(Exception):
     pass    

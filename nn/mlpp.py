@@ -86,7 +86,6 @@ class MultiLayerPerceptronPotential():
             
             self.activation = activation
             self.loss_norm = 'l1'
-            self.solver = solver
             self.hyper_params = hyper_params
             self.init_weight_var = 1e-5
             self.hidden_layer_sizes = None
@@ -99,7 +98,7 @@ class MultiLayerPerceptronPotential():
             self.parallel = False
             self.scale_features = False
             self.set_weight_init_scheme("glorot")
-           
+            self.set_solver(solver) 
             self.set_layer_size(hidden_layer_sizes)
   
             # data for optimization log 
@@ -172,6 +171,15 @@ class MultiLayerPerceptronPotential():
         bias_idx.append(self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                 self.hidden_layer_sizes[1])
         self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
+
+    def set_solver(self,solver):
+        """
+        Set solver to minimize loss function using jacobian of loss
+        """
+        if solver.lower() not in ['l-bfgs-b','cobyla','bfgs','newton-cg','adam']:
+            raise MlppError("solver {} not supported".format(solver))
+        
+        self.solver = solver.lower()
 
     def set_weight_init_scheme(self,scheme):
         """
@@ -377,8 +385,12 @@ class MultiLayerPerceptronPotential():
 
         self._prepare_data_structures(X=X,set_type="train")
 
-        self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
-                method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)
+        if self.solver == 'adam':
+            self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
+                    jac=self._loss_jacobian,x0=self.weights,args=("train"))
+        else:
+            self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
+                    method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)
         
         # book keeping
         self.OptimizeResult.njev = self._njev
