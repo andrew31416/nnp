@@ -89,6 +89,10 @@ class feature():
             # check param type
             if type(params[_attr]) not in _types[_attr]:
                 raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
+        if "lambda" in params.keys():
+            if params["lambda"] not in [-1,1]:
+                raise FeatureError("lambda params must have values -1 or 1 only")
+        
         if self.type in ["acsf_normal-b3"]:
             # check length of arrays
             if self.type == "acsf_normal-b2":
