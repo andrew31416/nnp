@@ -1,6 +1,5 @@
 module features
     use config
-    !use io
     use feature_config
     use feature_util
     use tapering, only : taper_1,taper_deriv_1
@@ -552,6 +551,11 @@ module features
             rcut = feature_params%info(ft_idx)%rcut
 
 
+            if (dr.gt.rcut) then
+                current_val = current_val
+                return
+            end if
+
             !* tapering
             tmp2 = taper_1(dr,rcut,fs)
         
@@ -559,6 +563,7 @@ module features
             tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
                     &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
 
+            
             current_val = current_val + tmp2*tmp3
         end subroutine feature_behler_g1
         
@@ -579,6 +584,7 @@ module features
             zb   = feature_params%info(ft_idx)%zb
             fs   = feature_params%info(ft_idx)%fs
             rcut = feature_params%info(ft_idx)%rcut
+            
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
@@ -600,6 +606,10 @@ module features
                 
                 !* atom-atom distance
                 dr_scl = feature_isotropic(atm)%dr(ii)
+                
+                if (dr_scl.gt.rcut) then
+                    cycle
+                end if
 
                 !* (r_neighbour - r_centralatom)/dr_scl
                 dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)

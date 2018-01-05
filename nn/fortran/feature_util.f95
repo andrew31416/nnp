@@ -838,8 +838,13 @@ module feature_util
                         end if
                     end do
                 end do
-            
-                feature_params%info(ii)%scl_cnst = 1.0d0/currentmax
+           
+                if (abs(currentmax).lt.dble(10e-15)**2) then
+                    !* all feature coordinates are zero!
+                    feature_params%info(ii)%scl_cnst = 0.0d0
+                else
+                    feature_params%info(ii)%scl_cnst = 1.0d0/currentmax
+                end if
             end do
         end subroutine computeall_feature_scaling_constants
 
@@ -858,10 +863,11 @@ module feature_util
                 end if
 
                 cnst = feature_params%info(ii)%scl_cnst
-                
+
                 do conf=1,data_sets(set_type)%nconf,1
-                    data_sets(set_type)%configs(conf)%x(ii+1,:) = data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst
-                    
+                    data_sets(set_type)%configs(conf)%x(ii+1,:) = &
+                            &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst
+
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
                             cycle
