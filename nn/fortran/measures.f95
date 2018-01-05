@@ -133,7 +133,8 @@ module measures
             if (parallel) then
                 !$omp parallel num_threads(omp_get_max_threads()),&
                 !$omp& default(shared),&
-                !$omp& private(conf,thread_start,thread_end,thread_idx,tmp1_jac,tmp2_jac,loss_jac_local)
+                !$omp& private(conf,thread_start,thread_end,thread_idx,tmp1_jac),&
+                !$omp& private(tmp2_jac,loss_jac_local)
 
                 !* [0,num_threads-1]
                 thread_idx = omp_get_thread_num()

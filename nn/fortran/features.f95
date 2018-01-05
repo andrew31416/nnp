@@ -10,8 +10,10 @@ module features
     external :: dsymv
 
     contains
-        subroutine calculate_features()
+        subroutine calculate_features(parallel)
             implicit none
+
+            logical,intent(in) :: parallel
 
             integer :: set_type
             logical :: scale_features
@@ -19,15 +21,17 @@ module features
             scale_features = .false.
 
             do set_type=1,2
-                call calculate_features_singleset(set_type,.true.,scale_features)
+                call calculate_features_singleset(set_type,.true.,scale_features,parallel)
             end do
         end subroutine calculate_features
         
-        subroutine calculate_features_singleset(set_type,derivatives,scale_features)
+        subroutine calculate_features_singleset(set_type,derivatives,scale_features,parallel)
+            use omp_lib
+            
             implicit none
 
             integer,intent(in) :: set_type
-            logical,intent(in) :: derivatives,scale_features
+            logical,intent(in) :: derivatives,scale_features,parallel
             
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
@@ -35,6 +39,10 @@ module features
             real(8) :: mxrcut
             logical :: calc_threebody
             integer :: conf
+
+            !* openMP variables
+            integer :: thread_start,thread_end,thread_idx,num_threads
+            integer :: dconf
 
             !* max cut off of all interactions
             mxrcut = maxrcut(0)
@@ -44,32 +52,83 @@ module features
             
             !* set whether or not to calculate feature derivatives
             calc_feature_derivatives = derivatives
-            
-            do conf=1,data_sets(set_type)%nconf
+           
+            if (parallel) then
+                !$omp parallel num_threads(omp_get_max_threads()),&
+                !$omp& default(shared),&
+                !$omp& private(conf,thread_start,thread_end,thread_idx,ultra_cart),&
+                !$omp& private(ultra_idx,ultra_z)
 
-                call get_ultracell(mxrcut,5000,set_type,conf,&
-                        &ultra_cart,ultra_idx,ultra_z)
-
-                !* always calc. two-body info for features
-                call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
-            
-                if (calc_threebody) then
-                    !* calc. threebody info
-                    call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
-                end if
+                !* thread_idx = [0,num_threads-1]    
+                thread_idx = omp_get_thread_num()
                 
+                num_threads = omp_get_max_threads()
 
-                !* calculate features and their derivatives
-                call calculate_all_features(set_type,conf)
+                !* number of confs for thread
+                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads))) 
 
-                deallocate(ultra_z)
-                deallocate(ultra_idx)
-                deallocate(ultra_cart)
-                deallocate(feature_isotropic)
-                if (calc_threebody) then
-                    deallocate(feature_threebody_info)
+                thread_start = thread_idx*dconf + 1
+
+                if (thread_idx.eq.num_threads-1) then
+                    thread_end = data_sets(set_type)%nconf 
+                else
+                    thread_end = (thread_idx+1)*dconf
                 end if
-            end do !* end loop over configurations
+
+                do conf=thread_start,thread_end,1
+
+                    call get_ultracell(mxrcut,5000,set_type,conf,&
+                            &ultra_cart,ultra_idx,ultra_z)
+
+                    !* always calc. two-body info for features
+                    call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                
+                    if (calc_threebody) then
+                        !* calc. threebody info
+                        call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                    end if
+                    
+
+                    !* calculate features and their derivatives
+                    call calculate_all_features(set_type,conf)
+
+                    deallocate(ultra_z)
+                    deallocate(ultra_idx)
+                    deallocate(ultra_cart)
+                    deallocate(feature_isotropic)
+                    if (calc_threebody) then
+                        deallocate(feature_threebody_info)
+                    end if
+                end do !* end loop over configurations
+
+                !$omp end parallel
+            else
+                do conf=1,data_sets(set_type)%nconf
+
+                    call get_ultracell(mxrcut,5000,set_type,conf,&
+                            &ultra_cart,ultra_idx,ultra_z)
+
+                    !* always calc. two-body info for features
+                    call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                
+                    if (calc_threebody) then
+                        !* calc. threebody info
+                        call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                    end if
+                    
+
+                    !* calculate features and their derivatives
+                    call calculate_all_features(set_type,conf)
+
+                    deallocate(ultra_z)
+                    deallocate(ultra_idx)
+                    deallocate(ultra_cart)
+                    deallocate(feature_isotropic)
+                    if (calc_threebody) then
+                        deallocate(feature_threebody_info)
+                    end if
+                end do !* end loop over configurations
+            end if !* end if parallel section
 
             if (scale_features) then
                 if (set_type.eq.1) then

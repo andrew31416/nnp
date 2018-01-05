@@ -77,6 +77,10 @@ module feature_config
     !* three body information for a single structure used to generate features
     type(feature_info_threebody),allocatable :: feature_threebody_info(:)
 
+    !* openMP pragma necessary for globally scoped variables
+    !$omp threadprivate(feature_isotropic)
+    !$omp threadprivate(feature_threebody_info)
+
     contains
 
         integer function featureID_StringToInt(feature_descriptor)

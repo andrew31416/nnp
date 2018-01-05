@@ -200,6 +200,21 @@ class features():
         # internal fortran mem. buffer size (GB)
         self.buffer_size = 0.1
 
+        # internal parallelism 
+        self.parallel = self.set_parallel(True)
+
+    def set_parallel(self,parallel):
+        """
+        Set feature calculation to perform in parallel
+
+        Parameters
+        ----------
+        parallel : boolean
+        """
+        if isinstance(parallel,bool)!=True:
+            raise FeaturesError("must supply boolean variable")
+        self.parallel = parallel
+
     def set_configuration(self,gip,set_type):
         """
         Parse configurations into fortran data structure
@@ -359,7 +374,7 @@ class features():
         
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],\
-                derivatives=derivatives,scale_features=scale)
+                derivatives=derivatives,scale_features=scale,parallel=self.parallel)
 
         # return [NxD] array of features
         return self.get_features(set_type=set_type)

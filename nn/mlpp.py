@@ -115,6 +115,9 @@ class MultiLayerPerceptronPotential():
         self._loss_log = []
     
     def _update_num_weights(self):
+        if self.D is None:
+            raise MlppError("Cannot update weights while dimension of features is unknown")
+        
         # biases included in weights array
         self.num_weights = (self.D+1)*self.hidden_layer_sizes[0]
         self.num_weights += (self.hidden_layer_sizes[0]+1)*self.hidden_layer_sizes[1]
@@ -127,6 +130,9 @@ class MultiLayerPerceptronPotential():
         self.jacobian = np.zeros(self.num_weights,dtype=np.float64,order='F')
 
     def _init_random_weights(self):
+        if self.D is None:
+            raise MlppError("Cannot initialise weights before dimension of features is known")
+
         if self.weight_init_scheme == 'xavier':
             self.weights = np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(1.0/self.D),\
                     size=self.hidden_layer_sizes[0]*(self.D+1)),order='F',dtype=np.float64)
@@ -197,6 +203,11 @@ class MultiLayerPerceptronPotential():
         if self.features is not None:
             self._update_num_weights()
             
+    def set_parallel(self,parallel):
+        """
+        Set whether to use multithreading in loss and jacobian calculation
+        """
+        self.parallel = parallel
 
     def set_solver(self,solver):
         solver = solver.lower()
@@ -368,7 +379,7 @@ class MultiLayerPerceptronPotential():
 
         self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
                 method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)
-
+        
         # book keeping
         self.OptimizeResult.njev = self._njev
 
