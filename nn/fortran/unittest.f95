@@ -24,11 +24,14 @@ program unittest
 
             !* features
             integer :: natm,nconf
+            logical :: parallel
 
             !* scratch
             integer :: ii
 
             integer :: num_tests
+
+            parallel = .false.
 
             num_tests = size(tests)
 
@@ -40,7 +43,7 @@ program unittest
             nlf_type = 1
             
             !* features
-            fD = 6
+            fD = 7
             natm = 5
             nconf = 2
             
@@ -53,7 +56,7 @@ program unittest
             call generate_features(fD)
 
             !* calculate features and analytical derivatives
-            call calculate_features()
+            call calculate_features(parallel)
 
             call initialise_net(num_nodes,nlf_type,fD)
             
@@ -162,38 +165,35 @@ program unittest
             feature_params%info(1)%ftype = featureID_StringToInt("atomic_number")    
             
             !* test feature 2
-            feature_params%info(2)%ftype = featureID_StringToInt("acsf_behler-g2")            
+            feature_params%info(2)%ftype = featureID_StringToInt("acsf_behler-g1")            
             feature_params%info(2)%rcut = rcut
             feature_params%info(2)%fs = 0.2d0
-            call random_number(feature_params%info(2)%eta)
             call random_number(feature_params%info(2)%za)
             call random_number(feature_params%info(2)%zb)
             
             !* test feature 3
-            feature_params%info(3)%ftype = featureID_StringToInt("acsf_normal-b2")
-            feature_params%info(3)%rcut = rcut - 1.0d0
+            feature_params%info(3)%ftype = featureID_StringToInt("acsf_behler-g2")            
+            feature_params%info(3)%rcut = rcut
             feature_params%info(3)%fs = 0.2d0
+            call random_number(feature_params%info(3)%eta)
             call random_number(feature_params%info(3)%za)
             call random_number(feature_params%info(3)%zb)
-            allocate(feature_params%info(3)%prec(1,1))
-            call random_number(feature_params%info(3)%prec(1,1)) 
-            allocate(feature_params%info(3)%mean(1))
-            call random_number(feature_params%info(3)%mean(1)) 
-            feature_params%info(3)%sqrt_det = sqrt(feature_params%info(3)%prec(1,1))
-
+            
             !* test feature 4
-            feature_params%info(4)%ftype = featureID_StringToInt("acsf_behler-g4")
-            feature_params%info(4)%rcut = 4.0d0
+            feature_params%info(4)%ftype = featureID_StringToInt("acsf_normal-b2")
+            feature_params%info(4)%rcut = rcut - 1.0d0
             feature_params%info(4)%fs = 0.2d0
-            call random_number(feature_params%info(4)%lambda)
-            call random_number(feature_params%info(4)%xi) 
-            call random_number(feature_params%info(4)%eta) 
             call random_number(feature_params%info(4)%za)
             call random_number(feature_params%info(4)%zb)
-            
+            allocate(feature_params%info(4)%prec(1,1))
+            call random_number(feature_params%info(4)%prec(1,1)) 
+            allocate(feature_params%info(4)%mean(1))
+            call random_number(feature_params%info(4)%mean(1)) 
+            feature_params%info(4)%sqrt_det = sqrt(feature_params%info(4)%prec(1,1))
+
             !* test feature 5
-            feature_params%info(5)%ftype = featureID_StringToInt("acsf_behler-g5")
-            feature_params%info(5)%rcut = 3.1d0
+            feature_params%info(5)%ftype = featureID_StringToInt("acsf_behler-g4")
+            feature_params%info(5)%rcut = 4.0d0
             feature_params%info(5)%fs = 0.2d0
             call random_number(feature_params%info(5)%lambda)
             call random_number(feature_params%info(5)%xi) 
@@ -202,18 +202,28 @@ program unittest
             call random_number(feature_params%info(5)%zb)
             
             !* test feature 6
-            feature_params%info(6)%ftype = featureID_StringToInt("acsf_normal-b3")
-            feature_params%info(6)%rcut = 4.0d0
-            feature_params%info(6)%fs = 0.3d0
-            allocate(feature_params%info(6)%prec(3,3))
-            allocate(feature_params%info(6)%mean(3))
-            call random_number(feature_params%info(6)%prec)
+            feature_params%info(6)%ftype = featureID_StringToInt("acsf_behler-g5")
+            feature_params%info(6)%rcut = 3.1d0
+            feature_params%info(6)%fs = 0.2d0
+            call random_number(feature_params%info(6)%lambda)
+            call random_number(feature_params%info(6)%xi) 
+            call random_number(feature_params%info(6)%eta) 
             call random_number(feature_params%info(6)%za)
             call random_number(feature_params%info(6)%zb)
-            feature_params%info(6)%mean(1) = 4.2d0
-            feature_params%info(6)%mean(2) = 2.1d0
-            feature_params%info(6)%mean(3) = 0.3d0
-            feature_params%info(6)%sqrt_det = sqrt(matrix_determinant(feature_params%info(6)%prec))
+            
+            !* test feature 7
+            feature_params%info(7)%ftype = featureID_StringToInt("acsf_normal-b3")
+            feature_params%info(7)%rcut = 4.0d0
+            feature_params%info(7)%fs = 0.3d0
+            allocate(feature_params%info(7)%prec(3,3))
+            allocate(feature_params%info(7)%mean(3))
+            call random_number(feature_params%info(7)%prec)
+            call random_number(feature_params%info(7)%za)
+            call random_number(feature_params%info(7)%zb)
+            feature_params%info(7)%mean(1) = 4.2d0
+            feature_params%info(7)%mean(2) = 2.1d0
+            feature_params%info(7)%mean(3) = 0.3d0
+            feature_params%info(7)%sqrt_det = sqrt(matrix_determinant(feature_params%info(7)%prec))
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -531,8 +541,10 @@ program unittest
             type(feature_derivatives),allocatable :: anl_deriv(:,:)
             logical :: deriv_matches,atom_ok,all_ok,set_arr(1:2)
             logical,allocatable :: conf_arr(:),atm_arr(:)
-            logical :: atom_passes
+            logical :: atom_passes,parallel
             
+
+            parallel = .false.
 
             do set_type=1,2
                 allocate(conf_arr(data_sets(set_type)%nconf))
@@ -552,7 +564,7 @@ program unittest
                     calc_feature_derivatives = .true.
                     
                     !* calculate analytical derivatives
-                    call calculate_features()
+                    call calculate_features(parallel)
                     
                     !* copy numerical derivatives
                     do ii=1,data_sets(set_type)%configs(conf)%n
@@ -600,7 +612,7 @@ program unittest
                                     call deallocate_feature_deriv_info()
                                     
                                     !* calculate features
-                                    call calculate_features()
+                                    call calculate_features(parallel)
                                     
                                     if (ii.eq.1) then
                                         num_dxdr(:,:) = data_sets(set_type)%configs(conf)%x(2:,:)
@@ -953,7 +965,9 @@ program unittest
             real(8) :: dw,num_val,etot,x0
             real(8),allocatable :: anl_forces(:,:)
             logical,allocatable :: atms_ok(:),conf_ok(:)
-            logical :: dd_ok,set_ok(1:2)
+            logical :: dd_ok,set_ok(1:2),parallel
+
+            parallel = .false.
 
             do set_type=1,2,1
                 allocate(conf_ok(data_sets(set_type)%nconf))
@@ -969,7 +983,7 @@ program unittest
                     calc_feature_derivatives = .true.
 
                     call deallocate_feature_deriv_info()
-                    call calculate_features()
+                    call calculate_features(parallel)
 
                     allocate(anl_forces(3,data_sets(set_type)%configs(conf)%n))
                     
@@ -1005,7 +1019,7 @@ program unittest
                                     end if
                                     
                                     call deallocate_feature_deriv_info()
-                                    call calculate_features()
+                                    call calculate_features(parallel)
 
                                     !* have to propagate through all atoms
                                     do atm_prime=1,data_sets(set_type)%configs(conf)%n,1

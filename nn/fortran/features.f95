@@ -372,8 +372,18 @@ module features
             do ii=1,feature_isotropic(atm)%n
                 if (feature_isotropic(atm)%dr(ii).le.rcut) then
                     !* contributing interaction
-                    if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                        call feature_behler_g2(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+                    if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
+                        call feature_behler_g1(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+
+                        if (calc_feature_derivatives) then
+                            call feature_behler_g1_deriv(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                &vec(1:3,idx_to_contrib(ii)))
+                        end if
+                    else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                        call feature_behler_g2(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calc_feature_derivatives) then
                             call feature_behler_g2_deriv(atm,ii,ft_idx,&
@@ -381,7 +391,8 @@ module features
                                 &vec(1:3,idx_to_contrib(ii)))
                         end if
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                        call feature_normal_iso(atm,ii,ft_idx,data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+                        call feature_normal_iso(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calc_feature_derivatives) then
                             call feature_normal_iso_deriv(atm,ii,ft_idx,&
@@ -394,7 +405,10 @@ module features
             
             !* derivative wrt. central atm
             if (calc_feature_derivatives) then 
-                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
+                    call feature_behler_g1_deriv(atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
                     call feature_behler_g2_deriv(atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
@@ -518,6 +532,90 @@ module features
             deallocate(bond_contributes)
         
         end subroutine feature_threebody
+        
+        subroutine feature_behler_g1(atm,neigh_idx,ft_idx,current_val)
+            implicit none
+
+            integer,intent(in) :: atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: current_val
+
+            !* scratch
+            real(8) :: dr,tmp2,tmp3,za,zb,rcut,fs
+           
+            !* atom-neigh_idx distance 
+            dr  = feature_isotropic(atm)%dr(neigh_idx)
+            
+            !* symmetry function params
+            za   = feature_params%info(ft_idx)%za
+            zb   = feature_params%info(ft_idx)%zb
+            fs   = feature_params%info(ft_idx)%fs
+            rcut = feature_params%info(ft_idx)%rcut
+
+
+            !* tapering
+            tmp2 = taper_1(dr,rcut,fs)
+        
+            !* atomic numbers
+            tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+                    &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+
+            current_val = current_val + tmp2*tmp3
+        end subroutine feature_behler_g1
+        
+        subroutine feature_behler_g1_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+            implicit none
+
+            integer,intent(in) :: atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: deriv_vec(1:3)
+
+            !* scratch
+            real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
+            real(8) :: fs,rcut,tmpz
+            real(8) :: za,zb
+            integer :: ii,lim1,lim2
+
+            !* symmetry function params
+            za   = feature_params%info(ft_idx)%za
+            zb   = feature_params%info(ft_idx)%zb
+            fs   = feature_params%info(ft_idx)%fs
+            rcut = feature_params%info(ft_idx)%rcut
+
+            if (neigh_idx.eq.0) then
+                lim1 = 1
+                lim2 = feature_isotropic(atm)%n
+                tmp2 = -1.0d0       !* sign for drij/d r_central
+            else
+                lim1 = neigh_idx
+                lim2 = neigh_idx    
+                tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+            end if
+
+
+            !* derivative wrt. central atom itself
+            do ii=lim1,lim2,1
+                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+                    cycle
+                end if
+                
+                !* atom-atom distance
+                dr_scl = feature_isotropic(atm)%dr(ii)
+
+                !* (r_neighbour - r_centralatom)/dr_scl
+                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                
+                !* tapering
+                tap = taper_1(dr_scl,rcut,fs)
+                tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
+
+                !* atomic numbers
+                tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
+
+                tmp1 = tap_deriv
+                
+                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
+            end do
+        end subroutine feature_behler_g1_deriv
         
         subroutine feature_behler_g2(atm,neigh_idx,ft_idx,current_val)
             implicit none
