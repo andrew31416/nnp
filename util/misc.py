@@ -41,7 +41,7 @@ def split_sets(gip,train_fraction):
     >>> sets = nnp.util.misc.split_sets(gip,0.1)
     >>>
     >>> # 0.1% of all configurations are now included in training set
-    >>> features = nnp.features.types.features(train=sets["train"])
+    >>> features = nnp.features.types.features(train_data=sets["train"])
     """
     import parsers
     num_structures = len(gip.supercells)
