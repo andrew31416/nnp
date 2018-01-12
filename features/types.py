@@ -194,7 +194,7 @@ class features():
 
         # parse data into fortran structure
         self.set_configuration(gip=self.data["train"],set_type="train")
-
+        
         self.features = []
 
         # internal fortran mem. buffer size (GB)
@@ -233,7 +233,7 @@ class features():
             raise FeaturesError('{} not in {}'.format(set_type,'train,test'))
 
         nnp.util.io._parse_configs_to_fortran(gip,set_type.lower())
-        self.data[set_type.lower] = gip
+        self.data[set_type.lower()] = gip
 
     def set_rcut(self,rcuts):
         """
