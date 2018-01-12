@@ -381,7 +381,8 @@ class MultiLayerPerceptronPotential():
 
         if self.solver in ['adam','cma']:
             self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
-                    jac=self._loss_jacobian,x0=self.weights,args=("train"),**self.solver_kwargs)
+                    jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
+                    args=("train"),**self.solver_kwargs)
         else:
             self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
                     method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)

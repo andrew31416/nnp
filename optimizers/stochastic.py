@@ -13,8 +13,10 @@ def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
     >>> 
     >>> adam_optimizer = nnp.optimizers.stochastic.minimize(fun=np.cos,jac=np.sin)
     """
-    if solver.lower() not in ['adam']:
+    if solver.lower() not in ['adam','cma']:
         raise StochasticOptimizersError("{} is unsupported".format(solver))
+
+    print('using optimizer {}'.format(solver))
 
     if solver.lower() == 'adam':
         optimizer = Adam(fun=fun,jac=jac,args=args,tol=tol,x0=x0,**solver_kwargs) 
@@ -176,15 +178,14 @@ class CMA():
         Objective function to minimise
     """
 
-    def __init__(self,fun,x0,args=(),rand_min=0,rand_max=1):        
+    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=1000):        
         self.fun = fun
         self.args = args
         self.x0 = x0
         # generate wrapped function
         self._set_function()
 
-        self.rand_min = rand_min
-        self.rand_max = rand_max
+        self.sigma = sigma
         self.max_iter = max_iter
 
         # assume length of input corresponds to num params 
@@ -195,15 +196,15 @@ class CMA():
 
     def _set_function(self):
         def wrapped_function(x):
-            return (self.fun(x,*self.args),)
+            return (self.fun(x,self.args),)
 
         self._function = wrapped_function
 
     def minimize(self):
 
-        sigma = 10.0
-        lambda_ = 20*self.Nparam
-
+        sigma = self.sigma
+        lambda_ = int(4+3*np.log(self.Nparam))
+        
         creator.create("FitnessMin",base.Fitness,weights=(-1.,))
         creator.create("Individual",list,fitness=creator.FitnessMin)
 
@@ -272,6 +273,7 @@ class CMA():
         # "best" individual of all time
         opt_res["fun"] = np.min([_pop["min"] for _pop in logbook])
         opt_res["x"] = halloffame[0]
+        opt_res["logbook"] = logbook
 
         # return Scipy OptimizeResult instance 
         return opt_res
