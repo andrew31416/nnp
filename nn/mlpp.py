@@ -82,7 +82,8 @@ class MultiLayerPerceptronPotential():
     """
 
     def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
-            hyper_params={'loss_energy':1.0,'loss_forces':1.0,'loss_regularization':1.0}):
+            hyper_params={'loss_energy':1.0,'loss_forces':1.0,'loss_regularization':1.0},\
+            solver_kwargs={},parallel=True,scale_features=True):
             
             self.activation = activation
             self.loss_norm = 'l1'
@@ -95,8 +96,8 @@ class MultiLayerPerceptronPotential():
             self.num_weights = None
             self.D = None
             self.OptimizeResult = None
-            self.parallel = False
-            self.scale_features = False
+            self.parallel = parallel
+            self.scale_features = scale_features
             self.set_weight_init_scheme("glorot")
             self.set_solver(solver) 
             self.set_layer_size(hidden_layer_sizes)
@@ -105,6 +106,8 @@ class MultiLayerPerceptronPotential():
             self._njev = None
             self._loss_log = None
    
+            self.solver_kwargs = solver_kwargs
+
     def _init_optimization_log(self):
         """
         Perform operations necessary to initialise log data for optimization
@@ -172,15 +175,6 @@ class MultiLayerPerceptronPotential():
                 self.hidden_layer_sizes[1])
         self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
 
-    def set_solver(self,solver):
-        """
-        Set solver to minimize loss function using jacobian of loss
-        """
-        if solver.lower() not in ['l-bfgs-b','cobyla','bfgs','newton-cg','adam']:
-            raise MlppError("solver {} not supported".format(solver))
-        
-        self.solver = solver.lower()
-
     def set_weight_init_scheme(self,scheme):
         """
         Set the scheme to use when initialisation neural net weights
@@ -221,7 +215,7 @@ class MultiLayerPerceptronPotential():
         solver = solver.lower()
 
         if solver not in ['nelder-mead','powell','cg','bfgs','l-bfgs-b','tnc','cobyla',\
-                'slsqp','dogleg','trust-ncg','trust-krylov','trust-exact']:
+                'slsqp','dogleg','trust-ncg','trust-krylov','trust-exact','adam','cma']:
             raise MlppError("solver {} not supported".format(solver))
         self.solver = solver
 
@@ -385,9 +379,9 @@ class MultiLayerPerceptronPotential():
 
         self._prepare_data_structures(X=X,set_type="train")
 
-        if self.solver == 'adam':
+        if self.solver in ['adam','cma']:
             self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
-                    jac=self._loss_jacobian,x0=self.weights,args=("train"))
+                    jac=self._loss_jacobian,x0=self.weights,args=("train"),**self.solver_kwargs)
         else:
             self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
                     method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)

@@ -1,6 +1,7 @@
 import numpy as np
 import warnings
 from scipy.optimize import OptimizeResult
+from deap import base,creator,tools,cma
 
 def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
     """
@@ -17,7 +18,8 @@ def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
 
     if solver.lower() == 'adam':
         optimizer = Adam(fun=fun,jac=jac,args=args,tol=tol,x0=x0,**solver_kwargs) 
-
+    elif solver.lower() == 'cma':
+        optimizer = CMA(fun=fun,args=args,x0=x0,**solver_kwargs)
 
     # run optimization
     optimisation_result = optimizer.minimize()
@@ -163,5 +165,117 @@ class Adam():
         opt_res["niter"] = self.niter
 
         return opt_res
+        
+class CMA():
+    """
+    Covariance Matrix Adaption
+
+    Parameters
+    ----------
+    fun : Callable function
+        Objective function to minimise
+    """
+
+    def __init__(self,fun,x0,args=(),rand_min=0,rand_max=1):        
+        self.fun = fun
+        self.args = args
+        self.x0 = x0
+        # generate wrapped function
+        self._set_function()
+
+        self.rand_min = rand_min
+        self.rand_max = rand_max
+        self.max_iter = max_iter
+
+        # assume length of input corresponds to num params 
+        if isinstance(x0,(np.ndarray,tuple,list)):
+            self.Nparam = np.shape(x0)[0]
+        else:
+            self.Nparam = 1
+
+    def _set_function(self):
+        def wrapped_function(x):
+            return (self.fun(x,*self.args),)
+
+        self._function = wrapped_function
+
+    def minimize(self):
+
+        sigma = 10.0
+        lambda_ = 20*self.Nparam
+
+        creator.create("FitnessMin",base.Fitness,weights=(-1.,))
+        creator.create("Individual",list,fitness=creator.FitnessMin)
+
+        toolbox = base.Toolbox()
+        toolbox.register("map",map)
+        toolbox.register("evaluate",self._function)
+
+        strategy = cma.Strategy(centroid=self.x0,sigma=sigma)
+        toolbox.register("generate", strategy.generate, creator.Individual)
+        toolbox.register("update",strategy.update)
+
+
+        #-----------------#
+        # log information #
+        #-----------------#
+        
+        halloffame = tools.HallOfFame(maxsize=1)
+        stats = tools.Statistics(lambda ind: ind.fitness.values)
+        stats.register("avg",np.mean)
+        stats.register("std",np.std)
+        stats.register("min",np.min)
+        stats.register("max",np.max)
+
+        logbook = tools.Logbook()
+        logbook.header = "gen","evals","avg","std","min","max"
+
+        conditions = {"MaxIter" : False, "TolHistFun" : False, "EqualFunVals" : False,
+                      "TolX" : False, "TolUpSigma" : False, "Stagnation" : False,
+                      "ConditionCov" : False, "NoEffectAxis" : False, "NoEffectCoor" : False,
+                       "small_std":False}
+
+        MAXITER = self.max_iter
+        
+        # return a ScipyOptimize object
+        opt_res = OptimizeResult()
+        opt_res["success"] = False
+        opt_res["nfev"] = 0
+
+        t = 0
+        while not any(conditions.values()):
+            # generate all indidivuals
+            population = toolbox.generate()
+
+            # evaluate fitnesses for all individuals in population
+            fitnesses = toolbox.map(toolbox.evaluate,population)
+
+            for ind,fit in zip(population,fitnesses):
+                ind.fitness.values = fit
+
+            # update records of optimisation
+            halloffame.update(population)
+            record = stats.compile(population)
+            logbook.record(gen=t,evals=lambda_,**record)
+
+            # number of function evaluations
+            opt_res["nfev"] += len(population)
+
+            toolbox.update(population)
+
+            # book keeping 
+            t += 1
+
+            if t > MAXITER:
+                conditions["MaxIter"] = True
+
+        # "best" individual of all time
+        opt_res["fun"] = np.min([_pop["min"] for _pop in logbook])
+        opt_res["x"] = halloffame[0]
+
+        # return Scipy OptimizeResult instance 
+        return opt_res
+        
+        
 class StochasticOptimizersError(Exception):
     pass    

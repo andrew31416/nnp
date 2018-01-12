@@ -17,7 +17,7 @@ def num_threads():
     return getattr(f95_api,"f90wrap_num_threads")()
 
 
-def split_sets(gip,train_fraction):
+def split_sets(gip,train_fraction,seed=None):
     """
     split a single parsers.GeneralInputParser() into
     test and train parsers.GeneralInputParser()'s
@@ -30,6 +30,9 @@ def split_sets(gip,train_fraction):
     train_fraction : float
         The fraction of structures to include in the training set
     
+    seed : int, default value = None
+        If not None, initialise numpy random numbers with this seed
+
     Examples
     --------
     >>> import nnp
