@@ -270,9 +270,45 @@ class MultiLayerPerceptronPotential():
         _map = {"l1":1,"l2":2}
         # set loss function parameters
         getattr(f95_api,"f90wrap_init_loss")(k_energy=self.hyper_params["loss_energy"],\
-                k_forces=self.hyper_params["loss_forces"],k_reglrn=self.hyper_params["loss_regularization"],
+                k_forces=self.hyper_params["loss_forces"],\
+                k_reglrn=self.hyper_params["loss_regularization"],
                 norm_type=_map[self.loss_norm])
 
+    def check_node_distribution(self,X):
+        """
+        For both layers, forward propagate self.weights to compute the input 
+        value to all nodes (value before activation function is applied). 
+        
+        For reasonable weights, we want values to be distributed about 0 with a 
+        standard deviation of ~ 1 for all nodes. If this is not the case, poor
+        performance may be seen as the gradient of many activation functions
+        (sigmoid for eg.) may be almost 0.
+        
+        Parameters
+        ----------
+        X : parsers.GeneralInputParser()
+            A structure class of reference structures
+        """
+        import nnp.nn.fortran.nn_f95 as f95_api 
+        
+        # parse data to fortran and compute features
+        self._prepare_data_structures(X=X,set_type="test")
+       
+        # total number of atoms in data set
+        total_num_atoms = nnp.util.total_atoms_in_set("test") 
+
+        node_distribution = {"layer1":0,"layer2:":1}
+        for _layer in node_distribution:
+            # number of nodes in given layer
+            num_nodes = self.hidden_layer_sizes[node_distribution[_layer]]
+
+            node_distribution[_layer] = np.zeros((total_num_atoms,num_nodes),order='F',\
+                    dtype=np.float64)
+      
+        getattr(f95_api,"f90wrap_get_node_distribution")(flat_weights=self.weights,\
+                set_type="test",layer_one=node_distribution["layer1"],\
+                layer_two=node_distribution["layer2"])
+               
     def _update_loss_log(self,loss):
         """
         Store most recent value of objective function during optimization

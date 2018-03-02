@@ -176,15 +176,16 @@ module io
             end do
         end subroutine
 
-        subroutine get_features(set_type)
-            implicit none
+        ! DEPRCATED
+        !subroutine get_features(set_type)
+        !    implicit none
 
-            integer,intent(in) :: set_type
+        !    integer,intent(in) :: set_type
 
-            integer :: conf
+        !    integer :: conf
 
-            conf=set_type
-        end subroutine get_features
+        !    conf=set_type
+        !end subroutine get_features
 
         subroutine read_feature_info(filepath)
             implicit none
