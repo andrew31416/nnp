@@ -1,65 +1,170 @@
-"""
-routines for performing principal component analysis on 
-atomic environment features
-"""
 import numpy as np
+from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
 
-def perform_pca(X,q):
+class pca_class():
     """
-    Input
-    -----
-        - X : X.shape = (N,D)
-        - N : number of data points
-        - D : original number of dimensions
-        - q : final number of dimensions
+    Class to perform PCA on data
+
+    Parameters
+    ----------
+    pca_type : String, allowed values = 'linear'
+        Type of PCA to perform
+
+    data : [NxD] np.ndarray
+        N data points of D dimension
+
+    Attributes
+    ----------
+    pca_type : String
+
+    data : np.ndarrary
+
+    Examples
+    --------
+    >>> import parsers
+    >>> import nnp
+    >>> # read data
+    >>> gip = parsers.GeneralInputParser()
+    >>> gip.parse_all('./training_data')
+    >>> # initialise features class 
+    >>> features = nnp.features.types.features(gip,pca_type=None)
+    >>> features.generate_gmm_features()
+    >>> # compute GMM features
+    >>> computed_features = features.calculate()
+    >>>
+    >>> # perform pca on computed features
+    >>> reduced_features = nnp.features.pca.pca_class(pca_type='linear',\
+    >>>         data=computed_features) 
     """
+    
+    def __init__(self,pca_type,data):
+        # number of bins to use for eigen val. distr.
+        self._nbins = 40
+       
+        # minimum fractional difference for convergence of distr. fit
+        self._ftol = 1e-4
+        
+        # initialise data
+        self.set_pca_type(pca_type)
+        self.set_data(data) 
 
-    (N,D) = X.shape
+        self.perform_pca()
 
-    # catch silly mistakes
-    q = min([D,q])
+    def set_pca_type(self,pca_type):    
+        """
+        Set type of PCA to use
+        """ 
+        self.supp_types = ['linear']
 
-    tmp = (X - np.tile(np.average(X,axis=0),(N,1))) 
+        if pca_type.lower() not in self.supp_types:
+            raise PCAError("{} not a supported PCA type : {}".format(pca_type,self.supp_types))
+            
+        self.pca_type = pca_type.lower()
 
-    # sample covariance matrix
-    cov_matrix = np.dot(tmp.T,tmp) / float(N)
+    def set_data(self,data):
+        """
+        Set data for pca class
+        """
+        if not isinstance(data,np.ndarray):
+            raise PCAError("data of type {} not supported".format(type(data)))
+        self.data = data
 
-    # find eigen values and vectors
-    eigen_values,eigen_vectors = np.linalg.eig(cov_matrix)
+    def perform_pca(self):
+        """
+        Perform PCA for specified type
+        """
 
-    # sort into ascending list of eigen values
-    idx = np.argsort(eigen_values)[::-1]
+        if self.pca_type == 'linear':
+            print('computing covariance matrix...')
+            self._calculate_covariance_matrix()
 
-    eigen_values = eigen_values[idx]
-    eigen_vectors = eigen_vectors.T[idx]
+            print('diagonalizing {}...'.format(self.data.shape))
+            self._diagonalize_covariance()
 
-    # principal projections
-    W_transpose = np.asarray(eigen_vectors[0,:])
+            # find optimal Q,sigma value for Marcenko Pastur distribution
+            popt = self._fit_MarcenkoPastur()
 
-    for ii in range(1,q):
-        W_transpose = np.vstack((W_transpose,eigen_vectors[ii,:]))
-    W = W_transpose.T
+            # max eigenvalue of random distribution
+            _,randmax = self._MarcenkoPastur_minmax_eigenvalues(*popt)
 
-    principal_X = np.dot(W_transpose,tmp.T).T 
+            # indices of nonrandom eigenvectors
+            nonrandom = np.where(self._eigenvalues>randmax)[0]
+            print('ids',nonrandom)
+            print('max eig',randmax)
+            print('eigs',self._eigenvalues)
+            W_transpose = np.asarray(self._eigenvalues[nonrandom[0],:])
 
-    #if True:
-    #    tmp = (principal_X - np.tile(np.average(principal_X,axis=0),(N,1))) 
-    #    
-    #    new_cov = np.dot(tmp.T,tmp)/float(N)
-    #    
-    #    for ii in range(new_cov.shape[0]):
-    #        print(new_cov[ii,:])
-    #    print('\neigenvalues : ')
-    #    for ii in range(q):
-    #        print(eigen_values[ii])
-    return principal_X,W,np.average(X,axis=0)
+            for _component in nonrandom[1:]:
+                W_tranpose = np.vstack((W_transpose,self._eigenvalues[_component,:]))
+            
+            # new_ni = \sum_j^D W_{ij} old_nj        
+            new_projection = np.dot(self.data - np.tile(self._sample_mean,(self.data.shape[0],1)) ,\
+                    W_transpose)
+                
+            return new_projection
+
+    def _calculate_covariance_matrix(self):
+        """
+        Compute the covariance matrix of self.data
+        """
+        self._sample_mean = np.average(self.data,axis=0)
+        H = self.data - np.tile(self._sample_mean,(self.data.shape[0],1))
+        self._covariance_matrix = np.dot(H.T,H)/float(self.data.shape[0])
+
+    def _diagonalize_covariance(self):
+        eigenvalues,eigenvectors = np.linalg.eig(self._covariance_matrix)
+
+        # sort by magnitude descending
+        idx = np.argsort(eigenvalues)[::-1]
+
+        self._eigenvalues = eigenvalues[idx]
+        self._eigenvectors = eigenvectors.T[idx]
+
+    def _fit_MarcenkoPastur(self):
+        """
+        Compute Q,sigma free params to Marcenko Pastur distribution for sample
+        eigvenalues distribution
+        """
+
+        hist,edges = np.histogram(self._eigenvalues,bins=self._nbins,normed=True)
+        centres = np.asarray([0.5*(edges[ii]+edges[ii+1]) for ii in range(len(hist))])
+
+        plt.plot(centres,hist)
+        plt.show() 
+        for _ftol in np.logspace(-10,np.log10(self._ftol),5):
+            # fit Q,sigma values
+            try:
+                popt,pcov = curve_fit(f=self._MarcenkoPastur_distribution,xdata=centres,ydata=hist,\
+                        maxfev=1000,ftol=_ftol,method='trf',bounds=([1,0],[np.inf,np.inf]))
+                fail = False
+                break
+            except RuntimeError:
+                fail = True
+
+        if fail:
+            raise PCAError("optimisation of Marcenko Pastur distribution params has failed")
+
+        return popt
+
+    def _MarcenkoPastur_minmax_eigenvalues(self,Q,sigma):
+        eig_max = (sigma*(1+np.sqrt(1.0/Q)))**2
+        eig_min = (sigma*(1-np.sqrt(1.0/Q)))**2
+        return eig_min,eig_max
+    
+    def _MarcenkoPastur_distribution(self,eigenvalue,Q,sigma):
+        eig_min,eig_max = self._MarcenkoPastur_minmax_eigenvalues(Q=Q,sigma=sigma)
+
+        nonzero_idx = np.nonzero( np.logical_and(eigenvalue >= eig_min,\
+                eigenvalue <= eig_max)  )[0] 
+
+        val = np.zeros(eigenvalue.shape[0],dtype=np.float64)
+        
+        val[nonzero_idx] = Q/(2.0*np.pi*sigma**2 * eigenvalue[nonzero_idx]) * \
+                np.sqrt( (eig_max-eigenvalue[nonzero_idx])*(-eig_min+eigenvalue[nonzero_idx]) )
+                
+        return val                
 
 
-def project_into_pc(X,W,average_x):
-    """
-    project the data points X into their principal components
-    """
-  
-    tmp = X - np.tile(average_x,(X.shape[0],1)) 
-
-    return np.dot(W.T,tmp.T).T
+class PCAError(Exception):
+    pass 

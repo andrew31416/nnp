@@ -3,6 +3,7 @@ Python types for feature information
 """
 import nnp.util.io
 import nnp.nn.fortran.nn_f95 as f95_api
+from nnp.features import pca as features_pca
 import numpy as np
 import tempfile
 import shutil
@@ -182,7 +183,7 @@ class features():
     >>> _features.set_configuration(gip_test,"test")
     """
 
-    def __init__(self,train_data):
+    def __init__(self,train_data,PCA='linear'):
         # atomic configuraitons
         self.data = {"train":train_data,"test":None}
 
@@ -202,6 +203,9 @@ class features():
 
         # internal parallelism 
         self.parallel = self.set_parallel(True)
+
+        # set type of PCA to use
+        self.set_pca(PCA) 
 
     def set_parallel(self,parallel):
         """
@@ -234,6 +238,12 @@ class features():
 
         nnp.util.io._parse_configs_to_fortran(gip,set_type.lower())
         self.data[set_type.lower()] = gip
+
+    def set_pca(self,pca_type):
+        if pca_type not in [None,'linear']:
+            raise FeaturesError('{} is not a supported PCA type')
+
+        self.pca_type = pca_type
 
     def set_rcut(self,rcuts):
         """
@@ -316,12 +326,14 @@ class features():
        
         twobody = np.zeros((num64_floats),dtype=np.float64,order='F') 
         threebody = np.zeros((3,int(num64_floats/3.)),dtype=np.float64,order='F') 
-        _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],dtype=np.float64)
+        _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],\
+                dtype=np.float64)
         
         _map = {"train":1,"test":2}
         # calculate 2&3 body distributions
-        n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(set_type=_map[set_type],\
-                sample_rate=_sample_rate,twobody_dist=twobody,threebody_dist=threebody)
+        n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(\
+                set_type=_map[set_type],sample_rate=_sample_rate,twobody_dist=twobody,\
+                threebody_dist=threebody)
 
         if remove_features:
             for ii in range(remove_features):
@@ -376,15 +388,26 @@ class features():
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],\
                 derivatives=derivatives,scale_features=scale,parallel=self.parallel)
 
+        # no PCA
+        non_pca_features = self.get_features(set_type=set_type)
+
+        if self.pca_type is not None:
+            pca_instance = features_pca.pca_class(pca_type=self.pca_type,data=non_pca_features)
+
+            final_features = pca_instance.perform_pca()
+        else:
+            final_features = non_pca_features
+
         # return [NxD] array of features
-        return self.get_features(set_type=set_type)
+        return final_features
 
     def _parse_features_to_fortran(self):
         """
         Parse formatted list of features to fortran
         """
 
-        tmpfile = tempfile.NamedTemporaryFile(mode='w',prefix='nnp-',suffix='.features',delete=False) 
+        tmpfile = tempfile.NamedTemporaryFile(mode='w',prefix='nnp-',suffix='.features',\
+                delete=False) 
         
         for _feature in self.features:
             _feature._write_to_disk(tmpfile.file)
@@ -554,7 +577,8 @@ class features():
         symmetric_dist = np.vstack((np.vstack((tmp1,tmp2)),tmp3)).T
 
         # take lower diagonal
-        symmetric_dist = np.asarray(list(filter(lambda x : True if x[0]>=x[1] else False, symmetric_dist)))
+        symmetric_dist = np.asarray(list(filter(lambda x : True if x[0]>=x[1] else False, \
+                symmetric_dist)))
       
 
         # do EM on mean,precision,mixing coeffs.
