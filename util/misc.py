@@ -17,6 +17,38 @@ def num_threads():
     return getattr(f95_api,"f90wrap_num_threads")()
 
 
+def total_atoms_in_set(set_type):
+    """
+    Return the total number of atoms in a given set
+
+    Parameters
+    ----------
+    set_type : String, alowed valued = "train","test"
+
+    Examples
+    --------
+    >>> import nnp
+    >>> import parsers
+    >>>
+    >>> # parse data
+    >>> gip = parsers.GeneralInputParser()
+    >>> gip.parse_all('./train_sets')
+    >>>
+    >>> # generate features
+    >>> _features = nnp.features.types.features(gip)
+    >>> _features.generate_gmm_features()
+    >>> _mlpp = nnp.mlpp.MultiLayerPerceptronPotential()
+    >>> _mlpp.set_features(_features)
+    >>>
+    >>> # write data to fortran
+    >>> _mlpp._prepare_data_structures(gip,"train")
+    >>> print('number of atoms in train set = {}'.format(nnp.util.total_atoms_in_set("train")))
+    """
+    if set_type not in ["train","test"]:
+        raise GeneralUtilError("Set {} no in 'train','test'".format(set_type))
+    
+    return getattr(f95_api,"f90wrap_get_total_natm")({"test":2,"train":1}[set_type])
+
 def split_sets(gip,train_fraction,seed=None):
     """
     split a single parsers.GeneralInputParser() into
