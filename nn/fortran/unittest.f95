@@ -24,7 +24,7 @@ program unittest
 
             !* features
             integer :: natm,nconf
-            logical :: parallel
+            logical :: parallel,scale_features
 
             !* scratch
             integer :: ii
@@ -32,6 +32,8 @@ program unittest
             integer :: num_tests
 
             parallel = .false.
+            !* do not scale features
+            scale_features = .false.
 
             num_tests = size(tests)
 
@@ -46,6 +48,7 @@ program unittest
             fD = 7
             natm = 5
             nconf = 2
+
             
             call unittest_header()
             
@@ -56,7 +59,7 @@ program unittest
             call generate_features(fD)
 
             !* calculate features and analytical derivatives
-            call calculate_features(parallel)
+            call calculate_features(parallel,scale_features)
 
             call initialise_net(num_nodes,nlf_type,fD)
             
@@ -541,10 +544,11 @@ program unittest
             type(feature_derivatives),allocatable :: anl_deriv(:,:)
             logical :: deriv_matches,atom_ok,all_ok,set_arr(1:2)
             logical,allocatable :: conf_arr(:),atm_arr(:)
-            logical :: atom_passes,parallel
+            logical :: atom_passes,parallel,scale_features
             
 
             parallel = .false.
+            scale_features = .false.
 
             do set_type=1,2
                 allocate(conf_arr(data_sets(set_type)%nconf))
@@ -564,7 +568,7 @@ program unittest
                     calc_feature_derivatives = .true.
                     
                     !* calculate analytical derivatives
-                    call calculate_features(parallel)
+                    call calculate_features(parallel,scale_features)
                     
                     !* copy numerical derivatives
                     do ii=1,data_sets(set_type)%configs(conf)%n
@@ -612,7 +616,7 @@ program unittest
                                     call deallocate_feature_deriv_info()
                                     
                                     !* calculate features
-                                    call calculate_features(parallel)
+                                    call calculate_features(parallel,scale_features)
                                     
                                     if (ii.eq.1) then
                                         num_dxdr(:,:) = data_sets(set_type)%configs(conf)%x(2:,:)
@@ -965,9 +969,10 @@ program unittest
             real(8) :: dw,num_val,etot,x0
             real(8),allocatable :: anl_forces(:,:)
             logical,allocatable :: atms_ok(:),conf_ok(:)
-            logical :: dd_ok,set_ok(1:2),parallel
+            logical :: dd_ok,set_ok(1:2),parallel,scale_features
 
             parallel = .false.
+            scale_features = .false.
 
             do set_type=1,2,1
                 allocate(conf_ok(data_sets(set_type)%nconf))
@@ -983,7 +988,7 @@ program unittest
                     calc_feature_derivatives = .true.
 
                     call deallocate_feature_deriv_info()
-                    call calculate_features(parallel)
+                    call calculate_features(parallel,scale_features)
 
                     allocate(anl_forces(3,data_sets(set_type)%configs(conf)%n))
                     
@@ -1019,7 +1024,7 @@ program unittest
                                     end if
                                     
                                     call deallocate_feature_deriv_info()
-                                    call calculate_features(parallel)
+                                    call calculate_features(parallel,scale_features)
 
                                     !* have to propagate through all atoms
                                     do atm_prime=1,data_sets(set_type)%configs(conf)%n,1

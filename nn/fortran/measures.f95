@@ -492,16 +492,19 @@ module measures
         end subroutine loss_forces_jacobian
         
         
-        subroutine get_node_distribution(flat_weights,set_type,layer_one,layer_two)
+        subroutine get_node_distribution(flat_weights,set_type,input_type,layer_one,layer_two)
             ! return value of all nodes across given set. This is the value
             ! before activation functions are applied
             ! layer_one = (tot_atoms , num nodes in layer 1)
             ! layer_two = (tot_atoms , num nodes in layer 2)
+            !
+            ! For input_type = 1, return a (node before activation function)
+            !                = 2, return z (node after activation function)
 
             implicit none
 
             !* args
-            integer,intent(in) :: set_type
+            integer,intent(in) :: set_type,input_type
             real(8),intent(in) :: flat_weights(:)
             real(8),intent(inout) :: layer_one(:,:),layer_two(:,:)
 
@@ -519,6 +522,8 @@ module measures
                 call error_util("get_nodedistribution","number of nodes for layer 1 inconsistent")
             else if (dim_2(1).ne.net_dim%hl2) then
                 call error_util("get_nodedistribution","number of nodes for layer 2 inconsistent")
+            else if ( (input_type.ne.1).and.(input_type.ne.2) ) then
+                call error_util("get_nodedistribution","incorrect usage of input_type")
             end if
 
             !* read in NN weights
@@ -535,8 +540,14 @@ module measures
 
                 natm = data_sets(set_type)%configs(conf)%n
 
-                layer_one(:,cntr:cntr+natm-1) = net_units%a%hl1(:,:)
-                layer_two(:,cntr:cntr+natm-1) = net_units%a%hl2(:,:)
+                if (input_type.eq.1) then
+                    layer_one(:,cntr:cntr+natm-1) = net_units%a%hl1(:,:)
+                    layer_two(:,cntr:cntr+natm-1) = net_units%a%hl2(:,:)
+                else
+                    ! z(0,:) = 0 for bias weights
+                    layer_one(:,cntr:cntr+natm-1) = net_units%z%hl1(1:,:)
+                    layer_two(:,cntr:cntr+natm-1) = net_units%z%hl2(1:,:)
+                end if
 
                 cntr = cntr + natm
             end do !* end loop over confs

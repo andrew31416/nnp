@@ -9,15 +9,12 @@ module features
     external :: dsymv
 
     contains
-        subroutine calculate_features(parallel)
+        subroutine calculate_features(scale_features,parallel)
             implicit none
 
-            logical,intent(in) :: parallel
+            logical,intent(in) :: parallel,scale_features
 
             integer :: set_type
-            logical :: scale_features
-
-            scale_features = .false.
 
             do set_type=1,2
                 call calculate_features_singleset(set_type,.true.,scale_features,parallel)

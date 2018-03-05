@@ -12,6 +12,7 @@ from io import TextIOWrapper
 from os import listdir
 from sklearn import mixture
 from scipy import optimize
+import parsers
 
 
 class feature():
@@ -235,6 +236,9 @@ class features():
 
         if set_type.lower() not in ['test','train']:
             raise FeaturesError('{} not in {}'.format(set_type,'train,test'))
+        if not isinstance(gip,parsers.GeneralInputParser):
+            raise FeaturesError('training data must be parsers.GeneralInputParser object not {}'.\
+                    format(type(gip)))
 
         nnp.util.io._parse_configs_to_fortran(gip,set_type.lower())
         self.data[set_type.lower()] = gip
@@ -639,7 +643,8 @@ class features():
             raise FeaturesError("{} not in {}".format(set_type,"train,test"))
         
         # total number of atoms in set
-        tot_num_atoms = np.sum([_s["positions"].shape[0] for _s in self.data[set_type]])
+        #tot_num_atoms = np.sum([_s["positions"].shape[0] for _s in self.data[set_type]])
+        tot_num_atoms = nnp.util.misc.total_atoms_in_set(set_type=set_type)
 
         # dimension of feature vector
         num_dim = len(self.features)
@@ -650,7 +655,7 @@ class features():
         _map = {"train":1,"test":2}
         getattr(f95_api,"f90wrap_get_features")(_map[set_type],all_features)
         
-        return np.asarray(all_features.T,order='C')
+        return np.asarray(all_features,order='C')
 
     def save(self,sysname=None):
         """

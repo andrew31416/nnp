@@ -1,4 +1,5 @@
 from nnp.util.log import NnpOptimizeResult
+import nnp.nn.helper_funcs
 import numpy as np
 import nnp
 from scipy import optimize
@@ -83,12 +84,12 @@ class MultiLayerPerceptronPotential():
 
     def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
             hyper_params={'loss_energy':1.0,'loss_forces':1.0,'loss_regularization':1.0},\
-            solver_kwargs={},parallel=True,scale_features=True):
+            solver_kwargs={},parallel=True,scale_features=False):
             
             self.activation = activation
             self.loss_norm = 'l1'
             self.hyper_params = hyper_params
-            self.init_weight_var = 1e-5
+            self.activation_variance = 1.0
             self.hidden_layer_sizes = None
             self.features = None
             self.weights = None
@@ -96,9 +97,10 @@ class MultiLayerPerceptronPotential():
             self.num_weights = None
             self.D = None
             self.OptimizeResult = None
+            self.computed_features = None
             self.parallel = parallel
             self.scale_features = scale_features
-            self.set_weight_init_scheme("glorot")
+            self.set_weight_init_scheme("general")
             self.set_solver(solver) 
             self.set_layer_size(hidden_layer_sizes)
   
@@ -126,7 +128,7 @@ class MultiLayerPerceptronPotential():
         self.num_weights += self.hidden_layer_sizes[1] + 1
         
         # update buffer for weights
-        self._init_random_weights()
+        #self._init_random_weights()
 
         # update buffer for jacobian
         self.jacobian = np.zeros(self.num_weights,dtype=np.float64,order='F')
@@ -147,21 +149,75 @@ class MultiLayerPerceptronPotential():
                     scale=np.sqrt(1.0/self.hidden_layer_sizes[1]),\
                     size=self.hidden_layer_sizes[1]+1))) ) 
 
-            # update buffer for weights
-#            self.weights = np.asarray(np.random.normal(loc=0.0,scale=self.init_weight_var**2,\
-#                    size=self.num_weights),dtype=np.float64,order='F')
         elif self.weight_init_scheme == "glorot":
-            self.weights = (np.asarray(np.random.random(size=self.hidden_layer_sizes[0]*(self.D+1)),\
-                    order='F',dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.D+self.hidden_layer_sizes[0]))
+            self.weights = (np.asarray(np.random.random(size=self.hidden_layer_sizes[0]*\
+                    (self.D+1)),order='F',\
+                    dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.D+self.hidden_layer_sizes[0]))
             
             self.weights = np.hstack(  ( self.weights,\
-                    (np.asarray(np.random.random(size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)),\
-                    order='F',dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.hidden_layer_sizes[1]+\
+                    (np.asarray(np.random.random(size=self.hidden_layer_sizes[1]*\
+                    (self.hidden_layer_sizes[0]+1)),order='F',\
+                    dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.hidden_layer_sizes[1]+\
                     self.hidden_layer_sizes[0])) )  )
 
             self.weights = np.hstack(  ( self.weights,\
                     (np.asarray(np.random.random(size=self.hidden_layer_sizes[1]+1),\
-                    order='F',dtype=np.float64)*2.0 - 1.0)*np.sqrt(6.0/(self.hidden_layer_sizes[1]+1)) )  )
+                    order='F',dtype=np.float64)*2.0 - 1.0)*\
+                    np.sqrt(6.0/(self.hidden_layer_sizes[1]+1)) )  )
+        elif self.weight_init_scheme == "general":
+            # allows for <x_k> != 0, variance(x_k)!=1
+            #
+            # 1. compute empirical sample variance and mean for each 
+            #    coordinate
+            # 2. forward propagate to compute empirical variance and mean for
+            #    z^1
+
+
+            # 1. empirical sample mean and variance for each component
+            data_mean = np.average(self.computed_features,axis=1)
+            data_vari = np.std(self.computed_features,axis=1)**2
+
+            # variance(w^1) = variance(a^1) / [\sum_d^D variance(x_d) + mean(x_d)**2] 
+            w1_variance = self.activation_variance / np.sum(data_vari + data_mean**2)
+            
+            self.weights = np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w1_variance),\
+                    size=self.hidden_layer_sizes[0]*(self.D+1)),order='F',dtype=np.float64)
+
+            # weights in level 2 and 3 (including biases)
+            num_remaining_weights = self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1) + \
+                    self.hidden_layer_sizes[1]+1
+
+            partial_weights = np.hstack((self.weights,np.zeros(num_remaining_weights,\
+                    dtype=np.float64,order='F'))) 
+            
+            z1,_ = nnp.nn.helper_funcs.get_node_distribution(weights=partial_weights,\
+                    input_type='z',set_type="train")
+
+            # 2.
+            z1_mean = np.average(z1,axis=1)
+            z1_vari = np.std(z1,axis=1)**2
+
+            w2_variance = self.activation_variance / np.sum(a1_vari + a1_mean**2)
+
+            self.weights = np.hstack(( self.weights,\            
+                    np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w2_variance),\
+                    size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)),\
+                    order='F',dtype=np.float64) ))
+       
+            # remaining number of free weights
+            num_remaining_weights = self.hidden_layer_sizes[1] + 1 
+    
+            partial_weights = np.hstack((self.weights , np.zeros(num_remaining_weights,\
+                    dtype=np.float64,order='F') ))
+            
+            z2,_ = nnp.nn.helper_funcs.get_node_distribution(weights=partial_weights,\
+                    input_type='z',set_type="train")
+
+            # 2.
+            z2_mean = np.average(z1,axis=1)
+            z2_vari = np.std(z2,axis=1)**2
+
+
         else:
             raise MlppError("Weight initialization scheme not supported")
             
@@ -184,7 +240,7 @@ class MultiLayerPerceptronPotential():
         scheme : String, allowed values = xavier
             The scheme to use when initialising weights before optimization
         """
-        if scheme.lower() not in ["xavier","glorot"]:
+        if scheme.lower() not in ["xavier","glorot","general"]:
             raise MlppError("weight initialisation scheme {} not supported".format(scheme.lower()))
 
         self.weight_init_scheme = scheme.lower()
@@ -296,25 +352,9 @@ class MultiLayerPerceptronPotential():
         # parse data to fortran and compute features
         self._prepare_data_structures(X=X,set_type=set_type)
        
-        # total number of atoms in data set
-        total_num_atoms = nnp.util.misc.total_atoms_in_set(set_type) 
-
-        node_distribution = {"layer1":0,"layer2":1}
-        for _layer in node_distribution:
-            # number of nodes in given layer
-            num_nodes = self.hidden_layer_sizes[node_distribution[_layer]]
-
-            node_distribution[_layer] = np.zeros((num_nodes,total_num_atoms),order='F',\
-                    dtype=np.float64)
-    
-            print("shape of {} = {}".format(_layer,node_distribution[_layer].shape))
-             
-        getattr(f95_api,"f90wrap_get_node_distribution")(flat_weights=self.weights,\
-                set_type={"test":2,"train":1}[set_type],layer_one=node_distribution["layer1"],\
-                layer_two=node_distribution["layer2"])
-        
-        return np.asarray(node_distribution["layer1"],order='C'),\
-                np.asarray(node_distribution["layer2"],order='C')
+        # forward propagate               
+        return nnp.nn.helper_funcs.get_node_distribution(weights=self.weights,input_type='a',\
+                set_type=set_type)
                
     def _update_loss_log(self,loss):
         """
@@ -382,7 +422,8 @@ class MultiLayerPerceptronPotential():
         self.features.set_configuration(gip=X,set_type=set_type)
         
         # initialise feature mem and compute for set_type
-        self.features.calculate(set_type=set_type,derivatives=True,scale=self.scale_features)
+        self.computed_features = self.features.calculate(set_type=set_type,\
+                derivatives=True,scale=self.scale_features)
     
         # initialise neural net data structures
         self._initialise_net(set_type=set_type)
@@ -420,7 +461,11 @@ class MultiLayerPerceptronPotential():
         # Scipy log class lacks objective function with iteration
         self._init_optimization_log()
 
+        # move necessary info to fortran via disk
         self._prepare_data_structures(X=X,set_type="train")
+        
+        # compute initial weights based upon training data
+        self._init_random_weights()
 
         if self.solver in ['adam','cma']:
             self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
