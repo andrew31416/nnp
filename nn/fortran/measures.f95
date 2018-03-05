@@ -535,8 +535,8 @@ module measures
 
                 natm = data_sets(set_type)%configs(conf)%n
 
-                layer_one(:,cntr:cntr+natm) = net_units%a%hl1(:,:)
-                layer_two(:,cntr:cntr+natm) = net_units%a%hl2(:,:)
+                layer_one(:,cntr:cntr+natm-1) = net_units%a%hl1(:,:)
+                layer_two(:,cntr:cntr+natm-1) = net_units%a%hl2(:,:)
 
                 cntr = cntr + natm
             end do !* end loop over confs
