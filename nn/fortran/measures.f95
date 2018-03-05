@@ -513,11 +513,11 @@ module measures
             dim_1 = shape(layer_one)
             dim_2 = shape(layer_two)
 
-            if (dim_1(1).ne.dim_2(1)) then
+            if (dim_1(2).ne.dim_2(2)) then
                 call error_util("get_nodedistribution","number of atoms for layers are not equal")
-            else if (dim_1(2).ne.net_dim%hl1) then
+            else if (dim_1(1).ne.net_dim%hl1) then
                 call error_util("get_nodedistribution","number of nodes for layer 1 inconsistent")
-            else if (dim_2(2).ne.net_dim%hl2) then
+            else if (dim_2(1).ne.net_dim%hl2) then
                 call error_util("get_nodedistribution","number of nodes for layer 2 inconsistent")
             end if
 
@@ -535,8 +535,8 @@ module measures
 
                 natm = data_sets(set_type)%configs(conf)%n
 
-                layer_one(cntr:cntr+natm,:) = net_units%a%hl1(:,:)
-                layer_two(cntr:cntr+natm,:) = net_units%a%hl2(:,:)
+                layer_one(:,cntr:cntr+natm) = net_units%a%hl1(:,:)
+                layer_two(:,cntr:cntr+natm) = net_units%a%hl2(:,:)
 
                 cntr = cntr + natm
             end do !* end loop over confs

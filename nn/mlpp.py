@@ -291,23 +291,30 @@ class MultiLayerPerceptronPotential():
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
         
+        set_type = "train"
+
         # parse data to fortran and compute features
-        self._prepare_data_structures(X=X,set_type="test")
+        self._prepare_data_structures(X=X,set_type=set_type)
        
         # total number of atoms in data set
-        total_num_atoms = nnp.util.total_atoms_in_set("test") 
+        total_num_atoms = nnp.util.misc.total_atoms_in_set(set_type) 
 
-        node_distribution = {"layer1":0,"layer2:":1}
+        node_distribution = {"layer1":0,"layer2":1}
         for _layer in node_distribution:
             # number of nodes in given layer
             num_nodes = self.hidden_layer_sizes[node_distribution[_layer]]
 
-            node_distribution[_layer] = np.zeros((total_num_atoms,num_nodes),order='F',\
+            node_distribution[_layer] = np.zeros((num_nodes,total_num_atoms),order='F',\
                     dtype=np.float64)
-      
+    
+            print("shape of {} = {}".format(_layer,node_distribution[_layer].shape))
+             
         getattr(f95_api,"f90wrap_get_node_distribution")(flat_weights=self.weights,\
-                set_type="test",layer_one=node_distribution["layer1"],\
+                set_type={"test":2,"train":1}[set_type],layer_one=node_distribution["layer1"],\
                 layer_two=node_distribution["layer2"])
+        
+        return np.asarray(node_distribution["layer1"],order='C'),\
+                np.asarray(node_distribution["layer2"],order='C')
                
     def _update_loss_log(self,loss):
         """
