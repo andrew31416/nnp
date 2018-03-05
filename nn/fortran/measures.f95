@@ -490,4 +490,55 @@ module measures
                 end do !* end loop over features           
             end do  !* end loop over atoms in local cell
         end subroutine loss_forces_jacobian
+        
+        
+        subroutine get_node_distribution(flat_weights,set_type,layer_one,layer_two)
+            ! return value of all nodes across given set. This is the value
+            ! before activation functions are applied
+            ! layer_one = (tot_atoms , num nodes in layer 1)
+            ! layer_two = (tot_atoms , num nodes in layer 2)
+
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type
+            real(8),intent(in) :: flat_weights(:)
+            real(8),intent(inout) :: layer_one(:,:),layer_two(:,:)
+
+            !* scratch 
+            integer :: conf,cntr,natm
+            integer :: dim_1(1:2),dim_2(1:2)
+
+            !* check array bounds
+            dim_1 = shape(layer_one)
+            dim_2 = shape(layer_two)
+
+            if (dim_1(1).ne.dim_2(1)) then
+                call error_util("get_nodedistribution","number of atoms for layers are not equal")
+            else if (dim_1(2).ne.net_dim%hl1) then
+                call error_util("get_nodedistribution","number of nodes for layer 1 inconsistent")
+            else if (dim_2(2).ne.net_dim%hl2) then
+                call error_util("get_nodedistribution","number of nodes for layer 2 inconsistent")
+            end if
+
+            !* read in NN weights
+            call parse_array_to_structure(flat_weights,net_weights)
+            call copy_weights_to_nobiasT()
+
+            cntr = 1
+            do conf=1,data_sets(set_type)%nconf,1
+                !* variable number of atoms per configuration
+                call allocate_dydx(set_type,conf)
+                call allocate_units(set_type,conf)
+    
+                call forward_propagate(set_type,conf)
+
+                natm = data_sets(set_type)%configs(conf)%n
+
+                layer_one(cntr:cntr+natm,:) = net_units%a%hl1(:,:)
+                layer_two(cntr:cntr+natm,:) = net_units%a%hl2(:,:)
+
+                cntr = cntr + natm
+            end do !* end loop over confs
+        end subroutine get_node_distribution
 end module measures
