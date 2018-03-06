@@ -10,7 +10,7 @@ modname="nn_f95"
 lapack_dir="/usr/lib/atlas-base/atlas/"
 
 FFLAGS="-O2 -fPIC -llapack -lblas -lgomp -fopenmp"
-DEBUG="-W -Wall -pedantic"
+DEBUG="-W -Wall -pedantic -fcheck=all"
 
 #--------------------------------------------#
 # all files to compile .o and .mod files for #
@@ -52,7 +52,11 @@ fwrap_functions+=" backprop_all_forces"
 fwrap_functions+=" get_config"
 fwrap_functions+=" get_nconf"
 fwrap_functions+=" get_natm"
+fwrap_functions+=" get_total_natm"
 fwrap_functions+=" get_features"
+fwrap_functions+=" get_num_nodes"
+fwrap_functions+=" get_node_distribution"
+fwrap_functions+=" get_ref_energies"
 
 # clear previous build
 rm $f1"o" $f1"mod"

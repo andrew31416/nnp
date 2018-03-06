@@ -102,6 +102,7 @@ def split_sets(gip,train_fraction,seed=None):
 
     return {"train":train,"test":test}
 
+
 class GeneralUtilError(Exception):
     pass    
         

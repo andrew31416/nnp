@@ -217,6 +217,28 @@ module util
             any_nan_twod = .false.
         end function any_nan_twod
 
+        subroutine get_ref_energies(set_type,ref_energies)
+            implicit none
+           
+            integer,intent(in) :: set_type 
+            real(8),intent(inout) :: ref_energies(:)
+
+            !* scratch
+            integer :: dim(1:1),conf
+
+            dim = shape(ref_energies)
+
+            if (dim(1).ne.data_sets(set_type)%nconf) then
+                call error_util("get_ref_energies","shape mismatch in provided array")
+            else if ((set_type.ne.1).and.(set_type.ne.2)) then
+                call error_util("get_ref_energies","incorrect set type, must be 1 or 2")
+            end if
+            
+            do conf=1,data_sets(set_type)%nconf,1
+                ref_energies(conf) = data_sets(set_type)%configs(conf)%ref_energy
+            end do 
+        end subroutine
+
         real(8) function get_config(set_type,conf,cell,atomic_number,positions,forces)
             implicit none
 
@@ -271,6 +293,15 @@ module util
 
             get_total_natm = total
         end function get_total_natm
+
+        subroutine get_num_nodes(num_nodes)
+            implicit none
+
+            integer,intent(inout) :: num_nodes(1:2)
+
+            num_nodes(1) = net_dim%hl1
+            num_nodes(2) = net_dim%hl2
+        end subroutine
 
         subroutine get_features(set_type,features_out)
             implicit none
