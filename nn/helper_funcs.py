@@ -2,7 +2,6 @@
 Helping functions, mostly for fortran interface. Put here to tidy up main Mlpp
 class a bit.
 """
-#import nnp.nn.fortran.nn_f95 as f95_api
 import numpy as np
 
 def get_node_distribution(weights,input_type='a',set_type="train"):
@@ -17,7 +16,7 @@ def get_node_distribution(weights,input_type='a',set_type="train"):
     """
     import nnp.nn.fortran.nn_f95 as f95_api
     import nnp.util
-
+    
     if input_type not in ['a','z']:
         raise GeneralHelperError("input type {} not in 'a','z'".format(input_type))
 
@@ -136,8 +135,10 @@ def reduced_second_layer_distribution(weights,set_type="train"):
     for _conf in range(reduced_distribution.shape[0]):
         natm = atoms_per_conf[_conf]
 
-        reduced_distribution[_conf,:] = np.average(node_distribution["layer2"][:,cntr:cntr+natm],\
+        reduced_distribution[_conf,:] = np.sum(node_distribution["layer2"][:,cntr:cntr+natm],\
                 axis=1)[:]
+        #reduced_distribution[_conf,:] = np.average(node_distribution["layer2"][:,cntr:cntr+natm],\
+        #        axis=1)[:]
         
         # book keeping
         cntr += natm

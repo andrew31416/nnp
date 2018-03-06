@@ -84,7 +84,7 @@ class MultiLayerPerceptronPotential():
 
     def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
             hyper_params={'loss_energy':1.0,'loss_forces':1.0,'loss_regularization':1.0},\
-            solver_kwargs={},parallel=True,scale_features=False):
+            solver_kwargs={},parallel=True):
             
             self.activation = activation
             self.loss_norm = 'l1'
@@ -99,7 +99,7 @@ class MultiLayerPerceptronPotential():
             self.OptimizeResult = None
             self.computed_features = None
             self.parallel = parallel
-            self.scale_features = scale_features
+            self.scale_features = False # obsolete now
             self.set_weight_init_scheme("general")
             self.set_solver(solver) 
             self.set_layer_size(hidden_layer_sizes)
@@ -133,13 +133,17 @@ class MultiLayerPerceptronPotential():
         # update buffer for jacobian
         self.jacobian = np.zeros(self.num_weights,dtype=np.float64,order='F')
 
-    def _zero_weight_biases(self):
+    def _zero_weight_biases(self,weights=None):
         bias_idx = [ii for ii in range(self.hidden_layer_sizes[0])]
         bias_idx += [self.hidden_layer_sizes[0]*(self.D+1)+ii for \
                 ii in range(self.hidden_layer_sizes[1])]
         bias_idx.append(self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                 self.hidden_layer_sizes[1])
-        self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
+        if weights is not None:
+            weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
+            return weights
+        else:
+            self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
 
     def _init_random_weights(self):
         if self.D is None:
@@ -201,6 +205,9 @@ class MultiLayerPerceptronPotential():
 
             partial_weights = np.hstack((self.weights,np.zeros(num_remaining_weights,\
                     dtype=np.float64,order='F'))) 
+           
+            # need to zero bias weights
+            partial_weights = self._zero_weight_biases(weights=partial_weights)
             
             z1,_ = nnp.nn.helper_funcs.get_node_distribution(weights=partial_weights,\
                     input_type='z',set_type="train")
@@ -222,6 +229,9 @@ class MultiLayerPerceptronPotential():
             partial_weights = np.hstack((self.weights , np.zeros(num_remaining_weights,\
                     dtype=np.float64,order='F') ))
             
+            # need to zero bias weights
+            partial_weights = self._zero_weight_biases(weights=partial_weights)
+            
             z2tilde = nnp.nn.helper_funcs.reduced_second_layer_distribution(\
                     weights=partial_weights,set_type="train")
             
@@ -233,9 +243,13 @@ class MultiLayerPerceptronPotential():
             # train set ref. energies
             ref_energies = nnp.nn.helper_funcs.get_reference_energies(set_type="train")
 
-            ref_energy_variance = np.std(ref_energies)**2
-            ref_energy_mean = np.average(ref_energies)
+            # need energy per atom
+            atoms_per_conf = nnp.nn.helper_funcs.get_atoms_per_conf(set_type="train")
 
+            ref_energy_per_atom_variance = np.std(ref_energies/atoms_per_conf)**2
+            ref_energy_variance = np.std(ref_energies)**2
+            ref_energy_per_atom_mean = np.average(ref_energies/atoms_per_conf)
+            
             z2_mean = np.average(z2tilde,axis=1)
             z2_vari = np.std(z2tilde,axis=1)**2
 
@@ -251,7 +265,7 @@ class MultiLayerPerceptronPotential():
             w3_bias_idx = self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                     self.hidden_layer_sizes[1]
 
-            self.weights[w3_bias_idx] = ref_energy_mean
+            self.weights[w3_bias_idx] = ref_energy_per_atom_mean
         else:
             raise MlppError("Weight initialization scheme not supported")
             
