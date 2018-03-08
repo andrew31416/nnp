@@ -544,7 +544,7 @@ module measures
                     layer_one(:,cntr:cntr+natm-1) = net_units%a%hl1(:,:)
                     layer_two(:,cntr:cntr+natm-1) = net_units%a%hl2(:,:)
                 else
-                    ! z(0,:) = 0 for bias weights
+                    ! z(0,:) = 1 for bias weights
                     layer_one(:,cntr:cntr+natm-1) = net_units%z%hl1(1:,:)
                     layer_two(:,cntr:cntr+natm-1) = net_units%z%hl2(1:,:)
                 end if

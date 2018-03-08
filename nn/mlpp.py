@@ -222,6 +222,10 @@ class MultiLayerPerceptronPotential():
                     np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w2_variance),\
                     size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)),\
                     order='F',dtype=np.float64) ))
+            
+            #----#
+            # 3. #
+            #----#
        
             # remaining number of free weights
             num_remaining_weights = self.hidden_layer_sizes[1] + 1 
@@ -232,13 +236,9 @@ class MultiLayerPerceptronPotential():
             # need to zero bias weights
             partial_weights = self._zero_weight_biases(weights=partial_weights)
             
-            z2tilde = nnp.nn.helper_funcs.reduced_second_layer_distribution(\
-                    weights=partial_weights,set_type="train")
+            _,z2 = nnp.nn.helper_funcs.get_node_distribution(weights=partial_weights,\
+                    input_type='z',set_type="train")
             
-
-            #----#
-            # 3. #
-            #----#
 
             # train set ref. energies
             ref_energies = nnp.nn.helper_funcs.get_reference_energies(set_type="train")
@@ -246,26 +246,24 @@ class MultiLayerPerceptronPotential():
             # need energy per atom
             atoms_per_conf = nnp.nn.helper_funcs.get_atoms_per_conf(set_type="train")
 
-            ref_energy_per_atom_variance = np.std(ref_energies/atoms_per_conf)**2
-            ref_energy_variance = np.std(ref_energies)**2
+            ref_energy_variance = np.std(ref_energies)**2 
             ref_energy_per_atom_mean = np.average(ref_energies/atoms_per_conf)
-            
-            z2_mean = np.average(z2tilde,axis=1)
-            z2_vari = np.std(z2tilde,axis=1)**2
+           
+            weight_variances = ref_energy_variance / np.average(z2**2,axis=1)
+            weight_bias = ref_energy_per_atom_mean
 
-            w3_variance = ref_energy_variance / np.sum(z2_vari + z2_mean**2)
-            
-            self.weights = np.hstack(( self.weights,\
-                    np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w3_variance),\
-                    size=self.hidden_layer_sizes[1]+1),order='F',dtype=np.float64) ))
-
+            layer3_weights = np.zeros(self.hidden_layer_sizes[1]+1,dtype=np.float64,order='F')
+            for ii in range(self.hidden_layer_sizes[1]):
+                layer3_weights[ii] = np.random.normal(loc=0.0,\
+                        scale=np.sqrt(weight_variances[ii]),size=1)
+            self.weights = np.hstack(( self.weights, layer3_weights ))
             self._zero_weight_biases()
-
-            # ensure average energy OK with final weight bias
+            
             w3_bias_idx = self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                     self.hidden_layer_sizes[1]
 
-            self.weights[w3_bias_idx] = ref_energy_per_atom_mean
+            self.weights[w3_bias_idx] = weight_bias
+
         else:
             raise MlppError("Weight initialization scheme not supported")
             
