@@ -67,7 +67,7 @@ class feature():
         if isinstance(params,dict)!=True:
             raise FeatureError("{} is not dict".format(type(params)))
 
-        _ftype = (int,float,np.float32,np.float64)
+        _ftype = (int,np.int16,np.int32,np.int64,float,np.float32,np.float64)
         _atype = (list,np.ndarray,int,float,np.float32,np.float64)
         _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
                 'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
@@ -203,7 +203,7 @@ class features():
         self.buffer_size = 0.1
 
         # internal parallelism 
-        self.parallel = self.set_parallel(True)
+        self.set_parallel(True)
 
         # set type of PCA to use
         self.set_pca(PCA) 
