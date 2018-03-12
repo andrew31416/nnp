@@ -123,13 +123,13 @@ def better_than_random():
     """
 
     training_data = random_gip(num_configs=6)
-    ref_energies = [_s["energy"] for _s in training_data]
+    ref_energies = np.asarray([_s["energy"] for _s in training_data])
 
     mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[5,5],parallel=False)
     mlpp.hyper_params["energy"] = 1.0
     mlpp.hyper_params["forces"] = 0.0
     mlpp.hyper_params["regularization"] = 0.0
-    
+
     # use default Behler features (4x G-2, 4x G-4)
     mlpp.set_features(nnp.features.defaults.Behler(training_data))
     
@@ -138,22 +138,27 @@ def better_than_random():
 
     # get initial loss
     init_loss,init_gip = mlpp.predict(training_data)
-    init_energies = [_s["energy"] for _s in init_gip]
+    init_energies = np.asarray([_s["energy"] for _s in init_gip])
 
     # fit
     fit_loss,fit_gip = mlpp.fit(training_data)
-    fit_energies = [_s["energy"] for _s in fit_gip]
+    fit_energies = np.asarray([_s["energy"] for _s in fit_gip])
     
-    plt.plot([_s["energy"] for _s in training_data],[_s["energy"] for _s in init_gip],alpha=0.5,\
+    plt.plot(ref_energies,init_energies,alpha=0.5,\
             label='initial',linestyle='none',marker='o')
-    plt.plot([_s["energy"] for _s in training_data],[_s["energy"] for _s in fit_gip],alpha=0.5,\
+    plt.plot(ref_energies,fit_energies,alpha=0.5,\
             label='after fit',linestyle='none',marker='o')
+    plt.plot([np.min(ref_energies),np.max(ref_energies)],[np.min(ref_energies),\
+            np.max(ref_energies)]) 
     plt.legend()
     plt.show()
 
+
+    natm = fit_gip.supercells[0]["positions"].shape[0]
     print('init loss = {} final loss = {}'.format(init_loss,fit_loss))
-    print('mse init = {} mse final = {}'.format(mean_squared_error(ref_energies,init_energies),\
-            mean_squared_error(ref_energies,fit_energies)))
+    print('mse init = {} mse final = {}'.format(mean_squared_error(ref_energies/natm,\
+            init_energies/natm),\
+            mean_squared_error(ref_energies/natm,fit_energies/natm)))
 
     
 def run_all():

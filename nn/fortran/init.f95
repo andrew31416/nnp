@@ -73,9 +73,7 @@ module init
             loss_const_energy = k_energy
             loss_const_forces = k_forces
             loss_const_reglrn = k_reglrn
-write(*,*) 'loss_const_energy',loss_const_energy
-write(*,*) 'loss_const_forces',loss_const_forces
-write(*,*) 'loss_const_reglrn',loss_const_reglrn
+            
             loss_norm_type = norm_type
         end subroutine
   
