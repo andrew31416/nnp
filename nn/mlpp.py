@@ -106,7 +106,7 @@ class MultiLayerPerceptronPotential():
   
             # data for optimization log 
             self._njev = None
-            self._loss_log = None
+            self._loss_log = []
    
             self.solver_kwargs = solver_kwargs
 
@@ -193,15 +193,34 @@ class MultiLayerPerceptronPotential():
             data_mean = np.average(self.computed_features,axis=1)
             data_vari = np.std(self.computed_features,axis=1)**2
 
+            # idx of bad features
+            bad_feature = np.isinf(1.0/np.average(self.computed_features**2,axis=1))
+
+            if np.any(bad_feature):
+                raise MlppError("Features {} are 0! Please remove.".\
+                        format(np.nonzero(bad_feature)[0]))
+                
+
             # variance(w^1) = variance(a^1) / [\sum_d^D variance(x_d) + mean(x_d)**2] 
-            w1_variance = self.activation_variance / np.sum(data_vari + data_mean**2)
-            
-            self.weights = np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w1_variance),\
-                    size=self.hidden_layer_sizes[0]*(self.D+1)),order='F',dtype=np.float64)
+            #w1_variance = self.activation_variance / np.sum(data_vari + data_mean**2)
+            w1_variance = self.activation_variance / (self.D*\
+                    np.average(self.computed_features**2,axis=1))
+           
+            self.weights = np.zeros(self.hidden_layer_sizes[0]*(self.D+1),\
+                    order='F',dtype=np.float64)
+            cntr = self.hidden_layer_sizes[0]
+            for _dimension in range(self.D):
+                self.weights[cntr:cntr+self.hidden_layer_sizes[0]] = np.random.normal(\
+                        loc=0.0,scale=np.sqrt(w1_variance[_dimension]),\
+                        size=self.hidden_layer_sizes[0])
+                cntr += self.hidden_layer_sizes[0]
+
+            #self.weights = np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w1_variance),\
+            #        size=self.hidden_layer_sizes[0]*(self.D+1)),order='F',dtype=np.float64)
 
             # weights in level 2 and 3 (including biases)
-            num_remaining_weights = self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1) + \
-                    self.hidden_layer_sizes[1]+1
+            num_remaining_weights = self.hidden_layer_sizes[1]*\
+                    (self.hidden_layer_sizes[0]+1) + self.hidden_layer_sizes[1]+1
 
             partial_weights = np.hstack((self.weights,np.zeros(num_remaining_weights,\
                     dtype=np.float64,order='F'))) 
@@ -216,12 +235,24 @@ class MultiLayerPerceptronPotential():
             z1_mean = np.average(z1,axis=1)
             z1_vari = np.std(z1,axis=1)**2
 
-            w2_variance = self.activation_variance / np.sum(z1_vari + z1_mean**2)
+            #w2_variance = self.activation_variance / np.sum(z1_vari + z1_mean**2)
+            #self.weights = np.hstack(( self.weights,\
+            #        np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w2_variance),\
+            #        size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)),\
+            #        order='F',dtype=np.float64) ))
+            w2_variance = self.activation_variance / (self.hidden_layer_sizes[0]*\
+                    np.average(z1**2,axis=1))
+            
+            layer2_weights = np.zeros(self.hidden_layer_sizes[1]*\
+                    (self.hidden_layer_sizes[0]+1),order='F',dtype=np.float64)
+            cntr = self.hidden_layer_sizes[1]
+            for _dimension in range(self.hidden_layer_sizes[0]):
+                layer2_weights[cntr:cntr+self.hidden_layer_sizes[1]] = np.random.normal(\
+                        loc=0.0,scale=np.sqrt(w2_variance[_dimension]),\
+                        size=self.hidden_layer_sizes[1])
+                cntr += self.hidden_layer_sizes[1]
 
-            self.weights = np.hstack(( self.weights,\
-                    np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w2_variance),\
-                    size=self.hidden_layer_sizes[1]*(self.hidden_layer_sizes[0]+1)),\
-                    order='F',dtype=np.float64) ))
+            self.weights = np.hstack(( self.weights, layer2_weights ))
             
             #----#
             # 3. #
@@ -254,14 +285,19 @@ class MultiLayerPerceptronPotential():
 
             layer3_weights = np.zeros(self.hidden_layer_sizes[1]+1,dtype=np.float64,order='F')
             for ii in range(self.hidden_layer_sizes[1]):
-                layer3_weights[ii] = np.random.normal(loc=0.0,\
+                layer3_weights[ii+1] = np.random.normal(loc=0.0,\
                         scale=np.sqrt(weight_variances[ii]),size=1)
             self.weights = np.hstack(( self.weights, layer3_weights ))
             self._zero_weight_biases()
+           
+            # propagate again to fine tune w3 bias
+            per_atom_energies = np.dot(layer3_weights[1:],z2)
             
+            weight_bias = ref_energy_per_atom_mean - np.average(per_atom_energies)
+
             w3_bias_idx = self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                     self.hidden_layer_sizes[1]
-
+            
             self.weights[w3_bias_idx] = weight_bias
 
         else:
@@ -577,7 +613,7 @@ class MultiLayerPerceptronPotential():
         loss = self._loss(weights=self.weights,set_type="test")
         
         # predicted energies and forces
-        predicted_gip = nnp.util.io._parse_configs_from_fortran("train")
+        predicted_gip = nnp.util.io._parse_configs_from_fortran("test")
 
         # return loss
         return loss,predicted_gip

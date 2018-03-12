@@ -176,6 +176,11 @@ def _parse_configs_from_fortran(set_type):
                 raise IoError("atomic number {} unknown".format(_z))
         _s["species"] = species
         _s["energy"] = toteng
+    
+        for _attr in ["cell","forces","positions","atomic_number","species","energy"]:
+            if _s[_attr] is None:
+                raise IoError("Attribute {} is None for {}".format(_attr,_conf))
+
         gip.supercells.append(_s)
     return gip
     
