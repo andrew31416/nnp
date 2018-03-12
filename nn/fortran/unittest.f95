@@ -62,6 +62,11 @@ program unittest
             call calculate_features(parallel,scale_features)
 
             call initialise_net(num_nodes,nlf_type,fD)
+
+            !* give biases non zero values
+            !call random_number(net_weights%hl1(:,0))
+            !call random_number(net_weights%hl2(:,0))
+            !call random_number(net_weights%hl3(0))
             
             !----------------------!
             !* perform unit tests *!
@@ -289,7 +294,7 @@ program unittest
                 
                 deriv_ok = .false.
 
-                do ww=2,6,1
+                do ww=2,8,1
                 
                     dw = 1.0d0/(10.0d0**ww)
 
@@ -359,7 +364,7 @@ program unittest
             atm = 1
             set_type = 1
 
-            loss_norm_type = 1
+            loss_norm_type = 2
             dloss = 0.0d0
 
             do ii=1,4,1
@@ -397,9 +402,9 @@ program unittest
                 
                     deriv_ok = .false.
 
-                    do ww=2,7,1
+                    do ww=2,15,1
                         !* finite difference
-                        dw = 1.0d0/(10.0d0**(ww))
+                        dw = 1.0d0/(5.0d0**(ww))
 
                         do kk=1,2,1
                             if (kk.eq.1) then
@@ -420,14 +425,19 @@ program unittest
                         end do !* end loop +/- dw
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
+!if ((ii.eq.1).and.((jj.eq.22).or.(jj.eq.27))) then
+!write(*,*) num_jac(jj),anl_jac(jj)
+!end if
 
-                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-10),dble(1e-10),.false.)) then
+                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-10),&
+                        &dble(1e-10),.false.)) then
                             deriv_ok = .true.
                         end if
 
                     end do !* end loop over +/- dw
 
                     if (deriv_ok.neqv..true.) then
+                        !write(*,*) 'failed for ',jj,'of',nwght,num_jac(jj),anl_jac(jj)
                         all_ok = .false.
                     end if
 
@@ -481,7 +491,7 @@ program unittest
 
                             deriv_ok = .false.
 
-                            do ww=2,4 
+                            do ww=-2,3 
                                 !* finite difference for feature
                                 dw = 1.0d0/(10**ww)
 
@@ -965,7 +975,7 @@ program unittest
             implicit none
 
             !* scratch
-            integer :: set_type,conf,atm,dd,ww,ii,atm_prime
+            integer :: set_type,conf,atm,dd,ww,ii
             real(8) :: dw,num_val,etot,x0
             real(8),allocatable :: anl_forces(:,:)
             logical,allocatable :: atms_ok(:),conf_ok(:)
@@ -1012,9 +1022,9 @@ program unittest
                         do dd=1,3,1
                             x0 = data_sets(set_type)%configs(conf)%r(dd,atm)
                             dd_ok = .false.
-                            do ww=3,6,1
+                            do ww=1,10,1
                                 !* finite difference
-                                dw = dble(1.0d0/(10.0d0**ww))
+                                dw = dble(1.0d0/(5.0d0**ww))
                                 
                                 do ii=1,2,1
                                     if (ii.eq.1) then
@@ -1026,10 +1036,7 @@ program unittest
                                     call deallocate_feature_deriv_info()
                                     call calculate_features(parallel,scale_features)
 
-                                    !* have to propagate through all atoms
-                                    do atm_prime=1,data_sets(set_type)%configs(conf)%n,1
-                                        call forward_propagate(set_type,conf)
-                                   end do
+                                    call forward_propagate(set_type,conf)
 
                                     !* total energy
                                     etot = sum(data_sets(set_type)%configs(conf)%current_ei)
@@ -1044,6 +1051,7 @@ program unittest
                                 
                                 num_val = num_val/(2.d0*dw)
 
+
                                 !* numerical vs. analytical
                                 if (scalar_equal(num_val,anl_forces(dd,atm),dble(1e-9),dble(1e-10),&
                                 &.false.)) then
@@ -1057,6 +1065,7 @@ program unittest
 
                             if (dd_ok.neqv..true.) then
                                 !* derivative fails atom
+                                !write(*,*) 'failing for ',atm
                                 atms_ok(atm) = .false.
                             end if
                         end do !* end loop over dimensions dd

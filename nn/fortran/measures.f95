@@ -216,7 +216,7 @@ module measures
             type(weights),intent(inout) :: tmp1_jac,tmp2_jac,loss_jac
 
             !* scratch
-            real(8) :: tmpE
+            real(8) :: tmpE,invN
             integer :: atm
 
             if(allocated(dydx)) then
@@ -253,12 +253,14 @@ module measures
             tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
                     &-data_sets(set_type)%configs(conf)%ref_energy
            
+            invN = 1.0d0/dble(data_sets(set_type)%configs(conf)%n)
+
             if(loss_norm_type.eq.1) then
                 !* l1 norm
-                tmpE = sign(1.0d0,tmpE) / dble(data_sets(set_type)%configs(conf)%n)
+                tmpE = sign(1.0d0,tmpE) * invN
             else if (loss_norm_type.eq.2) then
                 !* l2 norm
-                tmpE = sign(1.0d0,tmpE)*tmpE / dble(data_sets(set_type)%configs(conf)%n)
+                tmpE = 2.0d0*sign(1.0d0,tmpE)*abs(tmpE) * (invN**2)
             end if
 
             !* normalise by # confs in set
@@ -268,7 +270,6 @@ module measures
             loss_jac%hl2 = loss_jac%hl2 + tmp1_jac%hl2 * tmpE
             loss_jac%hl3 = loss_jac%hl3 + tmp1_jac%hl3 * tmpE
 
-        
 
             if (include_force_loss) then
                 !=======================!
@@ -417,7 +418,7 @@ module measures
             if (scalar_equal(loss_const_energy,0.0d0,dble(1e-18),dble(1e-18),.false.)) then
                 return
             end if
-
+            
             tmp_jac%hl1 = tmp_jac%hl1 + dydw%hl1
             tmp_jac%hl2 = tmp_jac%hl2 + dydw%hl2
             tmp_jac%hl3 = tmp_jac%hl3 + dydw%hl3
@@ -438,8 +439,17 @@ module measures
             end if
             do atm=1,data_sets(set_type)%configs(conf)%n
                 do dd=1,3
-                    sgns(dd,atm) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,atm)-&
-                            &data_sets(set_type)%configs(conf)%ref_fi(dd,atm))
+                    if (loss_norm_type.eq.1) then
+                        sgns(dd,atm) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,&
+                                &atm)-data_sets(set_type)%configs(conf)%ref_fi(dd,atm))
+                    else if (loss_norm_type.eq.2) then
+                        sgns(dd,atm) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,&
+                                &atm)-data_sets(set_type)%configs(conf)%ref_fi(dd,atm))
+
+                        sgns(dd,atm) = 2.0d0*sgns(dd,atm)*abs(&
+                                &data_sets(set_type)%configs(conf)%current_fi(dd,atm)-&
+                                &data_sets(set_type)%configs(conf)%ref_fi(dd,atm))
+                    end if
                 end do
             end do
 

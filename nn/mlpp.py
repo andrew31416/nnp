@@ -87,7 +87,7 @@ class MultiLayerPerceptronPotential():
             solver_kwargs={},parallel=True):
             
             self.activation = activation
-            self.loss_norm = 'l1'
+            self.loss_norm = 'l2'
             self.hyper_params = hyper_params
             self.activation_variance = 1.0
             self.hidden_layer_sizes = None
@@ -395,10 +395,6 @@ class MultiLayerPerceptronPotential():
         getattr(f95_api,"f90wrap_initialise_net")(num_nodes=self.hidden_layer_sizes,\
                 nlf_type=_map[self.activation],feat_d=self.D)
       
-        if self.loss_norm == 'l2':
-            # BUGGY FOR ENERGY LOSS TERM
-            raise NotImplementedError
-       
         _map = {"l1":1,"l2":2}
         # set loss function parameters
         getattr(f95_api,"f90wrap_init_loss")(k_energy=self.hyper_params["loss_energy"],\

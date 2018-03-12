@@ -90,8 +90,8 @@ module propagate
            
             !* try to convert this to dgemv with 't'  
             do atm=1,natm,1
-                data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,net_weights%hl3,1,&
-                        &net_units%z%hl2(:,atm),1)
+                data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,&
+                        &net_weights%hl3,1,net_units%z%hl2(:,atm),1)
             end do
 !write(*,*) 'output:',data_sets(set_type)%configs(conf)%current_ei(1)            
         end subroutine
@@ -155,7 +155,7 @@ module propagate
             !---------------!
             !* third layer *!
             !---------------!
-
+            
             !* dydw%hl3 = z%hl2 , shape=(N2+1,)
             call dcopy(net_dim%hl2+1,net_units%z%hl2(:,atm),1,dydw%hl3,1)
             
