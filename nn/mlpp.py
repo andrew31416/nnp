@@ -83,7 +83,7 @@ class MultiLayerPerceptronPotential():
     """
 
     def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
-            hyper_params={'loss_energy':1.0,'loss_forces':1.0,'loss_regularization':1.0},\
+            hyper_params={'energy':1.0,'forces':1.0,'regularization':1.0},\
             solver_kwargs={},parallel=True):
             
             self.activation = activation
@@ -394,12 +394,12 @@ class MultiLayerPerceptronPotential():
         # initialise weights and node variables
         getattr(f95_api,"f90wrap_initialise_net")(num_nodes=self.hidden_layer_sizes,\
                 nlf_type=_map[self.activation],feat_d=self.D)
-      
+     
         _map = {"l1":1,"l2":2}
         # set loss function parameters
-        getattr(f95_api,"f90wrap_init_loss")(k_energy=self.hyper_params["loss_energy"],\
-                k_forces=self.hyper_params["loss_forces"],\
-                k_reglrn=self.hyper_params["loss_regularization"],
+        getattr(f95_api,"f90wrap_init_loss")(k_energy=self.hyper_params["energy"],\
+                k_forces=self.hyper_params["forces"],\
+                k_reglrn=self.hyper_params["regularization"],
                 norm_type=_map[self.loss_norm])
 
     def check_node_distribution(self,X):
