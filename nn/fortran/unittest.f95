@@ -348,7 +348,7 @@ program unittest
 
             !* scratch
             integer :: ii,jj,kk,ww,conf,atm,set_type
-            real(8) :: dw,w0,dloss,tmp
+            real(8) :: dw,w0,dloss,tmp,se(1:3)
             real(8),dimension(:),allocatable :: num_jac,anl_jac,original_weights
             logical :: deriv_ok,all_ok
             integer :: loss_norm_type
@@ -413,7 +413,7 @@ program unittest
                                 original_weights(jj) = w0 - dw
                             end if
                             
-                            tmp = loss(original_weights,set_type,.false.)
+                            tmp = loss(original_weights,set_type,.false.,se)
 
                             if (kk.eq.1) then
                                 dloss = tmp
@@ -425,9 +425,6 @@ program unittest
                         end do !* end loop +/- dw
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
-!if ((ii.eq.1).and.((jj.eq.22).or.(jj.eq.27))) then
-!write(*,*) num_jac(jj),anl_jac(jj)
-!end if
 
                         if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-10),&
                         &dble(1e-10),.false.)) then

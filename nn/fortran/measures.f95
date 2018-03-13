@@ -10,7 +10,7 @@ module measures
 
     contains
 
-        real(8) function loss(flat_weights,set_type,parallel)
+        real(8) function loss(flat_weights,set_type,parallel,squared_errors)
             use omp_lib
                         
             implicit none
@@ -18,6 +18,7 @@ module measures
             integer,intent(in) :: set_type
             real(8),intent(in) :: flat_weights(:)
             logical,intent(in) :: parallel
+            real(8),intent(inout) :: squared_errors(1:3)
 
             !* scratch
             integer :: conf
@@ -66,10 +67,14 @@ module measures
             end if
 
 
-            tmp_energy = loss_energy(set_type)
-            tmp_forces = loss_forces(set_type)
-            tmp_reglrn = loss_reglrn(flat_weights)
+            squared_errors(1) = loss_energy(set_type)
+            squared_errors(2) = loss_forces(set_type)
+            squared_errors(3) = loss_reglrn(flat_weights)
             
+            tmp_energy = squared_errors(1)*loss_const_energy
+            tmp_forces = squared_errors(2)*loss_const_forces
+            tmp_reglrn = squared_errors(3)*loss_const_reglrn
+
             loss = tmp_energy + tmp_forces + tmp_reglrn
         end function loss
 
@@ -264,7 +269,8 @@ module measures
             end if
 
             !* normalise by # confs in set
-            tmpE = tmpE * loss_const_energy / dble(data_sets(set_type)%nconf)
+            !tmpE = tmpE * loss_const_energy / dble(data_sets(set_type)%nconf)
+            tmpE = tmpE * loss_const_energy 
             
             loss_jac%hl1 = loss_jac%hl1 + tmp1_jac%hl1 * tmpE
             loss_jac%hl2 = loss_jac%hl2 + tmp1_jac%hl2 * tmpE
@@ -277,9 +283,13 @@ module measures
                 !=======================!
                 call loss_forces_jacobian(set_type,conf,tmp2_jac)
                 
-                loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
-                loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces * 0.5d0
-                loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces * 0.5d0
+                !loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces * 0.5d0 
+                !loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces * 0.5d0
+                !loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces * 0.5d0
+                
+                loss_jac%hl1 = loss_jac%hl1 + tmp2_jac%hl1 * loss_const_forces
+                loss_jac%hl2 = loss_jac%hl2 + tmp2_jac%hl2 * loss_const_forces
+                loss_jac%hl3 = loss_jac%hl3 + tmp2_jac%hl3 * loss_const_forces
             end if
 
             deallocate(dydx)
@@ -321,7 +331,8 @@ module measures
             end do
 
             !* noramlise by # confs in set            
-            loss_energy = tot_energy_loss * loss_const_energy / dble(data_sets(set_type)%nconf)
+            !loss_energy = tot_energy_loss * loss_const_energy / dble(data_sets(set_type)%nconf)
+            loss_energy = tot_energy_loss !* loss_const_energy 
         end function loss_energy
 
         real(8) function loss_forces(set_type)
@@ -356,7 +367,8 @@ module measures
                     end do
                 end do
             end do
-            loss_forces = tot_forces_loss * 0.5d0 * loss_const_forces
+            !loss_forces = tot_forces_loss * 0.5d0 * loss_const_forces
+            loss_forces = tot_forces_loss !* loss_const_forces
         end function loss_forces
 
         real(8) function loss_reglrn(flat_weights)
@@ -370,8 +382,8 @@ module measures
             end if
 
             !* l2 norm**2 = w.T w
-            loss_reglrn = dnrm2(size(flat_weights),flat_weights,1)**2 * 0.5d0 * &
-                    &loss_const_reglrn
+            loss_reglrn = dnrm2(size(flat_weights),flat_weights,1)**2 !* 0.5d0 * &
+                    !&loss_const_reglrn
         end function loss_reglrn
 
 
@@ -391,7 +403,7 @@ module measures
             do ii=0,D
                 do jj=1,net_dim%hl1
                     loss_jac%hl1(jj,ii) = loss_jac%hl1(jj,ii) + net_weights%hl1(jj,ii)*&
-                            &loss_const_reglrn
+                            &loss_const_reglrn*2.0d0
                 end do
             end do
             
@@ -399,14 +411,14 @@ module measures
             do ii=0,net_dim%hl1
                 do jj=1,net_dim%hl2
                     loss_jac%hl2(jj,ii) = loss_jac%hl2(jj,ii) + net_weights%hl2(jj,ii)*&
-                            &loss_const_reglrn
+                            &loss_const_reglrn*2.0d0
                 end do
             end do
 
             !* final layer
             do ii=0,net_dim%hl2
                 loss_jac%hl3(ii) = loss_jac%hl3(ii) + net_weights%hl3(ii)*&
-                            &loss_const_reglrn
+                            &loss_const_reglrn*2.0d0
             end do
         end subroutine loss_reglrn_jacobian
 
