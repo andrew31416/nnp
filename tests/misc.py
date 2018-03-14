@@ -5,6 +5,7 @@ import copy
 from scipy.optimize import approx_fprime
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
+import time
 
 def generate_random_structure():
     from ase.calculators.emt import EMT
@@ -124,10 +125,12 @@ def better_than_random():
 
     training_data = random_gip(num_configs=6)
     ref_energies = np.asarray([_s["energy"] for _s in training_data])
+    ref_forces = np.asarray([_s["forces"] for _s in training_data]).flatten()
 
-    mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[5,5],parallel=False)
+    mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[5,10],parallel=False,\
+            precision_update_interval=0,max_precision_update_number=3)
     mlpp.hyper_params["energy"] = 1.0
-    mlpp.hyper_params["forces"] = 0.0
+    mlpp.hyper_params["forces"] = 1.0
     mlpp.hyper_params["regularization"] = 0.0
 
     # use default Behler features (4x G-2, 4x G-4)
@@ -139,17 +142,36 @@ def better_than_random():
     # get initial loss
     init_loss,init_gip = mlpp.predict(training_data)
     init_energies = np.asarray([_s["energy"] for _s in init_gip])
+    init_forces = np.asarray([_s["forces"] for _s in init_gip]).flatten()
 
+    t1 = time.time()
     # fit
     fit_loss,fit_gip = mlpp.fit(training_data)
     fit_energies = np.asarray([_s["energy"] for _s in fit_gip])
+    fit_forces = np.asarray([_s["forces"] for _s in fit_gip]).flatten()
+    t2 = time.time()
     
-    plt.plot(ref_energies,init_energies,alpha=0.5,\
-            label='initial',linestyle='none',marker='o')
+    
+    # generate test set
+    test_data = random_gip(num_configs=6)
+    test_loss,test_gip = mlpp.predict(test_data)
+    test_energies_ref = np.asarray([_s["energy"] for _s in test_data])
+    test_forces_ref = np.asarray([_s["forces"] for _s in test_data]).flatten()
+    test_energies = np.asarray([_s["energy"] for _s in test_gip])
+    test_forces = np.asarray([_s["forces"] for _s in test_gip]).flatten()
+
+    print('calc time = {}s'.format(t2-t1))
+
+    plt.loglog(np.arange(len(mlpp._loss_log)),mlpp._loss_log)
+    plt.show()
+
+    plt.plot(test_energies_ref,test_energies,alpha=0.5,\
+            label='test',linestyle='none',marker='o')
     plt.plot(ref_energies,fit_energies,alpha=0.5,\
-            label='after fit',linestyle='none',marker='o')
+            label='train',linestyle='none',marker='o')
     plt.plot([np.min(ref_energies),np.max(ref_energies)],[np.min(ref_energies),\
             np.max(ref_energies)]) 
+    plt.plot([np.min(ref_energies),np.max(ref_energies)],[np.min(ref_energies),np.max(ref_energies)])
     plt.legend()
     plt.show()
 
@@ -159,6 +181,13 @@ def better_than_random():
     print('mse init = {} mse final = {}'.format(mean_squared_error(ref_energies/natm,\
             init_energies/natm),\
             mean_squared_error(ref_energies/natm,fit_energies/natm)))
+
+    plt.plot(test_forces_ref,test_forces,\
+            linestyle='none',marker='o',alpha=0.1,label='test forces')
+    plt.plot(ref_forces,fit_forces,linestyle='none',marker='o',alpha=0.1,label='train forces')
+    plt.plot([np.min(ref_forces),np.max(ref_forces)],[np.min(ref_forces),np.max(ref_forces)])
+    plt.legend()
+    plt.show()
 
     
 def run_all():

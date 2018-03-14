@@ -49,6 +49,20 @@ def total_atoms_in_set(set_type):
     
     return getattr(f95_api,"f90wrap_get_total_natm")({"test":2,"train":1}[set_type])
 
+def get_num_configs(set_type):
+    """
+    Return number of configurations in given set type
+
+    Parameters
+    ----------
+    set_type : String, allowed values = "train","test"
+        Which set type to consider
+    """
+    if set_type not in ["train","test"]:
+        raise GeneralUtilError("Set {} no in 'train','test'".format(set_type))
+    
+    return getattr(f95_api,"f90wrap_get_nconf")({"train":1,"test":2}[set_type])
+
 def split_sets(gip,train_fraction,seed=None):
     """
     split a single parsers.GeneralInputParser() into

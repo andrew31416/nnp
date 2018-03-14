@@ -159,8 +159,8 @@ def _parse_configs_from_fortran(set_type):
         cellvc = np.zeros((3,3),dtype=np.float64,order='F')
 
         # parse config from fortran
-        toteng = getattr(f95_api,"f90wrap_get_config")(set_type=_map[set_type],conf=_conf,cell=cellvc,\
-                atomic_number=atmnum,positions=postns,forces=forces)
+        toteng = getattr(f95_api,"f90wrap_get_config")(set_type=_map[set_type],conf=_conf,\
+                cell=cellvc,atomic_number=atmnum,positions=postns,forces=forces)
 
         _s = parsers.structure_class.supercell()
         _s["cell"] = np.asarray(cellvc.T,order='C')

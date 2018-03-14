@@ -49,7 +49,7 @@ class MultiLayerPerceptronPotential():
         The type of scipy.optimize.minimize solver to use for minimisation of
         the loss function. First order derivatives (Jacobian methods) only
         can be used.
-    
+    == 0 
     hyper_params : dict, keys = 'loss_energy','loss_forces',
                   'loss_regularization'
         Key,value pairs of regression hyper parameters. loss_* are the 
@@ -84,11 +84,12 @@ class MultiLayerPerceptronPotential():
 
     def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
             hyper_params={'energy':1.0,'forces':1.0,'regularization':1.0},\
-            solver_kwargs={},parallel=True):
+            solver_kwargs={},precision_update_interval=0,max_precision_update_number=1,\
+            parallel=True):
             
             self.activation = activation
             self.loss_norm = 'l2'
-            self.hyper_params = hyper_params
+            self.hyper_params = {}
             self.activation_variance = 1.0
             self.hidden_layer_sizes = None
             self.features = None
@@ -103,7 +104,12 @@ class MultiLayerPerceptronPotential():
             self.set_weight_init_scheme("general")
             self.set_solver(solver) 
             self.set_layer_size(hidden_layer_sizes)
-  
+            for _key in hyper_params:
+                self.set_hyperparams(_key,hyper_params[_key]) 
+            self._opt_callback_cntr = 0 
+            self.set_precision_update_interval(precision_update_interval)
+            self.max_precision_update_number = max_precision_update_number
+
             # data for optimization log 
             self._njev = None
             self._loss_log = []
@@ -306,6 +312,34 @@ class MultiLayerPerceptronPotential():
         if self.weights.shape[0]!=self.num_weights:
             raise MlppError("Severe implementation error")
 
+    def set_hyperparams(self,key,value):
+        """
+        Set coefficients for energy,force,regularization loss terms
+
+        Paramaters
+        ---------
+        key : String, allowed values = 'energy','forces','regularization'
+            Which loss term coefficient is being set
+
+        value : float
+            Corresponding value
+        """
+
+        if key.lower() not in ['energy','forces','regularization']:
+            raise MlppError("Hyper parameter {} not recognised".format(key.lower()))
+        
+        self.hyper_params[key.lower()] = value
+            
+    def set_precision_update_interval(self,precision_update_interval):
+        """
+        Set the number of optimizer iterations between updating the energy,
+        force,regularization loss coefficients. If initial loss hyper parameters
+        are 0, these will not be updated
+        """
+        if not isinstance(precision_update_interval,(int,np.int16,np.int32,np.int64)):
+            raise MlppError("precision update interval must be an int")
+        
+        self.precision_update_interval = precision_update_interval
 
     def set_weight_init_scheme(self,scheme):
         """
@@ -427,6 +461,70 @@ class MultiLayerPerceptronPotential():
         # forward propagate               
         return nnp.nn.helper_funcs.get_node_distribution(weights=self.weights,input_type='a',\
                 set_type=set_type)
+
+    def _update_net_weights(self):        
+        if self.solver in ['adam','cma']:
+            self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
+                    jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
+                    args=("train"),**self.solver_kwargs)
+        else:
+            if self.precision_update_interval == 0:
+                # SCIPY's l-bfgs-b default
+                maxiter = 15000
+            else:
+                maxiter = self.precision_update_interval
+
+            self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
+                    method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8,\
+                    options={"maxiter":maxiter})
+        
+        self.weights = self.OptimizeResult["x"]
+    
+    def _update_precision(self):
+        """
+        Called after each optimizer iteration with weights as arg
+        
+        Set precision_update_interval to 0 if you never want loss hyper params
+        to be updated.
+
+        Parameters
+        ----------
+        weights : np.ndarray, shape = (self.Nwght,)
+            1d array of neural net weights
+        """
+        import nnp.nn.fortran.nn_f95 as f95_api 
+        
+        _ = self._loss(weights=self.weights,set_type="train")
+
+  
+        ses = {"energy":self._squared_errors[0],"forces":self._squared_errors[1],\
+                "regularization":self._squared_errors[2]}
+       
+        print('energy SE = {} forces SE = {}'.format(ses["energy"],ses["forces"]))
+
+        num_weights_no_bias = self.hidden_layer_sizes[0]*self.D + self.hidden_layer_sizes[0]*\
+                self.hidden_layer_sizes[1] + self.hidden_layer_sizes[1]
+
+        const = {"energy":nnp.util.misc.get_num_configs("train"),\
+                "forces":nnp.util.misc.total_atoms_in_set("train")*3,"reg":num_weights_no_bias}
+
+        for _loss_term in ses:
+            if not np.isclose(self.hyper_params[_loss_term],0.0,rtol=1e-50,atol=1e-50):
+                if np.isclose(ses[_loss_term],0.0,rtol=1e-50,atol=1e-50):
+                    raise MlppError("loss squared error for {} is 0 when coefficient != 0".\
+                            format(ses[_loss_term]))
+            
+                print('updating {} from {} to {}'.format(_loss_term,\
+                        self.hyper_params[_loss_term],const[_loss_term]/ses[_loss_term]))
+                self.set_hyperparams(_loss_term,const[_loss_term]/ses[_loss_term])
+        
+        # send to fortran
+        getattr(f95_api,"f90wrap_init_loss")(k_energy=self.hyper_params["energy"],\
+                k_forces=self.hyper_params["forces"],\
+                k_reglrn=self.hyper_params["regularization"],
+                norm_type={"l1":1,"l2":2}[self.loss_norm])
+            
+
                
     def _update_loss_log(self,loss):
         """
@@ -438,13 +536,17 @@ class MultiLayerPerceptronPotential():
         import nnp.nn.fortran.nn_f95 as f95_api 
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
-        
+       
+        # energy,forces,regularization 
+        squared_errors = np.zeros(3,dtype=np.float64,order='F')
+
         _map = {"train":1,"test":2} 
         tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type],\
-                parallel=self.parallel)
+                parallel=self.parallel,squared_errors=squared_errors)
         
         # book keeping
         self._update_loss_log(tmp)
+        self._squared_errors = squared_errors
         
         if np.isnan(tmp):
             raise MlppError("Nan returned from loss calculation")
@@ -539,13 +641,21 @@ class MultiLayerPerceptronPotential():
         # compute initial weights based upon training data
         self._init_random_weights()
 
-        if self.solver in ['adam','cma']:
-            self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
-                    jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
-                    args=("train"),**self.solver_kwargs)
+        if self.max_precision_update_number == 0:
+            self._update_net_weights()
         else:
-            self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
-                    method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8)
+            for ii in range(self.max_precision_update_number):
+                self._update_precision()
+                self._update_net_weights() 
+
+        #if self.solver in ['adam','cma']:
+        #    self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
+        #            jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
+        #            args=("train"),**self.solver_kwargs)
+        #else:
+        #    self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
+        #            method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8,\
+        #            callback=self._opt_callback)
         
         # book keeping
         self.OptimizeResult.njev = self._njev
