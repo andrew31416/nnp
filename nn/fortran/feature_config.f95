@@ -69,7 +69,7 @@ module feature_config
     !===================!
 
     !* feature parameters meta data    
-    type(feature_info) :: feature_params
+    type(feature_info),save :: feature_params
 
     !* two body information for a single structure used to generate features
     type(feature_info_twobody),allocatable :: feature_isotropic(:)

@@ -82,7 +82,7 @@ module config
     integer,public :: D
 
     !* data sets
-    type(structures),public :: data_sets(1:2)
+    type(structures),public,save :: data_sets(1:2)
 
     !* derivative of net wrt features
     real(8),allocatable,public,save :: dydx(:,:)
