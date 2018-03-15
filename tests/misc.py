@@ -6,6 +6,7 @@ from scipy.optimize import approx_fprime
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 import time
+import warnings
 
 def generate_random_structure():
     from ase.calculators.emt import EMT
@@ -49,7 +50,7 @@ def check_jacobian():
             use_abs = False
 
         abs_lim = [1e-8,1e-4]
-        frc_lim = [1e-8,1e-1]
+        frc_lim = [1e-6,1e-1]
         
         if use_abs:
             finite_differences = np.logspace(np.log10(abs_lim[0]),np.log10(abs_lim[1]),num_iters)
@@ -85,7 +86,7 @@ def check_jacobian():
                 #print('dx = {} num = {} anl = {}'.format(_fd,numerical_jac[ii],anl_jac[weight_idx]))
 
         # lets see if any finite differences approximate the jac accurately
-        success = np.isclose(numerical_jac,anl_jac[weight_idx],rtol=1e-5,atol=1e-5).any()
+        success = np.isclose(numerical_jac,anl_jac[weight_idx],rtol=1e-4,atol=1e-5).any()
         
         if not success:
             for ii,_fd in enumerate(finite_differences):
@@ -128,76 +129,75 @@ def better_than_random():
     ref_forces = np.asarray([_s["forces"] for _s in training_data]).flatten()
 
     mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[5,10],parallel=False,\
-            precision_update_interval=0,max_precision_update_number=3)
+            precision_update_interval=0,max_precision_update_number=0)
     mlpp.hyper_params["energy"] = 1.0
-    mlpp.hyper_params["forces"] = 1.0
+    mlpp.hyper_params["forces"] = 0.0
     mlpp.hyper_params["regularization"] = 0.0
 
     # use default Behler features (4x G-2, 4x G-4)
     mlpp.set_features(nnp.features.defaults.Behler(training_data))
     
-    mlpp._prepare_data_structures(X=training_data,set_type="train")
-    mlpp._init_random_weights()
-
-    # get initial loss
-    init_loss,init_gip = mlpp.predict(training_data)
-    init_energies = np.asarray([_s["energy"] for _s in init_gip])
-    init_forces = np.asarray([_s["forces"] for _s in init_gip]).flatten()
-
-    t1 = time.time()
     # fit
     fit_loss,fit_gip = mlpp.fit(training_data)
     fit_energies = np.asarray([_s["energy"] for _s in fit_gip])
     fit_forces = np.asarray([_s["forces"] for _s in fit_gip]).flatten()
-    t2 = time.time()
-    
-    
-    # generate test set
-    test_data = random_gip(num_configs=6)
-    test_loss,test_gip = mlpp.predict(test_data)
-    test_energies_ref = np.asarray([_s["energy"] for _s in test_data])
-    test_forces_ref = np.asarray([_s["forces"] for _s in test_data]).flatten()
-    test_energies = np.asarray([_s["energy"] for _s in test_gip])
-    test_forces = np.asarray([_s["forces"] for _s in test_gip]).flatten()
+ 
+    # check RMSE < 0.01 [max(y)-min(y)]
+    return mean_squared_error(ref_energies,fit_energies) < 1e-4*(np.max(ref_energies)-\
+            np.min(ref_energies))**2
 
-    print('calc time = {}s'.format(t2-t1))
+def check_openmp():
+    """
+    Run loss and jacobian computations in parallel 
+    """
+    # check OMP_NUM_THREADS>1
+    if nnp.util.misc.num_threads() < 2:
+        raise UserError("OMP_NUM_THREADS = {}. export to be > 1".\
+                format(nnp.util.misc.num_threads()))
 
-    plt.loglog(np.arange(len(mlpp._loss_log)),mlpp._loss_log)
-    plt.show()
+    gip = random_gip(num_configs=6)
 
-    plt.plot(test_energies_ref,test_energies,alpha=0.5,\
-            label='test',linestyle='none',marker='o')
-    plt.plot(ref_energies,fit_energies,alpha=0.5,\
-            label='train',linestyle='none',marker='o')
-    plt.plot([np.min(ref_energies),np.max(ref_energies)],[np.min(ref_energies),\
-            np.max(ref_energies)]) 
-    plt.plot([np.min(ref_energies),np.max(ref_energies)],[np.min(ref_energies),np.max(ref_energies)])
-    plt.legend()
-    plt.show()
+    features = nnp.features.defaults.Behler(gip)
+   
+    mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(parallel=False)
+    for _attr in ["energy","forces","regularization"]:
+        mlpp.set_hyperparams(_attr,1.0)
+    mlpp.set_features(features)
+    mlpp._njev = 0
+    mlpp._prepare_data_structures(gip,"train")
+    mlpp._init_random_weights() 
 
+    loss = {True:None,False:None}
+    jacb = {True:None,False:None}
 
-    natm = fit_gip.supercells[0]["positions"].shape[0]
-    print('init loss = {} final loss = {}'.format(init_loss,fit_loss))
-    print('mse init = {} mse final = {}'.format(mean_squared_error(ref_energies/natm,\
-            init_energies/natm),\
-            mean_squared_error(ref_energies/natm,fit_energies/natm)))
+    for _parallel in [True,False]:
+        mlpp.set_parallel(_parallel)
+        loss[_parallel] = mlpp._loss(mlpp.weights,"train")
+        jacb[_parallel] = mlpp._loss_jacobian(mlpp.weights,"train")
 
-    plt.plot(test_forces_ref,test_forces,\
-            linestyle='none',marker='o',alpha=0.1,label='test forces')
-    plt.plot(ref_forces,fit_forces,linestyle='none',marker='o',alpha=0.1,label='train forces')
-    plt.plot([np.min(ref_forces),np.max(ref_forces)],[np.min(ref_forces),np.max(ref_forces)])
-    plt.legend()
-    plt.show()
+    if not np.isclose(loss[False],loss[True]):
+        raise SeriousImplementationError("serial and parallel loss are not equal : {} != {}".\
+                format(loss[False],loss[True]))
+         
+    if not np.allclose(jacb[False],jacb[True]):
+        raise SeriousImplementationError("serial and parallel jac. are not equal")
 
-    
+    return True
+         
 def run_all():
     """
     Run all unit tests contained in Python API
     """
+    # disable warnings
+    warnings.simplefilter("ignore",RuntimeWarning)
+
     np.random.seed(0) 
-    unit_tests = [check_jacobian()]
+    unit_tests = [check_jacobian(),better_than_random(),check_openmp()]
 
     return all(unit_tests)
+
+class UserError(Exception):
+    pass
 
 class SeriousImplementationError(Exception):
     pass

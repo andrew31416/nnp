@@ -83,7 +83,7 @@ class MultiLayerPerceptronPotential():
     """
 
     def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
-            hyper_params={'energy':1.0,'forces':1.0,'regularization':1.0},\
+            hyper_params={'energy':1.0,'forces':1.0,'regularization':0.0},\
             solver_kwargs={},precision_update_interval=0,max_precision_update_number=1,\
             parallel=True):
             
@@ -506,7 +506,7 @@ class MultiLayerPerceptronPotential():
                 self.hidden_layer_sizes[1] + self.hidden_layer_sizes[1]
 
         const = {"energy":nnp.util.misc.get_num_configs("train"),\
-                "forces":nnp.util.misc.total_atoms_in_set("train")*3,"reg":num_weights_no_bias}
+                "forces":nnp.util.misc.total_atoms_in_set("train")*3,"regularization":num_weights_no_bias}
 
         for _loss_term in ses:
             if not np.isclose(self.hyper_params[_loss_term],0.0,rtol=1e-50,atol=1e-50):
