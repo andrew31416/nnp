@@ -535,8 +535,8 @@ module feature_util
                         end if
                             
                        
-                        !* cos(dtheta_{ijk}) 
-                        aniso_info%cos_ang(cntr) =  cos_angle(rjj-rii,rkk-rii,drij,drik)
+                        !* cos(dtheta_{ijk})
+                        aniso_info%cos_ang(cntr) = cos_angle(rjj-rii,rkk-rii,drij,drik)
 
                         !* displacements
                         aniso_info%dr(1,cntr) = drij    ! central vs. jj
@@ -656,9 +656,10 @@ module feature_util
                       
                         ! j=1 , k=2 , i=3
                         do zz=1,3,1
-                            aniso_info%dcos_dr(:,zz,cntr) = 1.0d0/(drij*drik) * ( drij_vec*(sign_ik(zz)-&
-                                    &aniso_info%cos_ang(cntr)*sign_ij(zz)*drik/drij) + &
-                                    &drik_vec*(sign_ij(zz) - aniso_info%cos_ang(cntr)*sign_ik(zz)*drij/drik) )
+                            aniso_info%dcos_dr(:,zz,cntr) = 1.0d0/(drij*drik) * ( drij_vec*&
+                                    &(sign_ik(zz)-aniso_info%cos_ang(cntr)*sign_ij(zz)*drik/drij) + &
+                                    &drik_vec*(sign_ij(zz) - aniso_info%cos_ang(cntr)*&
+                                    &sign_ik(zz)*drij/drik) )
                         end do
                         
                     end do !* end loop kk over second neighbours

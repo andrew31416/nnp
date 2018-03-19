@@ -72,6 +72,12 @@ class feature():
         _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
                 'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
                 'mean':_atype,'rs':_ftype}
+        # constraints on bound parameters
+        _constraints_ok = {"xi":lambda x: x>=1,\
+                           "rcut":lambda x: x>0,\
+                           "lambda":lambda x: x in [-1.0,1.0],\
+                           "eta":lambda x: x>=0}
+   
 
         if self.type == 'atomic_number':
             raise FeatureError("atomic_number features have no params")
@@ -91,6 +97,12 @@ class feature():
             # check param type
             if type(params[_attr]) not in _types[_attr]:
                 raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
+
+            if _attr in _constraints_ok.keys():
+                # check any constraints are OK
+                if not _constraints_ok[_attr](params[_attr]):
+                    raise FeatureError("param type {} has invalid value {}".format(_attr,\
+                            params[_attr]))
         if "lambda" in params.keys():
             if params["lambda"] not in [-1,1]:
                 raise FeatureError("lambda params must have values -1 or 1 only")
@@ -110,7 +122,7 @@ class feature():
                 # check that matrix is symmetric
                 np.testing.assert_array_almost_equal(params["prec"],params["prec"].T)
             except AssertionError:
-                raise FeatureError("Supplied precision matrix for threebody gaussian is not symmetric")
+                raise FeatureError("Supplied precision matrix for 3-body gaussian is not symmetric")
 
         self.params = deepcopy(params)
 

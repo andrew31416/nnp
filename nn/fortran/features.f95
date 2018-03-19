@@ -770,7 +770,7 @@ module features
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
             real(8) :: drij,drik,drjk,cos_angle,tmp_z
             integer :: zz,deriv_idx
-            real(8) :: tmp_feature,tap_ij,tap_jk,tap_ik
+            real(8) :: tmp_feature1,tmp_feature2,tap_ij,tap_jk,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv,tap_jk_deriv
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),drjkdrz(1:3)
 
@@ -807,7 +807,8 @@ module features
                     &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
                     &(feature_threebody_info(atm)%z_atom+1.0d0)**za
 
-            tmp_feature = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * (1.0d0+lambda*cos_angle)**xi
+            tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * tmp_z
+            tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
             
             ! 1=jj , 2=kk, 3=ii
             do zz=1,3,1
@@ -839,11 +840,13 @@ module features
                 end if
 
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
-                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                &(   tap_ij*tap_ik*tap_jk*lambda*xi/(1.0d0+lambda*cos_angle)*dcosdrz +&
-                &tap_ik*tap_jk*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
-                &tap_ij*tap_jk*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz +&
-                &tap_ij*tap_ik*(tap_jk_deriv - 2.0d0*eta*tap_jk*drjk)*drjkdrz    )*tmp_feature*tmp_z
+                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
+                    &tap_ij*tap_ik*tap_jk*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
+                    &dcosdrz*tmp_feature1 +&
+                    &(tap_ik*tap_jk*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
+                    &tap_ij*tap_jk*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz +&
+                    &tap_ij*tap_ik*(tap_jk_deriv - 2.0d0*eta*tap_jk*drjk)*drjkdrz  )*tmp_feature2
+                
             end do
             
         end subroutine feature_behler_g4_deriv
@@ -902,7 +905,7 @@ module features
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
             real(8) :: drij,drik,cos_angle,tmp_z
             integer :: zz,deriv_idx
-            real(8) :: tmp_feature,tap_ij,tap_ik
+            real(8) :: tmp_feature1,tmp_feature2,tap_ij,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3)
 
@@ -936,7 +939,8 @@ module features
                     &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
                     &(feature_threebody_info(atm)%z_atom+1.0d0)**za
 
-            tmp_feature = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2)) * (1.0d0+lambda*cos_angle)**xi
+            tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2))*tmp_z 
+            tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
             
             ! 1=jj , 2=kk, 3=ii
             do zz=1,3,1
@@ -966,9 +970,11 @@ module features
 
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                &(   tap_ij*tap_ik*lambda*xi/(1.0d0+lambda*cos_angle)*dcosdrz +&
-                &tap_ik*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
-                &tap_ij*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz )*tmp_feature*tmp_z
+                    &tmp_feature1*tap_ij*tap_ik*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
+                    &dcosdrz +&
+                    &(tap_ik*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
+                    &tap_ij*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz )*tmp_feature2
+                
             end do
             
         end subroutine feature_behler_g5_deriv

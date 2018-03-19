@@ -335,6 +335,69 @@ module util
                 end do !* end loop over atoms
             end do !* end loop over configs
         end subroutine get_features
+
+        subroutine check_features(set_type)
+            implicit none
+
+            integer,intent(in) :: set_type
+
+            !* scratch
+            integer :: conf,atm,ft
+
+            do conf=1,data_sets(set_type)%nconf,1
+                do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    do ft=1,D
+                        if ( float_error(data_sets(set_type)%configs(conf)%x(ft,atm)) ) then
+                            call error_util("check_features","Nan computed for features")
+                        end if
+                    end do !* end loop over features
+                end do !* end loop over atoms
+            end do !* end loop over confs
+        end subroutine check_features
+        
+        subroutine check_feature_derivatives(set_type)
+            implicit none
+
+            integer,intent(in) :: set_type
+
+            !* scratch
+            integer :: conf,atm,ft,bond,dd
+
+            do conf=1,data_sets(set_type)%nconf,1
+                do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    do ft=1,D
+                        if (data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n.ne.0) then
+                            do bond=1,data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n,1
+                                do dd=1,3,1
+                                    if ( float_error(data_sets(set_type)%configs(conf)%&
+                                    &x_deriv(ft,atm)%vec(dd,bond)) ) then
+                                        call error_util("check_feature_derivatives",&
+                                                &"Nan computed for feature derivatives")
+                                    end if !* error found
+                                end do !* end loop over cartesian coordinates
+                            end do !* end loop over neighbours to atom 
+                        end if 
+                    end do !* end loop over features
+                end do !* end loop over atoms
+            end do !* end loop over confs
+        end subroutine check_feature_derivatives
+       
+        logical function float_error(float_number)
+            implicit none
+
+            real(8),intent(in) :: float_number
+
+            !* scratch
+            logical :: res
+
+            res = .false.
+
+            if (isnan(float_number)) then
+                res = .true.
+            end if
+
+            float_error = res
+        end function float_error
         
         subroutine error_util(routine,message)
             implicit none

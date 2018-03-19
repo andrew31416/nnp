@@ -183,6 +183,36 @@ def check_openmp():
         raise SeriousImplementationError("serial and parallel jac. are not equal")
 
     return True
+
+def check_features(set_type):
+    """
+    Check features for invalid floating point numbers
+    
+    Parameters
+    ----------
+    set_type : String, allowed values = 'train','test'
+    """
+    import nnp.nn.fortran.nn_f95 as f95_api
+    
+    if set_type not in ['train','test']:
+        raise UserError("set type {} is not 'train' or 'test'".format(set_type))
+
+    getattr(f95_api,"f90wrap_check_features")(set_type={"train":1,"test":2}[set_type])
+
+def check_feature_derivatives(set_type):
+    """
+    Check feature derivatives for invalid floating point numbers
+    
+    Parameters
+    ----------
+    set_type : String, allowed values = 'train','test'
+    """
+    import nnp.nn.fortran.nn_f95 as f95_api
+
+    if set_type not in ['train','test']:
+        raise UserError("set type {} is not 'train' or 'test'".format(set_type))
+
+    getattr(f95_api,"f90wrap_check_feature_derivatives")(set_type={"train":1,"test":2}[set_type])
          
 def run_all():
     """
