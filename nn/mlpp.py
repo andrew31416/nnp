@@ -417,7 +417,7 @@ class MultiLayerPerceptronPotential():
             # update weights and jacobian buffer
             self._update_num_weights()
 
-    def _initialise_net(self,set_type):
+    def _initialise_net(self):
         """
         Initialise all fortran data structures ready for training
         weights
@@ -600,7 +600,7 @@ class MultiLayerPerceptronPotential():
                 derivatives=True,scale=self.scale_features)
     
         # initialise neural net data structures
-        self._initialise_net(set_type=set_type)
+        self._initialise_net()
 
 
     def fit(self,X):
