@@ -14,7 +14,6 @@ from sklearn import mixture
 from scipy import optimize
 import parsers
 
-
 class feature():
     """feature
     
@@ -356,7 +355,7 @@ class features():
                 _ = self.features.pop()
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
    
-    def calculate(self,set_type="train",derivatives=False,scale=False):
+    def calculate(self,set_type="train",derivatives=False,scale=False,safe=True):
         """
         Compute the value of all features for the given set type
         
@@ -399,10 +398,16 @@ class features():
         
         # initialise feature vector mem. and derivatives wrt. atoms
         getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=_map[set_type])
-        
+       
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],\
                 derivatives=derivatives,scale_features=scale,parallel=self.parallel)
+
+        if safe:
+            # abort if Nan found in features or their derivatives
+            getattr(f95_api,"f90wrap_check_features")(set_type=_map[set_type])
+            if self.derivatives:
+                getattr(f95_api,"f90wrap_check_feature_derivatives")(set_type=_map[set_type])
 
         # no PCA
         non_pca_features = self.get_features(set_type=set_type)
