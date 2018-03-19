@@ -406,7 +406,7 @@ class features():
         if safe:
             # abort if Nan found in features or their derivatives
             getattr(f95_api,"f90wrap_check_features")(set_type=_map[set_type])
-            if self.derivatives:
+            if derivatives:
                 getattr(f95_api,"f90wrap_check_feature_derivatives")(set_type=_map[set_type])
 
         # no PCA
