@@ -111,7 +111,7 @@ class MultiLayerPerceptronPotential():
             self.max_precision_update_number = max_precision_update_number
 
             # data for optimization log 
-            self._njev = None
+            self._njev = 0 
             self._loss_log = []
    
             self.solver_kwargs = solver_kwargs
@@ -152,6 +152,8 @@ class MultiLayerPerceptronPotential():
             self.weights[np.asarray(bias_idx,dtype=np.int32)] = 0.0
 
     def _init_random_weights(self):
+        import nnp.nn.fortran.nn_f95 as f95_api 
+        
         if self.D is None:
             raise MlppError("Cannot initialise weights before dimension of features is known")
 
@@ -283,23 +285,41 @@ class MultiLayerPerceptronPotential():
             # need energy per atom
             atoms_per_conf = nnp.nn.helper_funcs.get_atoms_per_conf(set_type="train")
 
-            ref_energy_variance = np.std(ref_energies)**2 
+            # empirical stats from training data
+            ref_total_energy_variance = np.var(ref_energies)
             ref_energy_per_atom_mean = np.average(ref_energies/atoms_per_conf)
-           
-            weight_variances = ref_energy_variance / np.average(z2**2,axis=1)
-            weight_bias = ref_energy_per_atom_mean
+            atoms_per_conf = nnp.nn.helper_funcs.get_atoms_per_conf("train")
+            per_atom_variance = np.var(ref_energies)/np.mean(atoms_per_conf)
+
+            weight_means = np.zeros(self.hidden_layer_sizes[1],dtype=np.float64)
+            weight_variances = per_atom_variance/( self.hidden_layer_sizes[1] * \
+                    np.mean(z2**2,axis=1) )
 
             layer3_weights = np.zeros(self.hidden_layer_sizes[1]+1,dtype=np.float64,order='F')
             for ii in range(self.hidden_layer_sizes[1]):
-                layer3_weights[ii+1] = np.random.normal(loc=0.0,\
+                layer3_weights[ii+1] = np.random.normal(loc=weight_means[ii],\
                         scale=np.sqrt(weight_variances[ii]),size=1)
-            self.weights = np.hstack(( self.weights, layer3_weights ))
-            self._zero_weight_biases()
-           
-            # propagate again to fine tune w3 bias
+            
+            # propagate to get total energy distribution
+            _ = getattr(f95_api,"f90wrap_loss")(flat_weights=np.hstack((self.weights,\
+                    layer3_weights)),set_type=1,\
+                    parallel=self.parallel,squared_errors=np.zeros(3,dtype=np.float64,order='F'))
+          
+            gip = nnp.util.io._parse_configs_from_fortran("train")
+            total_energies = np.asarray([_s["energy"] for _s in gip])
+          
+            # scale weights to reproduce exact total energ variance 
+            weight_magnitude_correction = np.sqrt(ref_total_energy_variance/np.var(total_energies))
+
+            layer3_weights[1:] *= weight_magnitude_correction 
+
+            # forward prop to adjust final layer bias for perfect average
             per_atom_energies = np.dot(layer3_weights[1:],z2)
             
             weight_bias = ref_energy_per_atom_mean - np.average(per_atom_energies)
+            
+            self.weights = np.hstack(( self.weights, layer3_weights ))
+            self._zero_weight_biases()
 
             w3_bias_idx = self.hidden_layer_sizes[0]*(self.D+1)+(self.hidden_layer_sizes[0]+1)*\
                     self.hidden_layer_sizes[1]
@@ -500,8 +520,6 @@ class MultiLayerPerceptronPotential():
         ses = {"energy":self._squared_errors[0],"forces":self._squared_errors[1],\
                 "regularization":self._squared_errors[2]}
        
-        print('energy SE = {} forces SE = {}'.format(ses["energy"],ses["forces"]))
-
         num_weights_no_bias = self.hidden_layer_sizes[0]*self.D + self.hidden_layer_sizes[0]*\
                 self.hidden_layer_sizes[1] + self.hidden_layer_sizes[1]
 
@@ -514,8 +532,6 @@ class MultiLayerPerceptronPotential():
                     raise MlppError("loss squared error for {} is 0 when coefficient != 0".\
                             format(ses[_loss_term]))
             
-                print('updating {} from {} to {}'.format(_loss_term,\
-                        self.hyper_params[_loss_term],const[_loss_term]/ses[_loss_term]))
                 self.set_hyperparams(_loss_term,const[_loss_term]/ses[_loss_term])
         
         # send to fortran
@@ -534,6 +550,7 @@ class MultiLayerPerceptronPotential():
 
     def _loss(self,weights,set_type):
         import nnp.nn.fortran.nn_f95 as f95_api 
+        
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
        
@@ -566,6 +583,7 @@ class MultiLayerPerceptronPotential():
             Identifier of which set type to compute jacobian for
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
+        
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
         
@@ -578,6 +596,7 @@ class MultiLayerPerceptronPotential():
         
         if np.isnan(self.jacobian).any():
             raise MlppError("Nan computed for jacobian of loss")
+        
         return self.jacobian
     
     def _prepare_data_structures(self,X,set_type):

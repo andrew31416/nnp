@@ -200,7 +200,7 @@ class features():
         self.data = {"train":train_data,"test":None}
 
         # maximum cut off radii for two and three body terms
-        self.maxrcut = {'twobody':6.0,'threebody':4.0}
+        self.maxrcut = {'twobody':7.0,'threebody':5.0}
 
         # fraction of bonds sampled for bond distribution
         self.sample_rate = {'twobody':0.5,'threebody':0.1}
@@ -343,7 +343,7 @@ class features():
         threebody = np.zeros((3,int(num64_floats/3.)),dtype=np.float64,order='F') 
         _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],\
                 dtype=np.float64)
-        
+                
         _map = {"train":1,"test":2}
         # calculate 2&3 body distributions
         n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(\
@@ -482,7 +482,7 @@ class features():
         self._generate_twobody_gmm(num_components=n_comp_two,set_type=set_type)
         self._generate_threebody_gmm(num_components=n_comp_three,set_type=set_type)
 
-    def _generate_twobody_gmm(self,num_components=None,set_type="train"):
+    def _generate_twobody_gmm(self,num_components=None,num_samples=1e5,set_type="train"):
         """
         Generate a Gaussian Mixture Model from twobody (distance-distance)
         distribution of given set.
@@ -526,8 +526,22 @@ class features():
        
         
         # collect atom-atom distance distribution
-        twobody_dist,_ = self.bond_distribution(set_type=set_type)
-       
+        twobody_dist_original,_ = self.bond_distribution(set_type=set_type)
+     
+        # account for p(dr) ~ dr^2, non uniform prior 
+        twobody_dist = np.zeros(int(num_samples),dtype=np.float64)
+        cntr = 0
+        while cntr<twobody_dist.shape[0]:
+            generating_sample = True
+            while generating_sample:
+                idx = np.random.choice(twobody_dist_original.shape[0],1)
+
+                if 1.0/(twobody_dist_original[idx]**2) > np.random.random():
+                    # rejection sampling
+                    generating_sample = False
+            twobody_dist[cntr] = twobody_dist_original[idx]
+            cntr += 1
+
         if automatic_selection:
             # minimize bic measure wrt. n_components - Bayesian GMM doesn't converge 
             opt_result = optimize.minimize_scalar(fun=_bic_fun_wrapper,bounds=[1,num_components],\
@@ -555,7 +569,7 @@ class features():
                     "fs":0.2,"mean":means[_component,0],"prec":precisions[_component,0,0],\
                     "za":1.0,"zb":1.0}))
     
-    def _generate_threebody_gmm(self,num_components=None,set_type="train"):
+    def _generate_threebody_gmm(self,num_components=None,sample_num=1e5,set_type="train"):
         """
         Generate a Gaussian Mixture Model from three body distribution
         (drij,drik,dtheta_ijk) of given set.
@@ -602,8 +616,20 @@ class features():
                 symmetric_dist)))
       
 
+        # re-sample taking into account p(dr) ~ dr^2
+        random_sample = np.zeros((int(sample_num),3),dtype=np.float64)
+        cntr = 0
+        while cntr<random_sample.shape[0]:
+            generating_sample = True
+            while generating_sample:
+                idx = np.random.choice(symmetric_dist.shape[0],1)
+                if 1.0/(symmetric_dist[idx,0]*symmetric_dist[idx,1])**2 > np.random.random():
+                    generating_sample = False
+            random_sample[cntr,:] = symmetric_dist[idx,:]
+            cntr += 1
+
         # do EM on mean,precision,mixing coeffs.
-        gmm.fit(symmetric_dist)
+        gmm.fit(random_sample)
 
 
         means = gmm.means_
