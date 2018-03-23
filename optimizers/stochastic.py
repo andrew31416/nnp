@@ -16,8 +16,6 @@ def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
     if solver.lower() not in ['adam','cma']:
         raise StochasticOptimizersError("{} is unsupported".format(solver))
 
-    print('using optimizer {}'.format(solver))
-
     if solver.lower() == 'adam':
         optimizer = Adam(fun=fun,jac=jac,args=args,tol=tol,x0=x0,**solver_kwargs) 
     elif solver.lower() == 'cma':
@@ -55,7 +53,7 @@ class Adam():
     """
     
     def __init__(self,fun,jac,x0,args=(),learning_rate_init=1e-3,beta_1=0.9,beta_2=0.999,\
-                 epsilon=1e-8,tol=1e-8,max_iter=100):
+                 epsilon=1e-8,tol=1e-8,max_iter=10000):
         self.fun = fun
         self.jac = jac
         self.x = x0
@@ -165,6 +163,7 @@ class Adam():
                         format(self.max_iter))
         opt_res["x"] = self.x
         opt_res["niter"] = self.niter
+        opt_res["nit"] = self.niter
 
         return opt_res
         
@@ -178,7 +177,7 @@ class CMA():
         Objective function to minimise
     """
 
-    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=1000):        
+    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=100000):        
         self.fun = fun
         self.args = args
         self.x0 = x0
