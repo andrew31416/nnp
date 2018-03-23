@@ -82,10 +82,10 @@ class MultiLayerPerceptronPotential():
     >>> _mlpp = mlpp.MultiLayerPerceptronPotential(hidden_layer_size=[10,5])
     """
 
-    def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='l-bfgs-b',\
+    def __init__(self,hidden_layer_sizes=[10,5],activation='sigmoid',solver='bfgs',\
             hyper_params={'energy':1.0,'forces':1.0,'regularization':0.0},\
-            solver_kwargs={},precision_update_interval=0,max_precision_update_number=1,\
-            parallel=True):
+            solver_kwargs={"maxiter":15000,"gtol":1e-12},precision_update_interval=0,\
+            max_precision_update_number=1,parallel=True):
             
             self.activation = activation
             self.loss_norm = 'l2'
@@ -100,7 +100,7 @@ class MultiLayerPerceptronPotential():
             self.OptimizeResult = None
             self.computed_features = None
             self.parallel = parallel
-            self.scale_features = False # obsolete now
+            self.scale_features = True # super large numerical instabilities without this
             self.set_weight_init_scheme("general")
             self.set_solver(solver) 
             self.set_layer_size(hidden_layer_sizes)
@@ -488,15 +488,23 @@ class MultiLayerPerceptronPotential():
                     jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
                     args=("train"),**self.solver_kwargs)
         else:
-            if self.precision_update_interval == 0:
+            if self.precision_update_interval != 0:
+                try:
+                    self.solver_kwargs["maxiter"] = self.precision_update_interval
+                except KeyError:
+                    self.solver_kwargs.update({"maxiter":self.precision_update_interval})
                 # SCIPY's l-bfgs-b default
                 maxiter = 15000
             else:
-                maxiter = self.precision_update_interval
+                # use SCIPY's bfgs default
+                try:
+                    self.solver_kwargs["maxiter"] = 15000
+                except KeyError:
+                    self.solver_kwargs.update({"maxiter":15000})
 
             self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
-                    method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8,\
-                    options={"maxiter":maxiter})
+                    method=self.solver,args=("train"),jac=self._loss_jacobian,\
+                    options=self.solver_kwargs)
         
         self.weights = self.OptimizeResult["x"]
     
@@ -586,10 +594,12 @@ class MultiLayerPerceptronPotential():
         
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
+    
+        tmp_jac = np.zeros(weights.shape,dtype=np.float64,order='F')
         
         _map = {"train":1,"test":2} 
         getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,set_type=_map[set_type],\
-                parallel=self.parallel,jacobian=self.jacobian)
+                parallel=self.parallel,jacobian=tmp_jac)
       
         # count number of jacobian evaluations 
         self._njev += 1
@@ -597,7 +607,9 @@ class MultiLayerPerceptronPotential():
         if np.isnan(self.jacobian).any():
             raise MlppError("Nan computed for jacobian of loss")
         
-        return self.jacobian
+        #self.
+
+        return tmp_jac
     
     def _prepare_data_structures(self,X,set_type):
         """
