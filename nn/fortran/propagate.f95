@@ -48,7 +48,7 @@ module propagate
 !write(*,*) ''
 !write(*,*) 'x:'
 !write(*,*) data_sets(set_type)%configs(conf)%x(3,:)            
-
+            
             !* a^1_mI = \sum_k=0^K w_mk^1 gamma_kI
             call dgemm('n','n',net_dim%hl1,natm,D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
                     &data_sets(set_type)%configs(conf)%x,D+1,0.0d0,net_units%a%hl1,net_dim%hl1)

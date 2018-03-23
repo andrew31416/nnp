@@ -822,20 +822,23 @@ module feature_util
 
             !* scratch
             integer :: ii,conf,atm
-            real(8) :: currentmax
+            real(8) :: currentmax,currentmin
 
             do ii=1,feature_params%num_features,1
                 if (feature_params%info(ii)%ftype.eq.featureID_StringToInt("atomic_number")) then
                     cycle
                 end if
 
-                currentmax = 0.0d0
-
+                currentmax = data_sets(set_type)%configs(1)%x(ii+1,1)
+                currentmin = currentmax
 
                 do conf=1,data_sets(set_type)%nconf,1
                     do atm=1,data_sets(set_type)%configs(conf)%n
-                        if (abs(data_sets(set_type)%configs(conf)%x(ii+1,atm)).gt.currentmax) then
-                            currentmax = abs(data_sets(set_type)%configs(conf)%x(ii+1,atm))
+                        if (data_sets(set_type)%configs(conf)%x(ii+1,atm).gt.currentmax) then
+                            currentmax = data_sets(set_type)%configs(conf)%x(ii+1,atm)
+                        end if
+                        if (data_sets(set_type)%configs(conf)%x(ii+1,atm).lt.currentmin) then
+                            currentmin = data_sets(set_type)%configs(conf)%x(ii+1,atm)
                         end if
                     end do
                 end do
@@ -843,8 +846,12 @@ module feature_util
                 if (abs(currentmax).lt.dble(10e-15)**2) then
                     !* all feature coordinates are zero!
                     feature_params%info(ii)%scl_cnst = 0.0d0
+                    feature_params%info(ii)%add_cnst = 0.0d0
                 else
-                    feature_params%info(ii)%scl_cnst = 1.0d0/currentmax
+                    !* scale to between [-1,1] (inclusive)
+                    feature_params%info(ii)%scl_cnst = 2.0d0/(currentmax-currentmin)
+                    feature_params%info(ii)%add_cnst = -1.0d0 -2.0d0*currentmin/(currentmax-&
+                            &currentmin)
                 end if
             end do
         end subroutine computeall_feature_scaling_constants
@@ -856,7 +863,7 @@ module feature_util
 
             !* scratch
             integer :: ii,conf,atm,jj
-            real(8) :: cnst
+            real(8) :: cnst,cnst_add
 
             do ii=1,feature_params%num_features,1
                 if (feature_params%info(ii)%ftype.eq.featureID_StringToInt("atomic_number")) then 
@@ -864,10 +871,11 @@ module feature_util
                 end if
 
                 cnst = feature_params%info(ii)%scl_cnst
+                cnst_add = feature_params%info(ii)%add_cnst
 
                 do conf=1,data_sets(set_type)%nconf,1
                     data_sets(set_type)%configs(conf)%x(ii+1,:) = &
-                            &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst
+                            &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst + cnst_add
 
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then

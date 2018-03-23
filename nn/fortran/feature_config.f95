@@ -55,6 +55,7 @@ module feature_config
         real(8) :: za       = 0.0d0         ! central atomic number
         real(8) :: zb       = 0.0d0         ! neighbour atomic number
         real(8) :: scl_cnst = 1.0d0         ! scale all instances of this feature upon computation
+        real(8) :: add_cnst = 0.0d0         ! additive constant for this feature upon computation
     end type feature_
 
     type,public :: feature_info
