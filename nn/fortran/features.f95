@@ -127,16 +127,17 @@ module features
             end if !* end if parallel section
 
             if (scale_features) then
-                if (set_type.eq.1) then
-                    !* calculate max feature values 
-                    call computeall_feature_scaling_constants(set_type)
+                call scale_set_features(set_type)
+                !if (set_type.eq.1) then
+                !    !* calculate max feature values 
+                !    call computeall_feature_scaling_constants(set_type)
 
-                    !* and scale
-                    call scale_set_features(set_type) 
-                else
-                    !* scale using previously set max feature value
-                    call scale_set_features(set_type) 
-                end if
+                !    !* and scale
+                !    call scale_set_features(set_type) 
+                !else
+                !    !* scale using previously set max feature value
+                !    call scale_set_features(set_type) 
+                !end if
             end if
         end subroutine calculate_features_singleset
 

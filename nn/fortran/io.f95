@@ -204,7 +204,7 @@ module io
 
             allocate(feature_params%info(num_features))
             feature_params%num_features = num_features
-write(*,*) 'size = ',size(feature_params%info)
+            
             feat_cntr = 1
 
             write(*,*) 'have read ',num_features,'features'
@@ -564,7 +564,7 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             integer :: iostat,line
             character(len=1024) :: string
             real(8) :: rcut,fs,za,zb,mean,prec,xi,eta,lambda,rs
-            real(8) :: mean_3(1:3),prec_33(1:3,1:3)
+            real(8) :: mean_3(1:3),prec_33(1:3,1:3),scale_times,scale_add
 
             open(unit=io_unit_read,status='old',file=trim(filepath),action='read',iostat=iostat)
             if (iostat.ne.0) then
@@ -592,12 +592,15 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             line = 1
             do while(.true.)
                 if (feature_params%info(line)%ftype.eq.featureID_StringToInt("atomic_number")) then
-                    read(unit=io_unit_read,fmt=*,iostat=iostat) string
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,scale_times,scale_add
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
-                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,&
+                            &scale_times,scale_add
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
@@ -605,8 +608,11 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%fs = fs
                     feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,eta,rs,za,zb
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,eta,rs,za,zb,&
+                            &scale_times,scale_add
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
@@ -616,8 +622,11 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%rs = rs
                     feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
-                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta,za,zb
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta,za,zb,&
+                            &scale_times,scale_add
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
@@ -628,8 +637,11 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%eta = eta
                     feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
-                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,xi,lambda,eta,&
+                            &scale_times,scale_add
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
@@ -640,8 +652,11 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%eta = eta
                     feature_params%info(line)%za = za
                     feature_params%info(line)%zb = zb
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean,prec
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean,prec,&
+                            &scale_times,scale_add
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
@@ -654,9 +669,11 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%mean(1) = mean
                     feature_params%info(line)%prec(1,1) = prec
                     feature_params%info(line)%sqrt_det = sqrt(prec)
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                 else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                     read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,za,zb,mean_3,&
-                        &prec_33(:,1),prec_33(:,2),prec_33(:,3)
+                        &prec_33(:,1),prec_33(:,2),prec_33(:,3),scale_times,scale_add
                     if (iostat.ne.0) then
                         call error("read_features","error reading feature entry")
                     end if
@@ -669,6 +686,8 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%mean(:) = mean_3(:)
                     feature_params%info(line)%prec(:,:) = prec_33(:,:)
                     feature_params%info(line)%sqrt_det = sqrt(matrix_determinant(prec_33))
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
                 else
                     call error("read_features","unexpected feature type in features file.")
                 end if

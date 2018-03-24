@@ -625,6 +625,10 @@ class MultiLayerPerceptronPotential():
         """
         # write configurations to fortran data structures
         self.features.set_configuration(gip=X,set_type=set_type)
+    
+        if set_type == "train" and self.scale_features:
+            # need to compute pre conditioning coefficients
+            self.features.calculate_precondition()
         
         # initialise feature mem and compute for set_type
         self.computed_features = self.features.calculate(set_type=set_type,\
@@ -679,15 +683,6 @@ class MultiLayerPerceptronPotential():
                 self._update_precision()
                 self._update_net_weights() 
 
-        #if self.solver in ['adam','cma']:
-        #    self.OptimizeResult = nnp.optimizers.stochastic.minimize(fun=self._loss,\
-        #            jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
-        #            args=("train"),**self.solver_kwargs)
-        #else:
-        #    self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
-        #            method=self.solver,args=("train"),jac=self._loss_jacobian,tol=1e-8,\
-        #            callback=self._opt_callback)
-        
         # book keeping
         self.OptimizeResult.njev = self._njev
 

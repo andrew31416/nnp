@@ -48,6 +48,9 @@ class feature():
         self.type = feature_type
         self.params = None
 
+        # pre condition x -> a*x + b so that x \in [-1,1]
+        self.precondition = {"times":1.0,"add":0.0}
+
         if self.type not in self.supp_types:
             raise FeatureError('{} not in {}'.format(self.type,','.join(self.supp_types)))
 
@@ -144,26 +147,33 @@ class feature():
             raise FeatureError("type {} is not io.TextIOWrapper.".format(type(file_object))) 
 
         if self.type == 'atomic_number':
-            file_object.write('{}\n'.format(self.type))
+            file_object.write('{} {:<20} {:<20}\n'.format(self.type,self.precondition["times"],\
+                    self.precondition["add"]))
         elif self.type == 'acsf_behler-g1':
-            file_object.write('{} {}\n'.format(self.type,\
-                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']])))
+            file_object.write('{} {} {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']]),\
+                    ' '.join(['{:<20}'.format(self.precondition[_a]) for _a in ['times','add']]) ))
         elif self.type == 'acsf_behler-g2':
-            file_object.write('{} {}\n'.format(self.type,\
-                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','eta','rs','za','zb']])))
+            file_object.write('{} {} {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in \
+                    ['rcut','fs','eta','rs','za','zb']]) , \
+                    ' '.join(['{:<20}'.format(self.precondition[_a]) for _a in ['times','add']]) ))
         elif self.type in ['acsf_behler-g4','acsf_behler-g5']:
-            file_object.write('{} {}\n'.format(self.type,\
-                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','xi','lambda','eta',\
-                    'za','zb']])))
+            file_object.write('{} {} {}\n'.format(self.type,\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','xi',\
+                    'lambda','eta','za','zb']]) , \
+                    ' '.join(['{:<20}'.format(self.precondition[_a]) for _a in ['times','add']]) ))
         elif self.type == 'acsf_normal-b2':
-            file_object.write('{} {}\n'.format(self.type,\
+            file_object.write('{} {} {}\n'.format(self.type,\
                     ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb',\
-                    'mean','prec']])))
+                    'mean','prec']]) ,\
+                    ' '.join(['{:<20}'.format(self.precondition[_a]) for _a in ['times','add']])  ))
         elif self.type == 'acsf_normal-b3':
-            file_object.write('{} {} {} {}\n'.format(self.type,\
+            file_object.write('{} {} {} {} {}\n'.format(self.type,\
                     ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']]),\
                     ' '.join(['{:<20}'.format(_m) for _m in self.params["mean"].flatten()]),\
-                    ' '.join(['{:<20}'.format(_m) for _m in self.params["prec"].flatten()])))
+                    ' '.join(['{:<20}'.format(_m) for _m in self.params["prec"].flatten()]) ,\
+                    ' '.join(['{:<20}'.format(self.precondition[_a]) for _a in ['times','add']]) ))
         else: raise FeatureError("Implementation error")
             
 class features():
@@ -253,6 +263,10 @@ class features():
 
         nnp.util.io._parse_configs_to_fortran(gip,set_type.lower())
         self.data[set_type.lower()] = gip
+
+        if set_type == "train":
+            # pre conditioning coefficients need recomputing
+            self.precondition_computed = False
 
     def set_pca(self,pca_type):
         if pca_type not in [None,'linear']:
@@ -354,7 +368,24 @@ class features():
             for ii in range(remove_features):
                 _ = self.features.pop()
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
+  
+    def calculate_precondition(self):
+        """
+        Compute a and b : x-> a*x + b and x \in [-1,1] and set these values for
+        all features in self.features
+        """
+        feature_list = self.calculate(set_type="train",derivatives=False,scale=False,safe=True)
    
+        xmax = np.max(feature_list,axis=1)
+        xmin = np.min(feature_list,axis=1)
+
+        for _feature in range(len(self.features)):
+            self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-xmin[_feature])
+            self.features[_feature].precondition["add"] = -1.0 -2.0*xmax[_feature]/\
+                    (xmax[_feature]-xmin[_feature])
+        self.precondition_computed = True
+        del feature_list                    
+
     def calculate(self,set_type="train",derivatives=False,scale=False,safe=True):
         """
         Compute the value of all features for the given set type
@@ -388,6 +419,9 @@ class features():
             raise FeaturesError("There are no features to compute")
         elif set_type.lower() not in ['train','test']:
             raise FeaturesError("set type {} not supported".format(set_type))
+        if scale and not self.precondition_computed:
+            raise FeaturesError("attempting to calculate features with scaling before \
+                    self.calculate_precondition() has been called") 
 
         set_type = set_type.lower()
 
@@ -440,7 +474,7 @@ class features():
 
         # parse features from disk into fortran types
         getattr(f95_api,"f90wrap_init_features_from_disk")(filepath)
-
+        
         shutil.os.remove(tmpfile.name)
 
     def generate_gmm_features(self,n_comp_two=None,n_comp_three=None,set_type="train"):

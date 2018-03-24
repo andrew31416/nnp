@@ -872,7 +872,7 @@ module feature_util
 
                 cnst = feature_params%info(ii)%scl_cnst
                 cnst_add = feature_params%info(ii)%add_cnst
-
+                
                 do conf=1,data_sets(set_type)%nconf,1
                     data_sets(set_type)%configs(conf)%x(ii+1,:) = &
                             &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst + cnst_add
