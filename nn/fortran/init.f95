@@ -346,7 +346,7 @@ module init
             if (init_type.eq.0) then
                 set_lim1 = 1
                 set_lim2 = 2
-            else if (init_type.le.2) then
+            else if (init_type.le.3) then
                 set_lim1 = init_type
                 set_lim2 = init_type
             else

@@ -82,13 +82,13 @@ module config
     integer,public :: D
 
     !* data sets
-    type(structures),public,save :: data_sets(1:2)
+    type(structures),public,save :: data_sets(1:3)
 
     !* derivative of net wrt features
     real(8),allocatable,public,save :: dydx(:,:)
 
     !* type of loss norm (l1 or l2)
-    integer,public :: loss_norm_type = 1
+    integer,public :: loss_norm_type = 2
 
     !* loss constants
     real(8),public :: loss_const_energy

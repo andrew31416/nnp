@@ -107,8 +107,21 @@ class MultiLayerPerceptronPotential():
             for _key in hyper_params:
                 self.set_hyperparams(_key,hyper_params[_key]) 
             self._opt_callback_cntr = 0 
+            self._loss_callback_freq = 10 # frequency with which callback function is performed 
             self.set_precision_update_interval(precision_update_interval)
             self.max_precision_update_number = max_precision_update_number
+
+            # set map from Python string to Fortran int
+            self._set_map = {"train":1,"holdout":2,"test":3}
+
+            # activation function map (String->Int)
+            self._activation_map = {"sigmoid":1,"tanh":2}
+
+            # loss norma map (String->Int)
+            self._loss_norm_map = {"l1":1,"l2":2}
+
+            # list for holdout set loss, used for early stopping if holdout present                
+            self._holdout_loss = []
 
             # data for optimization log 
             self._njev = 0 
@@ -123,6 +136,7 @@ class MultiLayerPerceptronPotential():
 
         self._njev = 0
         self._loss_log = []
+        self._holdout_loss = []
     
     def _update_num_weights(self):
         if self.D is None:
@@ -444,17 +458,15 @@ class MultiLayerPerceptronPotential():
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
 
-        _map = {"sigmoid":1,"tanh":2}
         # initialise weights and node variables
         getattr(f95_api,"f90wrap_initialise_net")(num_nodes=self.hidden_layer_sizes,\
-                nlf_type=_map[self.activation],feat_d=self.D)
+                nlf_type=self._activation_map[self.activation],feat_d=self.D)
      
-        _map = {"l1":1,"l2":2}
         # set loss function parameters
         getattr(f95_api,"f90wrap_init_loss")(k_energy=self.hyper_params["energy"],\
                 k_forces=self.hyper_params["forces"],\
                 k_reglrn=self.hyper_params["regularization"],
-                norm_type=_map[self.loss_norm])
+                norm_type=self._loss_norm_map[self.loss_norm])
 
     def check_node_distribution(self,X):
         """
@@ -504,7 +516,7 @@ class MultiLayerPerceptronPotential():
 
             self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
                     method=self.solver,args=("train"),jac=self._loss_jacobian,\
-                    options=self.solver_kwargs)
+                    options=self.solver_kwargs,callback=self._loss_callback)
         
         self.weights = self.OptimizeResult["x"]
     
@@ -556,7 +568,7 @@ class MultiLayerPerceptronPotential():
         """
         self._loss_log.append(loss)
 
-    def _loss(self,weights,set_type):
+    def _loss(self,weights,set_type,log_loss=True):
         import nnp.nn.fortran.nn_f95 as f95_api 
         
         if np.isnan(weights).any():
@@ -565,17 +577,81 @@ class MultiLayerPerceptronPotential():
         # energy,forces,regularization 
         squared_errors = np.zeros(3,dtype=np.float64,order='F')
 
-        _map = {"train":1,"test":2} 
-        tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=_map[set_type],\
+        tmp = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,set_type=self._set_map[set_type],\
                 parallel=self.parallel,squared_errors=squared_errors)
         
-        # book keeping
-        self._update_loss_log(tmp)
+        if log_loss:
+            # book keeping
+            self._update_loss_log(tmp)
         self._squared_errors = squared_errors
         
         if np.isnan(tmp):
             raise MlppError("Nan returned from loss calculation")
         return tmp
+
+    def _loss_callback(self,weights):
+        """
+        callback function for SCIPY optimizer, called after each iteration
+
+        Terminate optimization when the train energy rmse (and force rmse) drop
+        below a given tolerance OR (if the holdout set is in use), when the
+        holdout set loss is greater than a reference for so many iterations in
+        turn.
+        """
+        import nnp.nn.fortran.nn_f95 as f95_api 
+       
+        # early stopping flags 
+        terminate_opt = False
+        train_holdout_divergence = False
+
+        holdout_loss_mem = 5
+
+        Ermse_per_atom_meV_tol = 0.1
+        Frmse_eVA_tol = 0.1
+
+        if np.mod(self._opt_callback_cntr,self._loss_callback_freq) == 0:
+            if nnp.util.misc.get_num_configs("holdout") != 0:
+
+                _loss = getattr(f95_api,"f90wrap_loss")(flat_weights=weights,\
+                        set_type=self._set_map["holdout"],parallel=self.parallel,\
+                        squared_errors=np.zeros(3,dtype=np.float64,order='F'))
+
+                self._holdout_loss.append(_loss)
+                
+                if len(self._holdout_loss)>holdout_loss_mem: 
+                    loss0 = self._holdout_loss.pop(0)
+
+                    dloss = [_l - loss0 for _l in self._holdout_loss]
+                    if all([_l>0.0 for _l in dloss]):
+                        # every iteration since loss0 has increased holdout loss
+                        #print('terminating because of holdout set')
+                        train_holdout_divergence = True
+
+            # number of configurations
+            Nconf = nnp.util.misc.get_num_configs("train")
+
+            # average total energy error per atom (meV)
+            Ermse_per_atom_meV = 1000.0 * np.sqrt(self._squared_errors[0] / Nconf)
+           
+            # energy convergence criterion 
+            converged  = [Ermse_per_atom_meV < Ermse_per_atom_meV_tol]
+          
+            if not np.isclose(self.hyper_params["forces"],0.0,rtol=1e-50,atol=1e-50):
+                # total number of atoms in set
+                Ntot = nnp.util.misc.total_atoms_in_set("train")
+               
+                # rmse for force observations (eV/A)
+                Frmse_eVA = np.sqrt(self._squared_errors[1] / Ntot)
+               
+                # force convergence criterion
+                converged.append(Frmse_eVA < Frmse_eVA_tol)
+                
+                #print(Ermse_per_atom_meV,Frmse_eVA)        
+            
+            terminate_opt = all(converged) or train_holdout_divergence
+        self._opt_callback_cntr += 1 
+
+        return terminate_opt
 
     def _loss_jacobian(self,weights,set_type):
         """
@@ -597,8 +673,8 @@ class MultiLayerPerceptronPotential():
     
         tmp_jac = np.zeros(weights.shape,dtype=np.float64,order='F')
         
-        _map = {"train":1,"test":2} 
-        getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,set_type=_map[set_type],\
+        getattr(f95_api,"f90wrap_loss_jacobian")(flat_weights=weights,\
+                set_type=self._set_map[set_type],\
                 parallel=self.parallel,jacobian=tmp_jac)
       
         # count number of jacobian evaluations 
@@ -638,7 +714,7 @@ class MultiLayerPerceptronPotential():
         self._initialise_net()
 
 
-    def fit(self,X):
+    def fit(self,train,holdout=None):
         """
         Learn neural net weights for given loss function
 
@@ -662,7 +738,7 @@ class MultiLayerPerceptronPotential():
         >>> mlpp = nnp.nn.mlpp.MultiLayerPerceptron()
         >>> mlpp.set_features(_features)
         >>> # regress net weights
-        >>> training_loss = mlpp.fit(training_data)
+        >>> training_loss = mlpp.fit(training_data,holdout_data)
         """
         if self.features is None:
             raise MlppError("set_features() must be called before fit()")
@@ -671,7 +747,9 @@ class MultiLayerPerceptronPotential():
         self._init_optimization_log()
 
         # move necessary info to fortran via disk
-        self._prepare_data_structures(X=X,set_type="train")
+        self._prepare_data_structures(X=train,set_type="train")
+        if holdout is not None:
+            self._prepare_data_structures(X=holdout,set_type="holdout")
         
         # compute initial weights based upon training data
         self._init_random_weights()

@@ -4,6 +4,8 @@ import shutil
 import nnp.nn.fortran.nn_f95 as f95_api
 import parsers
 
+_set_map = {"train":1,"holdout":2,"test":3}
+
 def _write_file(config,fname):
     """_write_file
 
@@ -102,7 +104,7 @@ def _parse_configs_to_fortran(gip,set_type):
     >>> nnp.util.io._parse_configs_to_fortran(gip,"test")
     """
 
-    if set_type not in ['test','train']:
+    if set_type not in ['test','holdout','train']:
         raise IoError('{} not a supported set type : {}'.format(set_type,'test,train'))
 
     tmpdir = tempfile.mkdtemp(prefix='nnp-')
@@ -122,9 +124,8 @@ def _parse_configs_to_fortran(gip,set_type):
     files = np.array(_files,dtype='c').T
 
 
-    _map = {"train":1,"test":2}
     # parse all text files into fortran data structures
-    getattr(f95_api,"f90wrap_init_configs_from_disk")(files,_map[set_type]) 
+    getattr(f95_api,"f90wrap_init_configs_from_disk")(files,_set_map[set_type]) 
 
     shutil.rmtree(tmpdir) 
 
@@ -141,17 +142,16 @@ def _parse_configs_from_fortran(set_type):
     """
 
     set_type = set_type.lower()
-    if set_type not in ['test','train']:
+    if set_type not in ['test','holdout','train']:
         raise IoError("{} not a supported set type : {}".format(set_type,'test,train'))
 
-    _map = {'train':1,'test':2}
-    nconf = getattr(f95_api,"f90wrap_get_nconf")(set_type=_map[set_type])
+    nconf = getattr(f95_api,"f90wrap_get_nconf")(set_type=_set_map[set_type])
 
     gip = parsers.GeneralInputParser()
     gip.supercells = []
 
     for _conf in range(1,nconf+1):
-        natm = getattr(f95_api,"f90wrap_get_natm")(set_type=_map[set_type],conf=_conf)
+        natm = getattr(f95_api,"f90wrap_get_natm")(set_type=_set_map[set_type],conf=_conf)
 
         forces = np.zeros((3,natm),dtype=np.float64,order='F')
         postns = np.zeros((3,natm),dtype=np.float64,order='F')
@@ -159,7 +159,7 @@ def _parse_configs_from_fortran(set_type):
         cellvc = np.zeros((3,3),dtype=np.float64,order='F')
 
         # parse config from fortran
-        toteng = getattr(f95_api,"f90wrap_get_config")(set_type=_map[set_type],conf=_conf,\
+        toteng = getattr(f95_api,"f90wrap_get_config")(set_type=_set_map[set_type],conf=_conf,\
                 cell=cellvc,atomic_number=atmnum,positions=postns,forces=forces)
 
         _s = parsers.structure_class.supercell()

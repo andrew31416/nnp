@@ -229,6 +229,9 @@ class features():
         # set type of PCA to use
         self.set_pca(PCA) 
 
+        # set type map (String->Int)
+        self._set_map = {"train":1,"holdout":2,"test":3}
+
     def set_parallel(self,parallel):
         """
         Set feature calculation to perform in parallel
@@ -255,8 +258,8 @@ class features():
             The data set type 
         """
 
-        if set_type.lower() not in ['test','train']:
-            raise FeaturesError('{} not in {}'.format(set_type,'train,test'))
+        if set_type.lower() not in ['test','train','holdout']:
+            raise FeaturesError('{} not in {}'.format(set_type,'train,test','holdout'))
         if not isinstance(gip,parsers.GeneralInputParser):
             raise FeaturesError('training data must be parsers.GeneralInputParser object not {}'.\
                     format(type(gip)))
@@ -358,10 +361,9 @@ class features():
         _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],\
                 dtype=np.float64)
                 
-        _map = {"train":1,"test":2}
         # calculate 2&3 body distributions
         n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(\
-                set_type=_map[set_type],sample_rate=_sample_rate,twobody_dist=twobody,\
+                set_type=self._set_map[set_type],sample_rate=_sample_rate,twobody_dist=twobody,\
                 threebody_dist=threebody)
 
         if remove_features:
@@ -417,7 +419,7 @@ class features():
         """
         if len(self.features)==0:
             raise FeaturesError("There are no features to compute")
-        elif set_type.lower() not in ['train','test']:
+        elif set_type.lower() not in ['train','test','holdout']:
             raise FeaturesError("set type {} not supported".format(set_type))
         if scale and not self.precondition_computed:
             raise FeaturesError("attempting to calculate features with scaling before \
@@ -428,20 +430,19 @@ class features():
         # parse features to fortran data structures
         self._parse_features_to_fortran()
 
-        _map = {"train":1,"test":2}
-        
         # initialise feature vector mem. and derivatives wrt. atoms
-        getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=_map[set_type])
+        getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=self._set_map[set_type])
        
         # compute features (and their derivatives wrt. atoms) 
-        getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=_map[set_type],\
+        getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=self._set_map[set_type],\
                 derivatives=derivatives,scale_features=scale,parallel=self.parallel)
 
         if safe:
             # abort if Nan found in features or their derivatives
-            getattr(f95_api,"f90wrap_check_features")(set_type=_map[set_type])
+            getattr(f95_api,"f90wrap_check_features")(set_type=self._set_map[set_type])
             if derivatives:
-                getattr(f95_api,"f90wrap_check_feature_derivatives")(set_type=_map[set_type])
+                getattr(f95_api,"f90wrap_check_feature_derivatives")(\
+                        set_type=self._set_map[set_type])
 
         # no PCA
         non_pca_features = self.get_features(set_type=set_type)
@@ -716,7 +717,7 @@ class features():
         >>> # return [N,D] array of computed features
         >>> computed_features = features.get_features()
         """
-        if set_type not in ["train","test"]:
+        if set_type not in ["train","holdout","test"]:
             raise FeaturesError("{} not in {}".format(set_type,"train,test"))
         
         # total number of atoms in set
@@ -729,8 +730,7 @@ class features():
         # array for all computed features in set
         all_features = np.zeros((num_dim,tot_num_atoms),dtype=np.float64,order='F')
 
-        _map = {"train":1,"test":2}
-        getattr(f95_api,"f90wrap_get_features")(_map[set_type],all_features)
+        getattr(f95_api,"f90wrap_get_features")(self._set_map[set_type],all_features)
         
         return np.asarray(all_features,order='C')
 
