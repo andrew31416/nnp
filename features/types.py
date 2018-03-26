@@ -383,7 +383,7 @@ class features():
 
         for _feature in range(len(self.features)):
             self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-xmin[_feature])
-            self.features[_feature].precondition["add"] = -1.0 -2.0*xmax[_feature]/\
+            self.features[_feature].precondition["add"] = 1.0 -2.0*xmax[_feature]/\
                     (xmax[_feature]-xmin[_feature])
         self.precondition_computed = True
         del feature_list                    
