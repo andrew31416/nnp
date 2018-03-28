@@ -565,6 +565,7 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             character(len=1024) :: string
             real(8) :: rcut,fs,za,zb,mean,prec,xi,eta,lambda,rs
             real(8) :: mean_3(1:3),prec_33(1:3,1:3),scale_times,scale_add
+            real(8) :: devel_params(1:3)
 
             open(unit=io_unit_read,status='old',file=trim(filepath),action='read',iostat=iostat)
             if (iostat.ne.0) then
@@ -686,6 +687,17 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
                     feature_params%info(line)%mean(:) = mean_3(:)
                     feature_params%info(line)%prec(:,:) = prec_33(:,:)
                     feature_params%info(line)%sqrt_det = sqrt(matrix_determinant(prec_33))
+                    feature_params%info(line)%scl_cnst = scale_times
+                    feature_params%info(line)%add_cnst = scale_add  
+                else if (feature_params%info(line)%ftype.eq.featureID_StringToInt("devel_iso")) &
+                &then
+                    read(unit=io_unit_read,fmt=*,iostat=iostat) string,rcut,fs,devel_params,&
+                            &scale_times,scale_add
+               
+                    feature_params%info(line)%rcut = rcut 
+                    feature_params%info(line)%fs = fs
+                    allocate(feature_params%info(line)%devel(3))
+                    feature_params%info(line)%devel(:) = devel_params(:)
                     feature_params%info(line)%scl_cnst = scale_times
                     feature_params%info(line)%add_cnst = scale_add  
                 else

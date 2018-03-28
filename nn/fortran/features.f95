@@ -255,7 +255,7 @@ module features
 
             !* feature int id
             ftype = feature_params%info(idx)%ftype
-
+            
             if (ftype.eq.0) then
                 call feature_atomicnumber_1(set_type,conf,atm,idx)
             else if (feature_IsTwoBody(ftype)) then
@@ -293,7 +293,7 @@ module features
             integer :: idx_to_contrib(1:feature_isotropic(atm)%n)
             logical :: zero_neighbours 
             real(8) :: rcut
-
+            
             zero_neighbours = .true.
 
             !* weight bias takes 1st element of feature vector
@@ -354,8 +354,7 @@ module features
             !* zero features
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
-
-    
+            
             do ii=1,feature_isotropic(atm)%n
                 if (feature_isotropic(atm)%dr(ii).le.rcut) then
                     !* contributing interaction
@@ -386,6 +385,15 @@ module features
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &vec(1:3,idx_to_contrib(ii)))
                         end if
+                    else if (ftype.eq.featureID_StringToInt("devel_iso")) then
+                        call feature_iso_devel(atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+                        
+                        if (calc_feature_derivatives) then
+                            call feature_iso_devel_deriv(atm,ii,ft_idx,&
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                    &vec(1:3,idx_to_contrib(ii)))
+                        end if
                     end if
                 end if
             end do
@@ -400,6 +408,9 @@ module features
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                     call feature_normal_iso_deriv(atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                else if (ftype.eq.featureID_StringToInt("devel_iso")) then
+                    call feature_iso_devel_deriv(atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 end if
             end if
@@ -1099,6 +1110,102 @@ module features
             !* sum_i lwork_i*(x-mean)_i
             func_normal = exp(-0.5d0*ddot(n,x-mean,1,lwork,1)) * (sqrt_det * pi_const)**n
         end function func_normal
+
+        subroutine feature_iso_devel(atm,neigh_idx,ft_idx,current_val)
+            use propagate, only : logistic
+
+            implicit none
+
+            integer,intent(in) :: atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: current_val
+
+            real(8) :: dr,rcuts(1:2),mean,const,r_taper
+            real(8) :: tmp_taper,xtilde,fs,std
+
+            mean = feature_params%info(ft_idx)%devel(1)
+            const = feature_params%info(ft_idx)%devel(2)
+            std = feature_params%info(ft_idx)%devel(3)
+            fs = feature_params%info(ft_idx)%fs
+
+            !* x-> const*(x-mean) up to x-mean = 2*std
+
+            rcuts(1) = feature_params%info(ft_idx)%rcut
+            rcuts(2) = mean + 2.0d0*std 
+
+            r_taper = minval(rcuts)
+            dr  = feature_isotropic(atm)%dr(neigh_idx)
+            tmp_taper = taper_1(dr,r_taper,fs)
+
+            xtilde = const*(dr-mean)
+            
+            current_val = current_val + logistic(xtilde)*tmp_taper
+        end subroutine feature_iso_devel
+        
+        subroutine feature_iso_devel_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+            use propagate, only : logistic,logistic_deriv
+            
+            implicit none
+
+            integer,intent(in) :: atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: deriv_vec(1:3)
+
+            integer :: lim1,lim2,ii
+            real(8) :: tmp2,dr_scl,dr_vec(1:3)
+            real(8) :: rcuts(1:2),mean,const,r_taper,std
+            real(8) :: xtilde,sig,sig_prime,fs
+            real(8) :: tap,tap_deriv
+
+            mean = feature_params%info(ft_idx)%devel(1)
+            const = feature_params%info(ft_idx)%devel(2)
+            std = feature_params%info(ft_idx)%devel(3)
+            fs = feature_params%info(ft_idx)%fs
+
+            !* x-> const*(x-mean) up to x-mean = 2*std
+
+            rcuts(1) = feature_params%info(ft_idx)%rcut
+            rcuts(2) = mean + 2.0d0*std 
+
+            r_taper = minval(rcuts)
+            
+            if (neigh_idx.eq.0) then
+                lim1 = 1
+                lim2 = feature_isotropic(atm)%n
+                tmp2 = -1.0d0       !* sign for drij/d r_central
+            else
+                lim1 = neigh_idx
+                lim2 = neigh_idx    
+                tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+            end if
+
+
+            !* derivative wrt. central atom itself
+            do ii=lim1,lim2,1
+                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+                    cycle
+                end if
+                
+                !* atom-atom distance
+                dr_scl = feature_isotropic(atm)%dr(ii)
+
+                if (dr_scl.gt.r_taper) then
+                    cycle
+                end if
+
+                !* (r_neighbour - r_centralatom)/dr_scl
+                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                
+                !* tapering
+                tap = taper_1(dr_scl,r_taper,fs)
+                tap_deriv = taper_deriv_1(dr_scl,r_taper,fs)
+
+                sig = logistic(xtilde)
+                sig_prime = logistic_deriv(xtilde)*const
+
+
+                deriv_vec(:) = deriv_vec(:) + (sig*tap_deriv + sig_prime*tap)*dr_vec(:)*tmp2
+            end do
+        end subroutine feature_iso_devel_deriv
 
         subroutine feature_normal_threebody(set_type,conf,atm,ft_idx,bond_idx)
             implicit none

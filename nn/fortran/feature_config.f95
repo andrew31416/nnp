@@ -56,6 +56,7 @@ module feature_config
         real(8) :: zb       = 0.0d0         ! neighbour atomic number
         real(8) :: scl_cnst = 1.0d0         ! scale all instances of this feature upon computation
         real(8) :: add_cnst = 0.0d0         ! additive constant for this feature upon computation
+        real(8), allocatable :: devel(:)    ! for developing functions
     end type feature_
 
     type,public :: feature_info
@@ -112,6 +113,8 @@ module feature_config
                 idx = 5
             else if (feature_descriptor.eq."acsf_normal-b3") then
                 idx = 6
+            else if (feature_descriptor.eq."devel_iso") then
+                idx = 7
             else
                 write(*,*) ""
                 write(*,*) '*********************************************' 
@@ -132,7 +135,7 @@ module feature_config
         
             logical :: tmp
 
-            if ( (ftype.eq.1).or.(ftype.eq.2).or.(ftype.eq.5) ) then
+            if ( (ftype.eq.1).or.(ftype.eq.2).or.(ftype.eq.5).or.(ftype.eq.7) ) then
                 tmp = .true.
             else
                 tmp = .false.

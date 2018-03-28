@@ -43,7 +43,8 @@ class feature():
                            'acsf_behler-g4',
                            'acsf_behler-g5',
                            'acsf_normal-b2',
-                           'acsf_normal-b3']
+                           'acsf_normal-b3',
+                           'devel_iso']
         
         self.type = feature_type
         self.params = None
@@ -53,6 +54,9 @@ class feature():
 
         if self.type not in self.supp_types:
             raise FeatureError('{} not in {}'.format(self.type,','.join(self.supp_types)))
+        elif self.type == 'devel_iso':
+            print('Warning : feature {} has no unit test. Use with extreme caution'.format(\
+                    self.type))
 
         if params is not None:
             self.set_params(params)
@@ -73,7 +77,7 @@ class feature():
         _atype = (list,np.ndarray,int,float,np.float32,np.float64)
         _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
                 'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
-                'mean':_atype,'rs':_ftype}
+                'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype}
         # constraints on bound parameters
         _constraints_ok = {"xi":lambda x: x>=1,\
                            "rcut":lambda x: x>0,\
@@ -91,6 +95,8 @@ class feature():
             _keys = ['rcut','fs','xi','lambda','za','zb','eta']
         elif self.type in ['acsf_normal-b2','acsf_normal-b3']:
             _keys = ['rcut','fs','prec','mean','za','zb']
+        elif self.type in ['devel_iso']:
+            _keys = ['rcut','fs','mean','const','std']
             
         if set(params.keys())!=set(_keys):
             # check keys
@@ -174,6 +180,11 @@ class feature():
                     ' '.join(['{:<20}'.format(_m) for _m in self.params["mean"].flatten()]),\
                     ' '.join(['{:<20}'.format(_m) for _m in self.params["prec"].flatten()]) ,\
                     ' '.join(['{:<20}'.format(self.precondition[_a]) for _a in ['times','add']]) ))
+        elif self.type == 'devel_iso':
+            file_object.write('{} {} {:<20} {:<20}\n'.format(self.type,' '.join(['{:<20}'.format(\
+                    self.params[_a]) for _a in ['rcut','fs','mean','const','std']]),\
+                    self.precondition["times"],self.precondition["add"] ))
+
         else: raise FeatureError("Implementation error")
             
 class features():
@@ -563,19 +574,22 @@ class features():
         # collect atom-atom distance distribution
         twobody_dist_original,_ = self.bond_distribution(set_type=set_type)
      
-        # account for p(dr) ~ dr^2, non uniform prior 
-        twobody_dist = np.zeros(int(num_samples),dtype=np.float64)
-        cntr = 0
-        while cntr<twobody_dist.shape[0]:
-            generating_sample = True
-            while generating_sample:
-                idx = np.random.choice(twobody_dist_original.shape[0],1)
+        if True:
+            # account for p(dr) ~ dr^2, non uniform prior 
+            twobody_dist = np.zeros(int(num_samples),dtype=np.float64)
+            cntr = 0
+            while cntr<twobody_dist.shape[0]:
+                generating_sample = True
+                while generating_sample:
+                    idx = np.random.choice(twobody_dist_original.shape[0],1)
 
-                if 1.0/(twobody_dist_original[idx]**2) > np.random.random():
-                    # rejection sampling
-                    generating_sample = False
-            twobody_dist[cntr] = twobody_dist_original[idx]
-            cntr += 1
+                    if 1.0/(twobody_dist_original[idx]**2) > np.random.random():
+                        # rejection sampling
+                        generating_sample = False
+                twobody_dist[cntr] = twobody_dist_original[idx]
+                cntr += 1
+        else:
+            twobody_dist = twobody_dist_original
 
         if automatic_selection:
             # minimize bic measure wrt. n_components - Bayesian GMM doesn't converge 
@@ -601,7 +615,7 @@ class features():
         for _component in range(means.shape[0]):
             self.add_feature(feature(feature_type="acsf_normal-b2",\
                     params={"rcut":self.maxrcut["twobody"],\
-                    "fs":0.2,"mean":means[_component,0],"prec":precisions[_component,0,0],\
+                    "fs":0.1,"mean":means[_component,0],"prec":precisions[_component,0,0],\
                     "za":1.0,"zb":1.0}))
     
     def _generate_threebody_gmm(self,num_components=None,sample_num=1e5,set_type="train"):

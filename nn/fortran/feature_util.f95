@@ -287,19 +287,14 @@ module feature_util
                         tmprcut(ii) = tmpr
                     end if
                 else if (arg.eq.1) then
-                    if ( (ftype.eq.featureID_StringToInt("acsf_behler-g1")).or.&
-                    &(ftype.eq.featureID_StringToInt("acsf_behler-g2")).or.&
-                    &(ftype.eq.featureID_StringToInt("acsf_normal-b2")) ) then
-                    !if ( (ftype.eq.0).or.(ftype.ne.1) ) then
-                        !* all isotropic features
+                    if (feature_IsTwoBody(ftype)) then
                         tmprcut(ii) = tmpr
                     else
                         tmprcut(ii) = -1.0d0
                     end if
                 else if (arg.eq.2) then
-                    if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
-                    &(ftype.eq.featureID_StringToInt("acsf_behler-g5")).or.&
-                    &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+                    if ( (feature_IsTwoBody(ftype).neqv..true.).and.(ftype.ne.&
+                    &featureID_StringToInt("atomic_number")) ) then
                         tmprcut(ii) = tmpr
                     else
                         tmprcut(ii) = -1.0d0

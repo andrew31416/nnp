@@ -513,6 +513,7 @@ class MultiLayerPerceptronPotential():
                     self.solver_kwargs["maxiter"] = 15000
                 except KeyError:
                     self.solver_kwargs.update({"maxiter":15000})
+            self._holdout_loss = []
 
             self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
                     method=self.solver,args=("train"),jac=self._loss_jacobian,\
@@ -604,7 +605,7 @@ class MultiLayerPerceptronPotential():
         terminate_opt = False
         train_holdout_divergence = False
 
-        holdout_loss_mem = 5
+        holdout_loss_mem = 10
 
         Ermse_per_atom_meV_tol = 0.1
         Frmse_eVA_tol = 0.1
