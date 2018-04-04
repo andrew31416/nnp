@@ -47,7 +47,7 @@ class feature():
                            'devel_iso']
         
         self.type = feature_type
-        self.params = None
+        self.params = {}
 
         # pre condition x -> a*x + b so that x \in [-1,1]
         self.precondition = {"times":1.0,"add":0.0}
@@ -61,30 +61,16 @@ class feature():
         if params is not None:
             self.set_params(params)
 
-    def set_params(self,params):
+    def set_param(self,key,value):
         """
-        check parameters for correct args and then set
+        Set a single attribute for feature
 
         Parameters
         ----------
-        params : dict
-            Key,value pairs of parameters for specific feature type
+        param : dict, len = 1
+            Length 1 dictionary containing key,value pair for single parameter
         """
-        if isinstance(params,dict)!=True:
-            raise FeatureError("{} is not dict".format(type(params)))
-
-        _ftype = (int,np.int16,np.int32,np.int64,float,np.float32,np.float64)
-        _atype = (list,np.ndarray,int,float,np.float32,np.float64)
-        _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
-                'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
-                'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype}
-        # constraints on bound parameters
-        _constraints_ok = {"xi":lambda x: x>=1,\
-                           "rcut":lambda x: x>0,\
-                           "lambda":lambda x: x in [-1.0,1.0],\
-                           "eta":lambda x: x>=0}
-   
-
+        
         if self.type == 'atomic_number':
             raise FeatureError("atomic_number features have no params")
         elif self.type == 'acsf_behler-g1':
@@ -97,23 +83,29 @@ class feature():
             _keys = ['rcut','fs','prec','mean','za','zb']
         elif self.type in ['devel_iso']:
             _keys = ['rcut','fs','mean','const','std']
-            
-        if set(params.keys())!=set(_keys):
-            # check keys
-            raise FeatureError("supplied keys {} != {}".format(params.keys(),_keys))
-        for _attr in params:
-            # check param type
-            if type(params[_attr]) not in _types[_attr]:
-                raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
 
-            if _attr in _constraints_ok.keys():
-                # check any constraints are OK
-                if not _constraints_ok[_attr](params[_attr]):
-                    raise FeatureError("param type {} has invalid value {}".format(_attr,\
-                            params[_attr]))
-        if "lambda" in params.keys():
-            if params["lambda"] not in [-1,1]:
-                raise FeatureError("lambda params must have values -1 or 1 only")
+        if key not in _keys:
+            raise FeatureError("Parameter {} not supported".format(key))
+        
+        _ftype = (int,np.int16,np.int32,np.int64,float,np.float32,np.float64)
+        _atype = (list,np.ndarray,int,float,np.float32,np.float64)
+        _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
+                'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
+                'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype}
+        # constraints on bound parameters
+        _constraints_ok = {"xi":lambda x: x>=1,\
+                           "rcut":lambda x: x>0,\
+                           "lambda":lambda x: x in [-1.0,1.0],\
+                           "eta":lambda x: x>=0}
+
+        # check param type
+        if type(value) not in _types[key]:
+            raise FeatureError("param type {} != {}".format(type(value),_types[key]))
+
+        if key in _constraints_ok.keys():
+            # check any constraints are OK
+            if not _constraints_ok[key](value):
+                raise FeatureError("param type {} has invalid value {}".format(key,value))
         
         if self.type in ["acsf_normal-b3"]:
             # check length of arrays
@@ -121,18 +113,103 @@ class feature():
                 _length = {"mean":1,"prec":1}
             elif self.type == "acsf_normal-b3":
                 _length = {"mean":3,"prec":9}
-            for _attr in ["mean","prec"]:
-                params[_attr] = np.asarray(params[_attr],dtype=np.float64)
-                if params[_attr].flatten().shape[0] != _length[_attr]:
-                    raise FeatureError("arrays lengths are not as expected")
+            for _attr_ in ["mean","prec"]:
+                if _attr_ == key:
+                    value = np.asarray(value,dtype=np.float64)
+                    if value.flatten().shape[0] != _length[_attr_]:
+                        raise FeatureError("arrays lengths are not as expected")
+            if "prec" == key:
+                try:
+                    # check that matrix is symmetric
+                    np.testing.assert_array_almost_equal(value,value.T)
+                except AssertionError:
+                    raise FeatureError("Supplied precision matrix for 3-body gaussian is not \
+                            symmetric")
+        try:
+            self.params[key] = deepcopy(value)
+        except KeyError:
+            self.params.update({key:copy.deepcopy(value)})
 
-            try:
-                # check that matrix is symmetric
-                np.testing.assert_array_almost_equal(params["prec"],params["prec"].T)
-            except AssertionError:
-                raise FeatureError("Supplied precision matrix for 3-body gaussian is not symmetric")
+    def set_params(self,params):
+        """
+        check parameters for correct args and then set
 
-        self.params = deepcopy(params)
+        Parameters
+        ----------
+        params : dict
+            Key,value pairs of parameters for specific feature type
+        """
+        #if isinstance(params,dict)!=True:
+        #    raise FeatureError("{} is not dict".format(type(params)))
+
+        #_ftype = (int,np.int16,np.int32,np.int64,float,np.float32,np.float64)
+        #_atype = (list,np.ndarray,int,float,np.float32,np.float64)
+        #_types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
+        #        'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
+        #        'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype}
+        ## constraints on bound parameters
+        #_constraints_ok = {"xi":lambda x: x>=1,\
+        #                   "rcut":lambda x: x>0,\
+        #                   "lambda":lambda x: x in [-1.0,1.0],\
+        #                   "eta":lambda x: x>=0}
+   
+
+        if self.type == 'atomic_number':
+            raise FeatureError("atomic_number features have no params")
+        elif self.type == 'acsf_behler-g1':
+            _keys = ['rcut','fs','za','zb']
+            _update_me = []
+        elif self.type == 'acsf_behler-g2':
+            _keys = ['rcut','fs','eta','rs','za','zb']
+            _update_me = ['eta','rs']
+        elif self.type in ['acsf_behler-g4','acsf_behler-g5']:
+            _keys = ['rcut','fs','xi','lambda','za','zb','eta']
+            _update_me = ['xi','eta']
+        elif self.type in ['acsf_normal-b2','acsf_normal-b3']:
+            _keys = ['rcut','fs','prec','mean','za','zb']
+            _update_me = ['prec','mean']
+        elif self.type in ['devel_iso']:
+            _keys = ['rcut','fs','mean','const','std']
+        # list of parameters that optimized
+        self.update_keys = _update_me
+            
+        if set(params.keys())!=set(_keys):
+            # check keys
+            raise FeatureError("supplied keys {} != {}".format(params.keys(),_keys))
+        for _attr in params:
+            self.set_param(_attr,params[_attr])
+        #    
+        #    # check param type
+        #    if type(params[_attr]) not in _types[_attr]:
+        #        raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
+
+        #    if _attr in _constraints_ok.keys():
+        #        # check any constraints are OK
+        #        if not _constraints_ok[_attr](params[_attr]):
+        #            raise FeatureError("param type {} has invalid value {}".format(_attr,\
+        #                    params[_attr]))
+        #if "lambda" in params.keys():
+        #    if params["lambda"] not in [-1,1]:
+        #        raise FeatureError("lambda params must have values -1 or 1 only")
+        #
+        #if self.type in ["acsf_normal-b3"]:
+        #    # check length of arrays
+        #    if self.type == "acsf_normal-b2":
+        #        _length = {"mean":1,"prec":1}
+        #    elif self.type == "acsf_normal-b3":
+        #        _length = {"mean":3,"prec":9}
+        #    for _attr in ["mean","prec"]:
+        #        params[_attr] = np.asarray(params[_attr],dtype=np.float64)
+        #        if params[_attr].flatten().shape[0] != _length[_attr]:
+        #            raise FeatureError("arrays lengths are not as expected")
+
+        #    try:
+        #        # check that matrix is symmetric
+        #        np.testing.assert_array_almost_equal(params["prec"],params["prec"].T)
+        #    except AssertionError:
+        #        raise FeatureError("Supplied precision matrix for 3-body gaussian is not symmetric")
+
+        #self.params = deepcopy(params)
 
     def _write_to_disk(self,file_object):
         """
@@ -322,6 +399,7 @@ class features():
             # three body feature
             if feature.params["rcut"] > self.maxrcut["threebody"]:
                 self.set_rcut({"threebody":feature.params["rcut"]})
+        self.precondition_computed = False
 
     def _threebody_feature_present(self):
         if len(self.features)==0:
@@ -391,6 +469,9 @@ class features():
    
         xmax = np.max(feature_list,axis=1)
         xmin = np.min(feature_list,axis=1)
+
+        if np.isclose(xmax,xmin).any():
+            raise FeaturesError("Feature found with possibly no support in training set")
 
         for _feature in range(len(self.features)):
             self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-xmin[_feature])
@@ -747,6 +828,226 @@ class features():
         getattr(f95_api,"f90wrap_get_features")(self._set_map[set_type],all_features)
         
         return np.asarray(all_features,order='C')
+        
+    def fit(self,X):
+        """
+        Fine tune basis function parameters using PES 
+        """ 
+        import nnp.nn.mlpp
+               
+        # write configs to disk
+        self.set_configuration(gip=X,set_type="train")
+        
+        # compute pre conditioning
+        self.calculate_precondition()
+
+        # instance of neural net class
+        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[1,1])
+        
+        # only consider energy term
+        for _key,_value in {"energy":1.0,"forces":0.0,"regularization":0.0}.items():
+            self.mlpp.set_hyperparams(key=_key,value=_value)
+        
+        # for forward prop to initialise weights
+        self.mlpp.set_features(features=self)
+       
+        # compute pre conditioning and initialise net
+        self.mlpp._prepare_data_structures(X=X,set_type="train")
+   
+        # compute initial weights and concacenate weights with feature params 
+        x0 = self._init_concacenation()
+    
+        # check parsing to be safe
+        self._parse_param_array_to_class(parameters=x0)
+        x1 = self._concacenate_parameters()
+        try:
+            np.testing.assert_array_almost_equal(x0,x1)
+        except AssertionError:
+            raise FeaturesError("Implementation error in feature parameter parsing")
+        del x1 
+       
+        # do optimization 
+
+    def _feature_loss(self,parameters):
+        """
+        Objective function for feature parameters regression - energy squared 
+        error only.
+
+        Parameters
+        ----------
+        parameters : np.ndarray
+            Concacenation of neural net weights and basis function parameters
+
+        Returns
+        -------
+        Energy squared error : float
+        """
+        # parse new params to feature instances
+        self._parse_param_array_to_class(parameters)
+
+        # write new features to fortran and compute feature values (no derivs)
+        self.calculate(set_type="train",derivatives=False,scale=True,safe=True)
+    
+        loss = self.mlpp._loss(weights=parameters[:self.mlpp.num_weights],set_type="train",\
+                log_loss=False)
+
+        return loss
+
+    def _feature_loss_jacobian(self,parameters):
+        """
+        Jacobian of energy squared error with respect to neural net weights and
+        basis function parameters
+
+        Parameters
+        ----------
+        parameters : np.ndarray
+            Concacenation of neural net weights and basis function parameters
+        """
+        import nnp.nn.fortran.nn_f95 as f95_api 
+
+        # check not trying to use forces or regularization
+        for _hyperparam in ['forces','regularization']:
+            if not np.isclose(self.mlpp.hyper_params[_hyperparam],0.0):
+                raise FeaturesError("Basis function parameter optimization only supported for \
+                        energy squared error, not forces or regularization")
+   
+        net_weights = parameters[:self.mlpp.num_weights]
+
+        # neural net weights
+        nn_weight_jac = self.mlpp._loss_jacobian(weights=net_weights,set_type="train")
+
+        # basis function parameter jacobian
+        basis_func_jac = np.zeros(parameters.shape[0]-self.mlpp.num_weights,dtype=np.float64)
+
+        getattr(f95_api,"f90wrap_loss_feature_jacobian")(flat_weights=net_weights,\
+                set_type=self._set_map["train"],parallel=self.mlpp.parallel,jacobian=basis_func_jac) 
+    
+        return np.hstack((nn_weight_jac,basis_func_jac))
+
+    def _feature_opt_callback(self,parameters):
+        """
+        Function called during SCIPY optimization, returning True will 
+        terminate optimization
+        """
+        terminate_opt = False
+
+        return terminate_opt
+    
+    def _parse_param_array_to_class(self,parameters):
+        """
+        Parse 1d array of parameters to feature instance parameters
+
+        Parameters
+        ----------
+        parameters : np.ndarray
+            Concacenation of neural net weights and feature parameters
+        """
+
+        for _ft_idx in range(len(self.features)):
+            for _key in self.features[_ft_idx].update_keys:
+                # updatable attributes for given feature
+
+                # location of attribute in parameters np.ndarray
+                (id_start,id_end) = self._parse_idx_map[(_ft_idx,_key)]
+
+                attribute_value = self._parse_attributes_from_array(_key,parameters[id_start:id_end])
+
+                # format used to write to fortran
+                self.features[_ft_idx].set_param(_key,attribute_value)
+
+    def _concacenate_parameters(self):
+        """
+        Concacenate neural net weights with current feature params for feture
+        class instances
+
+        Returns
+        -------
+        weights and feature params concacenated, np.ndarray, shape = (N,)
+        """
+
+        offset = self.mlpp.weights.shape[0]
+        
+        x0 = list(self.mlpp.weights)
+
+        # generate mapping from feature idx and attribute key to array indices
+        self._parse_idx_map = {}
+
+        for _ft_idx in range(len(self.features)):
+            _ftype = self.features[_ft_idx].type
+
+            for _key in self.features[_ft_idx].update_keys:
+                # iterate over attributes that are updatable
+                
+                if _key not in ['mean','prec'] or _ftype != "acsf_normal-b3":
+                    length_of_param = 1
+                    _value = [self.features[_ft_idx].params[_key]]
+                elif _key == "mean":
+                    length_of_param = 3
+                    _value = self.features[_ft_idx].params[_key]
+                elif _key == "prec":
+                    length_of_param = len(np.triu_indices(3,0)[0])
+                    
+                    idx = np.triu_indices(3,0)
+                    _value = self.features[_ft_idx].params[_key][idx] 
+                
+                # append params to list
+                x0 += list(_value)
+
+                # store location of feature attribute in params list
+                self._parse_idx_map.update({(_ft_idx,_key):(offset,offset+length_of_param)})
+
+                # book keeping
+                offset = len(x0)
+
+        return np.asarray(x0)
+
+    def _init_concacenation(self):
+        """
+        Initialise net weights and return concacenated array of neural net 
+        weights and appropriate feature parameters
+        """
+        # forward prop to get initial weights
+        self.mlpp._init_random_weights()
+
+        # parse feature class instances to 1d array with weights
+        return self._concacenate_parameters()
+
+    def _parse_attributes_from_array(self,key,value):
+        """ 
+        Format attributes from parameters array, to feature instances. For all
+        floats this is simply returning the correct element of the 1d 
+        concacenation of neural net and feature parameters. 
+
+        For gaussian feature means, this involes casting specified elements as 
+        a np.ndarray. For precision matrices, this involes forming a symmetric
+        matrix from the upper triangular elements given 
+        """
+        if key in ['prec'] and len(value)!=1:
+            # have upper diagonal of a 3x3 matrix (inclusive of diagonals)
+           
+            # indices of upper triangular elements for 3x3 matrix (include diag) 
+            idx = np.triu_indices(3,0)
+
+            if len(idx[0]) != len(value):
+                raise FeaturesError("Error passing upper triangular matrix elements {}".\
+                        format(key))
+            
+            symmetric_matrix = np.zeros((3,3),dtype=np.float64)
+            
+            # upper triangular (including diagonal)
+            symmetric_matrix[idx] = value
+
+            # lower triangular indices
+            idx = np.tril_indices(3,1)
+
+            symmetric_matrix[idx] = symmetric_matrix.T[idx]
+        
+            return symmetric_matrix
+        elif key in ['prec','mean']:
+            return np.asarray(value)
+        else:
+            # we pass in an array slice
+            return value[0]
 
     def save(self,sysname=None):
         """

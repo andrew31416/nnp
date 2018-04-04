@@ -210,6 +210,9 @@ class MultiLayerPerceptronPotential():
             #    z^1
             # 3. forward propagate to compute correct energy variance
 
+            if nnp.util.misc.get_num_configs("train") < 2:
+                # we take variance over config energies later
+                raise MlppError("Must have more than 1 configuration in training set")
 
             # 1. empirical sample mean and variance for each component
             data_mean = np.average(self.computed_features,axis=1)
