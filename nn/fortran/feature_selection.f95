@@ -155,7 +155,7 @@ module feature_selection
                         
                         !* need to multiply by dy/dx_ft
                         call feature_TwoBody_param_deriv(dr,zatm,zngh,ft,&
-                                &lcl_feat_derivs%info(ft))
+                                &tmp_feat_derivs%info(ft))
                     end do !* end loop over features
                 end do !* end loop over two body neighbours to atm
               
@@ -178,7 +178,7 @@ module feature_selection
                                     &feature_threebody_info(atm)%dr(1:3,bond),&
                                     &feature_threebody_info(atm)%cos_ang(bond),&
                                     zatm,feature_threebody_info(atm)%z(1:2,bond),ft,&
-                                    &lcl_feat_derivs%info(ft))
+                                    &tmp_feat_derivs%info(ft))
                         end do !* end loop over features
                     end do !* end loop over threebody bonds to atm
                 end if !* end if three body interactions
@@ -241,7 +241,7 @@ module feature_selection
                 feature_deriv%rs = feature_deriv%rs + 2.0d0*tmp_cnst*tmp1*prec*&
                         &exp(prec*tmp2)
 
-                feature_deriv%eta = feature_deriv%eta + 2.0d0*tmp_cnst*tmp2*&
+                feature_deriv%eta = feature_deriv%eta + tmp_cnst*tmp2*&
                         &exp(prec*tmp2)
                 
             else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
@@ -255,7 +255,7 @@ module feature_selection
                 feature_deriv%mean(1) = feature_deriv%mean(1) + tmp_cnst*tmp1*prec*&
                         &exp(prec*tmp2)
 
-                feature_deriv%prec(1,1) = feature_deriv%prec(1,1) + 2.0d0*tmp_cnst*tmp2*&
+                feature_deriv%prec(1,1) = feature_deriv%prec(1,1) + tmp_cnst*tmp2*&
                         &exp(prec*tmp2)
 
             else
@@ -302,9 +302,6 @@ module feature_selection
             !* atomic number contribution
             tmp_z = (zatm+1.0d0)**za * ((zj+1.0d0)*(zk+1.0d0))**zb
 
-            !* all constants
-            tmp_3 = scl_cnst*tap_ij*tap_ik*tap_jk*tmp_z
-           
             ftype = feature_params%info(ft_idx)%ftype
             
             if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
@@ -336,6 +333,8 @@ module feature_selection
                 lcl_feat_deriv%eta = lcl_feat_deriv%eta - tmp_1*tmp_2*tmp_3*tmp_4
             
             else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                tmp_3 = scl_cnst*tap_ij*tap_ik*tmp_z
+                
                 mean = feature_params%info(ft_idx)%mean
                 prec = feature_params%info(ft_idx)%prec
 
@@ -352,13 +351,13 @@ module feature_selection
                 exp_1 = exp(-0.5d0*ddot(3,mean-perm_1,1,lwork_1,1))
                 exp_2 = exp(-0.5d0*ddot(3,mean-perm_2,1,lwork_2,1))
            
-                lcl_feat_deriv%mean = lcl_feat_deriv%mean + lwork_1*exp_1 + lwork_2*exp_2
+                lcl_feat_deriv%mean = lcl_feat_deriv%mean + (lwork_1*exp_1 + lwork_2*exp_2)*tmp_3
 
                 do ii=1,3,1
                     do jj=1,3,1
-                        lcl_feat_deriv%prec(ii,jj) = lcl_feat_deriv%prec(ii,jj) - 0.5d0*exp_1*&
+                        lcl_feat_deriv%prec(ii,jj) = lcl_feat_deriv%prec(ii,jj) + (-0.5d0*exp_1*&
                                 &(mean(ii)-perm_1(ii))*(mean(jj)-perm_1(jj)) - 0.5d0*exp_2*&
-                                &(mean(ii)-perm_2(ii))*(mean(jj)-perm_2(jj))
+                                &(mean(ii)-perm_2(ii))*(mean(jj)-perm_2(jj))  )*tmp_3
                     end do
                 end do
             else

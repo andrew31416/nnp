@@ -73,12 +73,12 @@ program unittest
             !* perform unit tests *!
             !----------------------!
             
-            tests(1)  = test_dydw()                       ! dydw
-            call test_loss_jac(tests(2:5))                ! d loss / dw
-            tests(6)  = test_dydx()                       ! dydx
-            tests(7)  = test_threebody_derivatives()      ! d cos(angle) /dr_i etc.
-            tests(8)  = test_dxdr()                       ! d feature / d atom position
-            tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
+            !tests(1)  = test_dydw()                       ! dydw
+            !call test_loss_jac(tests(2:5))                ! d loss / dw
+            !tests(6)  = test_dydx()                       ! dydx
+            !tests(7)  = test_threebody_derivatives()      ! d cos(angle) /dr_i etc.
+            !tests(8)  = test_dxdr()                       ! d feature / d atom position
+            !tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
             tests(10) = test_feature_selection_loss_jac() ! dloss / d(feature)param
             
             do ii=1,num_tests
@@ -186,6 +186,7 @@ program unittest
             feature_params%info(3)%rcut = rcut
             feature_params%info(3)%fs = 0.2d0
             call random_number(feature_params%info(3)%eta)
+            call random_number(feature_params%info(3)%rs)
             call random_number(feature_params%info(3)%za)
             call random_number(feature_params%info(3)%zb)
             
@@ -213,7 +214,8 @@ program unittest
             
             !* test feature 6
             feature_params%info(6)%ftype = featureID_StringToInt("acsf_behler-g5")
-            feature_params%info(6)%rcut = 3.1d0
+            !feature_params%info(6)%rcut = 3.1d0
+            feature_params%info(6)%rcut = 4.1d0
             feature_params%info(6)%fs = 0.2d0
             call random_number(feature_params%info(6)%lambda)
             call random_number(feature_params%info(6)%xi) 
@@ -492,6 +494,7 @@ program unittest
             
             !* number of optimizable attributes for each feature
             num_attributes(featureID_StringToInt("atomic_number"))  = 0
+            num_attributes(featureID_StringToInt("acsf_behler-g1")) = 0
             num_attributes(featureID_StringToInt("acsf_behler-g2")) = 2
             num_attributes(featureID_StringToInt("acsf_behler-g4")) = 2
             num_attributes(featureID_StringToInt("acsf_behler-g5")) = 2
@@ -502,7 +505,8 @@ program unittest
             cntr = 1
             do ft=1,feature_params%num_features,1
                 ftype = feature_params%info(ft)%ftype
-
+write(*,*) ''
+write(*,*) 'FEATURE: ',ftype
                 do ii=1,num_attributes(ftype),1
                     !* compare analytical and numerical approx
                     anl_jac_ok(cntr) = feature_selection_subsidiary_1(original_weights,&
@@ -552,9 +556,9 @@ program unittest
                 end if
             else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b2")) then
                 if (attribute.eq.1) then
-                    x0 = feature_params%info(ft)%mean(1)
-                else if (attribute.eq.2) then
                     x0 = feature_params%info(ft)%prec(1,1)
+                else if (attribute.eq.2) then
+                    x0 = feature_params%info(ft)%mean(1)
                 else
                     call unittest_error("feature_selection_subsidiary_1",&
                             &"Implementation error")
@@ -588,11 +592,11 @@ program unittest
             end if
 
             !* number of finite differences attempted
-            num_steps = 5
+            num_steps = 7
             allocate(num_jac(num_steps))
             cntr = 1
 
-            do ww=2,2+num_steps-1,1
+            do ww=0,0+num_steps-1,1
                 !* finite difference
                 dw = 1.0d0/(5.0d0**(ww))
 
@@ -605,6 +609,9 @@ program unittest
                     
                     !* set new feature value
                     call feature_selection_subsidiary_2(ft,attribute,newvalue)
+               
+                    !* need to calc. features for all confs
+                    call calculate_features_singleset(set_type,.false.,.true.,.false.)
                 
                     if (plusminus.eq.1) then
                         num_jac(cntr) = loss(original_weights,set_type,.false.,se)
@@ -622,7 +629,7 @@ program unittest
 
             match_found = .false.
             do ww=1,num_steps,1
-                if (scalar_equal(num_jac(ww),anl_res,dble(1e-6),dble(1e-6),.false.)) then
+                if (scalar_equal(num_jac(ww),anl_res,dble(1e-16),dble(1e-16),.true.)) then
                     match_found = .true.
                 end if
             end do
@@ -663,9 +670,9 @@ program unittest
                 end if
             else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b2")) then
                 if (attribute.eq.1) then
-                    feature_params%info(ft)%mean(1)= newvalue
-                else if (attribute.eq.2) then
                     feature_params%info(ft)%prec(1,1)= newvalue
+                else if (attribute.eq.2) then
+                    feature_params%info(ft)%mean(1)= newvalue
                 else
                     call unittest_error("feature_selection_subsidiary_2",&
                             &"Implementation error")
