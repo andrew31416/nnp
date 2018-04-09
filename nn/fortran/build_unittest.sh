@@ -59,7 +59,7 @@ $FC -c $f9$f_suffix $FFLAGS $DEBUG
 $FC -c $f10$f_suffix $FFLAGS $DEBUG
 $FC -c $f11$f_suffix $FFLAGS $DEBUG
 
-$FC -o $testname $unittest"f95" config.o init.o propagate.o util.o io.o measures.o feature_config.o feature_util.o tapering.o features.o  $FFLAGS $DEBUG
+$FC -o $testname $unittest"f95" config.o init.o propagate.o util.o io.o measures.o feature_config.o feature_util.o tapering.o features.o feature_selection.o $FFLAGS $DEBUG
 
 
 #-----------#

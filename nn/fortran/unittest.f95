@@ -8,6 +8,7 @@ program unittest
     use measures
     use features
     use feature_util
+    use feature_selection
 
     implicit none
 
@@ -17,7 +18,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:9)
+            logical :: tests(1:10)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -72,12 +73,13 @@ program unittest
             !* perform unit tests *!
             !----------------------!
             
-            tests(1) = test_dydw()                  ! dydw
-            call test_loss_jac(tests(2:5))          ! d loss / dw
-            tests(6) = test_dydx()                  ! dydx
-            tests(7) = test_threebody_derivatives() ! d cos(angle) /dr_i etc.
-            tests(8) = test_dxdr()                  ! d feature / d atom position
-            tests(9) = test_forces()                ! - d E_tot / d r_atm 
+            tests(1)  = test_dydw()                       ! dydw
+            call test_loss_jac(tests(2:5))                ! d loss / dw
+            tests(6)  = test_dydx()                       ! dydx
+            tests(7)  = test_threebody_derivatives()      ! d cos(angle) /dr_i etc.
+            tests(8)  = test_dxdr()                       ! d feature / d atom position
+            tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
+            tests(10) = test_feature_selection_loss_jac() ! dloss / d(feature)param
             
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -444,6 +446,259 @@ program unittest
                 test_result(ii) = all_ok
             end do !* end loop over loss terms
         end subroutine test_loss_jac
+        
+        logical function test_feature_selection_loss_jac()
+            !* test the jacobian of energy, force, reg. loss functions *!
+
+            implicit none
+
+            !* scratch
+            integer :: ii,conf,atm,set_type,ft,ftype,cntr
+            real(8) :: dloss
+            real(8),dimension(:),allocatable :: anl_jac,original_weights
+            logical,allocatable :: anl_jac_ok(:) 
+            integer :: loss_norm_type,num_params,num_attributes(0:7)
+
+            allocate(original_weights(nwght))
+            
+            !* initial weights
+            call parse_structure_to_array(net_weights,original_weights)
+
+            conf= 1
+            atm = 1
+            set_type = 1
+
+            loss_norm_type = 2
+            dloss = 0.0d0
+
+            loss_const_energy = 0.5d0
+            loss_const_forces = 0.0d0
+            loss_const_reglrn = 0.0d0
+            
+            !* set loss function parameters
+            call init_loss(loss_const_energy,loss_const_forces,loss_const_reglrn,loss_norm_type)
+            
+            !* init array
+            num_params = num_optimizable_params()
+            allocate(anl_jac(num_params))
+            call loss_feature_jacobian(original_weights,set_type,.false.,anl_jac)
+            allocate(anl_jac_ok(num_params))
+
+            !-------------------------------!
+            !* analytical jacobian of loss *!
+            !-------------------------------!
+
+            call loss_feature_jacobian(original_weights,set_type,.false.,anl_jac)
+            
+            !* number of optimizable attributes for each feature
+            num_attributes(featureID_StringToInt("atomic_number"))  = 0
+            num_attributes(featureID_StringToInt("acsf_behler-g2")) = 2
+            num_attributes(featureID_StringToInt("acsf_behler-g4")) = 2
+            num_attributes(featureID_StringToInt("acsf_behler-g5")) = 2
+            num_attributes(featureID_StringToInt("acsf_normal-b2")) = 2
+            num_attributes(featureID_StringToInt("acsf_normal-b3")) = 9
+            num_attributes(featureID_StringToInt("devel_iso"))      = 0
+
+            cntr = 1
+            do ft=1,feature_params%num_features,1
+                ftype = feature_params%info(ft)%ftype
+
+                do ii=1,num_attributes(ftype),1
+                    !* compare analytical and numerical approx
+                    anl_jac_ok(cntr) = feature_selection_subsidiary_1(original_weights,&
+                            &set_type,ft,ii,anl_jac(cntr))
+                    cntr = cntr + 1
+                end do !* loop over optimizable attributes for given feature
+
+            end do !* end loop over features
+
+            
+            test_feature_selection_loss_jac = all(anl_jac_ok)
+        end function test_feature_selection_loss_jac
+
+        logical function feature_selection_subsidiary_1(original_weights,set_type,&
+        &ft,attribute,anl_res)
+            implicit none
+
+            integer,intent(in) :: set_type,ft,attribute
+            real(8),intent(in) :: anl_res,original_weights(:)
+
+            integer :: ww,plusminus,num_steps,cntr,ftype 
+            real(8) :: x0,se(1:3),newvalue,dw
+            real(8),allocatable :: num_jac(:)
+            logical :: match_found
+
+            ftype = feature_params%info(ft)%ftype
+
+            if (ftype.eq.FeatureID_StringToInt("acsf_behler-g2")) then
+                if (attribute.eq.1) then
+                    x0 = feature_params%info(ft)%eta
+                else if (attribute.eq.2) then
+                    x0 = feature_params%info(ft)%rs
+                else
+                    call unittest_error("feature_selection_subsidiary_1",&
+                            &"Implementation error")
+                end if
+            else if ((ftype.eq.FeatureID_StringToInt("acsf_behler-g4")).or.&
+                     (ftype.eq.FeatureID_StringToInt("acsf_behler-g5"))) then
+                
+                if (attribute.eq.1) then
+                    x0 = feature_params%info(ft)%xi
+                else if (attribute.eq.2) then
+                    x0 = feature_params%info(ft)%eta
+                else
+                    call unittest_error("feature_selection_subsidiary_1",&
+                            &"Implementation error")
+                end if
+            else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b2")) then
+                if (attribute.eq.1) then
+                    x0 = feature_params%info(ft)%mean(1)
+                else if (attribute.eq.2) then
+                    x0 = feature_params%info(ft)%prec(1,1)
+                else
+                    call unittest_error("feature_selection_subsidiary_1",&
+                            &"Implementation error")
+                end if
+            else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b3")) then
+                if (attribute.eq.1) then
+                    x0 = feature_params%info(ft)%prec(1,1) 
+                else if (attribute.eq.2) then
+                    x0 = feature_params%info(ft)%prec(1,2) 
+                else if (attribute.eq.3) then
+                    x0 = feature_params%info(ft)%prec(1,3) 
+                else if (attribute.eq.4) then
+                    x0 = feature_params%info(ft)%prec(2,2) 
+                else if (attribute.eq.5) then
+                    x0 = feature_params%info(ft)%prec(2,3) 
+                else if (attribute.eq.6) then
+                    x0 = feature_params%info(ft)%prec(3,3) 
+                else if (attribute.eq.7) then
+                    x0 = feature_params%info(ft)%mean(1) 
+                else if (attribute.eq.8) then
+                    x0 = feature_params%info(ft)%mean(2) 
+                else if (attribute.eq.9) then
+                    x0 = feature_params%info(ft)%mean(3) 
+                else
+                    call unittest_error("feature_selection_subsidiary_1",&
+                            &"Implementation error")
+                end if
+            else
+                call unittest_error("feature_selection_subsidiary_1",&
+                        &"attempting to optimize wrong feature")
+            end if
+
+            !* number of finite differences attempted
+            num_steps = 5
+            allocate(num_jac(num_steps))
+            cntr = 1
+
+            do ww=2,2+num_steps-1,1
+                !* finite difference
+                dw = 1.0d0/(5.0d0**(ww))
+
+                do plusminus=1,2,1
+                    if (plusminus.eq.1) then
+                        newvalue = x0 + dw
+                    else
+                        newvalue = x0 - dw
+                    end if
+                    
+                    !* set new feature value
+                    call feature_selection_subsidiary_2(ft,attribute,newvalue)
+                
+                    if (plusminus.eq.1) then
+                        num_jac(cntr) = loss(original_weights,set_type,.false.,se)
+                    else
+                        num_jac(cntr) = (num_jac(cntr) - &
+                                &loss(original_weights,set_type,.false.,se)) / (2.0d0*dw)
+                    end if
+                end do !* loop over +/-
+
+                cntr = cntr + 1
+            end do !* loop over ww
+            
+            !* reset feature attribute to original value
+            call feature_selection_subsidiary_2(ft,attribute,x0)
+
+            match_found = .false.
+            do ww=1,num_steps,1
+                if (scalar_equal(num_jac(ww),anl_res,dble(1e-6),dble(1e-6),.false.)) then
+                    match_found = .true.
+                end if
+            end do
+            feature_selection_subsidiary_1 = match_found
+        end function feature_selection_subsidiary_1
+
+        subroutine feature_selection_subsidiary_2(ft,attribute,newvalue)
+            implicit none
+
+            !* args
+            integer,intent(in) :: ft,attribute
+            real(8),intent(in) :: newvalue
+
+            !* scratch
+            integer :: ftype
+
+            ftype = feature_params%info(ft)%ftype
+
+            if (ftype.eq.FeatureID_StringToInt("acsf_behler-g2")) then
+                if (attribute.eq.1) then
+                    feature_params%info(ft)%eta = newvalue
+                else if (attribute.eq.2) then
+                    feature_params%info(ft)%rs = newvalue
+                else
+                    call unittest_error("feature_selection_subsidiary_2",&
+                            &"Implementation error")
+                end if
+            else if ((ftype.eq.FeatureID_StringToInt("acsf_behler-g4")).or.&
+                     (ftype.eq.FeatureID_StringToInt("acsf_behler-g5"))) then
+                
+                if (attribute.eq.1) then
+                    feature_params%info(ft)%xi = newvalue
+                else if (attribute.eq.2) then
+                    feature_params%info(ft)%eta = newvalue
+                else
+                    call unittest_error("feature_selection_subsidiary_2",&
+                            &"Implementation error")
+                end if
+            else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b2")) then
+                if (attribute.eq.1) then
+                    feature_params%info(ft)%mean(1)= newvalue
+                else if (attribute.eq.2) then
+                    feature_params%info(ft)%prec(1,1)= newvalue
+                else
+                    call unittest_error("feature_selection_subsidiary_2",&
+                            &"Implementation error")
+                end if
+            else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b3")) then
+                if (attribute.eq.1) then
+                    feature_params%info(ft)%prec(1,1) = newvalue
+                else if (attribute.eq.2) then
+                    feature_params%info(ft)%prec(1,2) = newvalue
+                else if (attribute.eq.3) then
+                    feature_params%info(ft)%prec(1,3) = newvalue
+                else if (attribute.eq.4) then
+                    feature_params%info(ft)%prec(2,2) = newvalue
+                else if (attribute.eq.5) then
+                    feature_params%info(ft)%prec(2,3) = newvalue
+                else if (attribute.eq.6) then
+                    feature_params%info(ft)%prec(3,3) = newvalue
+                else if (attribute.eq.7) then
+                    feature_params%info(ft)%mean(1) = newvalue
+                else if (attribute.eq.8) then
+                    feature_params%info(ft)%mean(2) = newvalue
+                else if (attribute.eq.9) then
+                    feature_params%info(ft)%mean(3) = newvalue
+                else
+                    call unittest_error("feature_selection_subsidiary_2",&
+                            &"Implementation error")
+                end if
+            else
+                call unittest_error("feature_selection_subsidiary_2",&
+                        &"attempting to optimize wrong feature")
+            end if
+
+        end subroutine feature_selection_subsidiary_2
 
         logical function test_dydx()
             implicit none
@@ -1082,4 +1337,21 @@ program unittest
 
             test_forces = all(set_ok)
         end function test_forces
+
+        subroutine unittest_error(routine,message)
+            implicit none
+
+            character(len=*),intent(in) :: routine,message 
+            character,dimension(1:len(routine)+26) :: header 
+            header(:) = "*" 
+            
+            write(*,*) ''
+            write(*,*) header
+            write(*,*) 'error raised in routine : ',routine
+            write(*,*) header
+            write(*,*) ''
+            write(*,*) 'Error : ',message
+            write(*,*) ''
+            call exit(0)
+        end subroutine unittest_error
 end program unittest

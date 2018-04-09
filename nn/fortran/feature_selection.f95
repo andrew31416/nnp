@@ -5,7 +5,9 @@ module feature_selection
     use propagate, only : forward_propagate,backward_propagate
     use features, only : calculate_all_features
     use io, only : error
+    use init, only : allocate_units
     use util, only : parse_array_to_structure,copy_weights_to_nobiasT
+    use util, only : allocate_dydx
     use feature_config
     use config
 
@@ -94,6 +96,10 @@ module feature_selection
 
             !* compute new features
             call calculate_all_features(set_type,conf)
+           
+            !* allocate mem. for dydx,a,z,a',delta
+            call allocate_dydx(set_type,conf)
+            call allocate_units(set_type,conf)
             
             !* forward prop for energy per atom
             call forward_propagate(set_type,conf)
@@ -138,8 +144,10 @@ module feature_selection
 
                     do ft=1,feature_params%num_features,1
                         ftype = feature_params%info(ft)%ftype
-
+                        
                         if (ftype.eq.featureID_StringToInt("atomic_number")) then
+                            cycle
+                        else if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
                             cycle
                         else if (feature_IsTwoBody(ftype).neqv..true.) then
                             cycle
