@@ -341,7 +341,15 @@ module features
                     idx_to_contrib(ii) = -1     ! NULL value
                 end if
             end do !* end loop over neighbour images
-            
+          
+            !* in feature selection, feature computation is iterated over 
+            if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx)) then
+                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx)
+            end if
+            if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec)) then
+                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec)
+            end if
+
             allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx(cntr))
             allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(3,cntr))
             
@@ -487,6 +495,13 @@ module features
                 end do !* end loop over 2 neighbouring atoms                    
             end do !* end loop over threebody terms
             
+            !* in feature selection, feature computation is iterated over 
+            if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx)) then
+                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx)
+            end if
+            if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec)) then
+                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec)
+            end if
             allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx(cntr))
             allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(3,cntr))
             

@@ -154,6 +154,7 @@ class feature():
         #                   "eta":lambda x: x>=0}
    
 
+        # DO NOT CHANGE ORDER OF VARIABLES _UPDATE_ME !! 
         if self.type == 'atomic_number':
             raise FeatureError("atomic_number features have no params")
         elif self.type == 'acsf_behler-g1':
@@ -867,6 +868,8 @@ class features():
         del x1 
        
         # do optimization 
+        jac = self._feature_loss_jacobian(parameters=x0)
+    
 
     def _feature_loss(self,parameters):
         """
@@ -890,6 +893,9 @@ class features():
     
         loss = self.mlpp._loss(weights=parameters[:self.mlpp.num_weights],set_type="train",\
                 log_loss=False)
+
+        if np.isnan(loss) or np.isinf(loss):
+            raise FeaturesError("Nan or Inf returned from fortran loss")
 
         return loss
 
@@ -916,12 +922,18 @@ class features():
         # neural net weights
         nn_weight_jac = self.mlpp._loss_jacobian(weights=net_weights,set_type="train")
 
+        if np.isnan(nn_weight_jac).any() or np.isinf(nn_weight_jac).any():
+            raise FeaturesError("Nan or Inf raised in loss jacobian wrt. net weights")
+
         # basis function parameter jacobian
         basis_func_jac = np.zeros(parameters.shape[0]-self.mlpp.num_weights,dtype=np.float64)
 
         getattr(f95_api,"f90wrap_loss_feature_jacobian")(flat_weights=net_weights,\
-                set_type=self._set_map["train"],parallel=self.mlpp.parallel,jacobian=basis_func_jac) 
-    
+                set_type=self._set_map["train"],parallel=self.parallel,jacobian=basis_func_jac) 
+        
+        if np.isnan(basis_func_jac).any() or np.isinf(basis_func_jac).any():
+            raise FeaturesError("Nan or Inf raised in loss jacobian wrt. basis func. params")
+   
         return np.hstack((nn_weight_jac,basis_func_jac))
 
     def _feature_opt_callback(self,parameters):

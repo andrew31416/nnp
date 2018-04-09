@@ -26,13 +26,13 @@ f7="propagate."
 f8="measures."
 f9="tapering."
 f10="features."
-
+f11="feature_selection."
 
 #----------------------------------#
 # files to create f2py pragma from #
 #----------------------------------#
 
-fwrap_files="features.f95 init.f95 util.f95 measures.f95 propagate.f95"
+fwrap_files="features.f95 init.f95 util.f95 measures.f95 propagate.f95 feature_selection.f95"
 
 #--------------------------------------#
 # functions to take from wrapped files #
@@ -59,6 +59,7 @@ fwrap_functions+=" get_features"
 fwrap_functions+=" get_num_nodes"
 fwrap_functions+=" get_node_distribution"
 fwrap_functions+=" get_ref_energies"
+fwrap_functions+=" loss_feature_jacobian"
 
 # clear previous build
 rm $f1"o" $f1"mod"
@@ -71,6 +72,7 @@ rm $f7"o" $f7"mod"
 rm $f8"o" $f8"mod"
 rm $f9"o" $f9"mod"
 rm $f10"o" $f10"mod"
+rm $f11"o" $f11"mod"
 rm f90wrap_*.f90
 rm unittest.o unittest.mod
 
@@ -85,6 +87,7 @@ $FC -c  $f7$suffix $FFLAGS $DEBUG
 $FC -c  $f8$suffix $FFLAGS $DEBUG
 $FC -c  $f9$suffix $FFLAGS $DEBUG
 $FC -c $f10$suffix $FFLAGS $DEBUG
+$FC -c $f11$suffix $FFLAGS $DEBUG
 
 $f90wrap -m $modname $fwrap_files -k kind_map -S 12 --only $fwrap_functions
 

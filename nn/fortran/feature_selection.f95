@@ -1,7 +1,11 @@
 module feature_selection
     use feature_util, only : get_ultracell, maxrcut, threebody_features_present
+    use feature_util, only : calculate_threebody_info,calculate_twobody_info
     use tapering, only : taper_1
+    use propagate, only : forward_propagate,backward_propagate
+    use features, only : calculate_all_features
     use io, only : error
+    use util, only : parse_array_to_structure,copy_weights_to_nobiasT
     use feature_config
     use config
 
@@ -21,9 +25,18 @@ module feature_selection
             !* scratch
             integer :: conf
             type(feature_info) :: gbl_derivs,lcl_derivs
+            logical :: original_calc_status
+            
+            !* need to read in net weights
+            call parse_array_to_structure(flat_weights,net_weights)
+            call copy_weights_to_nobiasT()
 
             !* allocate memory for feat. derivs wrt. basis fun. params
             call init_feature_array(gbl_derivs)
+
+            original_calc_status = calc_feature_derivatives
+            !* only use total energies in loss
+            calc_feature_derivatives = .false.
 
             if (parallel) then
                 write(*,*) 'parallel section not implemented yet'
@@ -34,6 +47,10 @@ module feature_selection
                     call single_set(set_type,conf,gbl_derivs)
                 end do !* end loop over confs
             end if
+
+            calc_feature_derivatives = original_calc_status
+            
+            call parse_feature_format_to_array_jac(gbl_derivs,jacobian)
         end subroutine loss_feature_jacobian
 
         subroutine single_set(set_type,conf,lcl_feat_derivs)
@@ -43,11 +60,15 @@ module feature_selection
             type(feature_info),intent(inout) :: lcl_feat_derivs
 
             !* scratch
-            real(8) :: mxrcut,dr,zatm,zngh
+            real(8) :: mxrcut,dr,zatm,zngh,tmpE,invN
             real(8),allocatable :: ultra_cart(:,:),ultra_z(:)
             integer,allocatable :: ultra_idx(:)
             integer :: atm,neigh,ftype,bond,ft
             logical :: calc_threebody
+            type(feature_info) :: tmp_feat_derivs
+           
+            !* init param allocatables 
+            call init_feature_array(tmp_feat_derivs)
 
             !* max cut off of all interactions
             mxrcut = maxrcut(0)
@@ -65,6 +86,31 @@ module feature_selection
                 call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
             end if
 
+            !* compute new features
+            call calculate_all_features(set_type,conf)
+            
+            !* forward prop for energy per atom
+            call forward_propagate(set_type,conf)
+    
+            !* need dy_atm/dx for all atoms and features
+            call backward_propagate(set_type,conf)
+            
+            
+            !* (E_ref - \sum_i E_i)^2
+            tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
+                    &-data_sets(set_type)%configs(conf)%ref_energy 
+
+            invN = 1.0d0/dble(data_sets(set_type)%configs(conf)%n)
+
+            if(loss_norm_type.eq.1) then
+                tmpE = sign(1.0d0,tmpE) * invN
+            else if (loss_norm_type.eq.2) then 
+                tmpE = 2.0d0*sign(1.0d0,tmpE)*abs(tmpE) * (invN**2)
+            end if
+            tmpE = tmpE * loss_const_energy
+
+            !* dy_atm / dparam = sum_ft dy_atm/dx_ft * dx_ft/dparam
+
             do atm=1,data_sets(set_type)%configs(conf)%n,1
                 !* atomic number of central atom
                 zatm = feature_isotropic(atm)%z_atom
@@ -72,6 +118,10 @@ module feature_selection
                 if (feature_isotropic(atm)%n.le.0) then
                     cycle
                 end if
+               
+                !* dx/dparam for atm, too many neighbours to keep info for all
+                !* atoms at once
+                call zero_feature_info(tmp_feat_derivs)
                 
                 do neigh=1,feature_isotropic(atm)%n,1
                     !* atom-atom distance
@@ -88,7 +138,8 @@ module feature_selection
                         else if (feature_IsTwoBody(ftype).neqv..true.) then
                             cycle
                         end if
-
+                        
+                        !* need to multiply by dy/dx_ft
                         call feature_TwoBody_param_deriv(dr,zatm,zngh,ft,&
                                 &lcl_feat_derivs%info(ft))
                     end do !* end loop over features
@@ -101,6 +152,8 @@ module feature_selection
 
                     do bond=1,feature_threebody_info(atm)%n,1
                         do ft=1,feature_params%num_features,1
+                            ftype = feature_params%info(ft)%ftype
+                            
                             if (ftype.eq.featureID_StringToInt("atomic_number")) then
                                 cycle
                             else if (feature_IsTwoBody(ftype)) then
@@ -114,7 +167,10 @@ module feature_selection
                                     &lcl_feat_derivs%info(ft))
                         end do !* end loop over features
                     end do !* end loop over threebody bonds to atm
-                end if
+                end if !* end if three body interactions
+
+                !* dy_atm / dparam = sum_ft dy_atm/dx_ft * dx_ft/dparam
+                call append_atom_contribution(atm,tmp_feat_derivs,tmpE,lcl_feat_derivs)
             end do !* end loop over atoms
 
             deallocate(ultra_z)
@@ -124,6 +180,9 @@ module feature_selection
             if (calc_threebody) then
                 deallocate(feature_threebody_info)
             end if
+
+
+            !call add_feat_param_derivs(lcl_feat_derivs,tmp_feat_derivs,1.0d0)
 
         end subroutine single_set
 
@@ -207,7 +266,7 @@ module feature_selection
             real(8) :: lwork_1(1:3),lwork_2(1:3),perm_1(1:3)
             real(8) :: perm_2(1:3),exp_1,exp_2,fs
             real(8) :: zj,zk
-            integer :: ftype
+            integer :: ftype,ii,jj
 
             drij = dr_array(1)
             drik = dr_array(2)
@@ -257,12 +316,12 @@ module feature_selection
                 lcl_feat_deriv%xi = lcl_feat_deriv%xi + (log(1.0d0+lambda*cos_ang) - log(2.0d0))*&
                         &tmp_1*tmp_2*tmp_3
 
-                lcl_feat_deriv%lambda = lcl_feat_deriv%lambda + (2.0d0**(1.0d0-xi))*&
-                        &*(1.0d0+lambda*cos_ang)**(xi-1.0d0) * xi*cos_ang*tmp_2*tmp_3
+                !lcl_feat_deriv%lambda = lcl_feat_deriv%lambda + (2.0d0**(1.0d0-xi))*&
+                !        &*(1.0d0+lambda*cos_ang)**(xi-1.0d0) * xi*cos_ang*tmp_2*tmp_3
 
                 lcl_feat_deriv%eta = lcl_feat_deriv%eta - tmp_1*tmp_2*tmp_3*tmp_4
             
-            else if (ftype.eq.featureID_StringToInt("acsf_behler-b3")) then
+            else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                 mean = feature_params%info(ft_idx)%mean
                 prec = feature_params%info(ft_idx)%prec
 
@@ -280,6 +339,14 @@ module feature_selection
                 exp_2 = exp(-0.5d0*ddot(3,mean-perm_2,1,lwork_2,1))
            
                 lcl_feat_deriv%mean = lcl_feat_deriv%mean + lwork_1*exp_1 + lwork_2*exp_2
+
+                do ii=1,3,1
+                    do jj=1,3,1
+                        lcl_feat_deriv%prec(ii,jj) = lcl_feat_deriv%prec(ii,jj) - 0.5d0*exp_1*&
+                                &(mean(ii)-perm_1(ii))*(mean(jj)-perm_1(jj)) - 0.5d0*exp_2*&
+                                &(mean(ii)-perm_2(ii))*(mean(jj)-perm_2(jj))
+                    end do
+                end do
             else
                 call error("feature_ThreeBody_param_deriv","Implementation error")
             end if
@@ -300,8 +367,11 @@ module feature_selection
             end if
             allocate(lcl_feat_derivs%info(feature_params%num_features))
 
+            lcl_feat_derivs%num_features = feature_params%num_features
+
             do ft=1,feature_params%num_features,1
                 ftype = feature_params%info(ft)%ftype
+                lcl_feat_derivs%info(ft)%ftype = ftype
 
                 if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                     allocate(lcl_feat_derivs%info(ft)%mean(1))
@@ -322,4 +392,157 @@ module feature_selection
                 lcl_feat_derivs%info(ft)%eta = 0.0d0
             end do !* end loop over features
         end subroutine init_feature_array
+
+        subroutine zero_feature_info(feature_info_inst)
+            implicit none
+
+            type(feature_info),intent(inout) :: feature_info_inst
+
+            !* scratch 
+            integer :: ft
+
+            do ft=1,feature_params%num_features,1
+                !* all feature attributes that are optimizable
+                feature_info_inst%info(ft)%rs = 0.0d0
+                feature_info_inst%info(ft)%eta = 0.0d0
+                feature_info_inst%info(ft)%xi = 0.0d0
+                if (allocated(feature_info_inst%info(ft)%mean)) then
+                    !* normal feat. type
+                    feature_info_inst%info(ft)%mean = 0.0d0
+                    feature_info_inst%info(ft)%prec = 0.0d0
+                end if
+            end do
+        end subroutine zero_feature_info
+
+        subroutine add_feat_param_derivs(lcl_feat_derivs,tmp_feat_derivs,const)
+            !* add tmp_feat_derivs*const to lcl_feat_derivs
+            
+            implicit none
+
+            type(feature_info),intent(inout) :: lcl_feat_derivs
+            type(feature_info),intent(in) :: tmp_feat_derivs
+            real(8),intent(in) :: const
+
+            !* scratch
+            integer :: ft,ftype
+
+            do ft=1,feature_params%num_features,1
+                ftype = feature_params%info(ft)%ftype
+
+                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                    lcl_feat_derivs%info(ft)%eta = lcl_feat_derivs%info(ft)%eta + &
+                            &tmp_feat_derivs%info(ft)%eta*const
+                    
+                    lcl_feat_derivs%info(ft)%xi = lcl_feat_derivs%info(ft)%xi + &
+                            &tmp_feat_derivs%info(ft)%xi*const
+                end if
+            end do !* end loop over features
+        end subroutine
+                
+        subroutine append_atom_contribution(atm,tmp_feat_derivs,tmpE,lcl_feat_derivs)
+            implicit none
+
+            integer,intent(in) :: atm
+            type(feature_info),intent(in) :: tmp_feat_derivs
+            real(8),intent(in) :: tmpE
+            type(feature_info),intent(inout) :: lcl_feat_derivs
+            
+            !* scratch
+            integer :: ft,ftype
+
+            do ft=1,feature_params%num_features,1
+                !* dydx(ft,atm) * dx/dparam
+
+                ftype = feature_params%info(ft)%ftype
+
+                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                    lcl_feat_derivs%info(ft)%eta = lcl_feat_derivs%info(ft)%eta + &
+                            &tmp_feat_derivs%info(ft)%eta*tmpE * dydx(ft,atm)
+                    
+                    lcl_feat_derivs%info(ft)%rs = lcl_feat_derivs%info(ft)%rs + &
+                            &tmp_feat_derivs%info(ft)%rs*tmpE * dydx(ft,atm)
+                
+                else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+                    lcl_feat_derivs%info(ft)%eta = lcl_feat_derivs%info(ft)%eta + &
+                            &tmp_feat_derivs%info(ft)%eta*tmpE * dydx(ft,atm)
+                    
+                    lcl_feat_derivs%info(ft)%xi = lcl_feat_derivs%info(ft)%xi + &
+                            &tmp_feat_derivs%info(ft)%xi*tmpE * dydx(ft,atm)
+                
+                else if ( (ftype.eq.featureID_StringToInt("acsf_normal-b2")).or.& 
+                &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+                    lcl_feat_derivs%info(ft)%mean = lcl_feat_derivs%info(ft)%mean + &
+                            &tmp_feat_derivs%info(ft)%mean*tmpE * dydx(ft,atm)
+                    
+                    lcl_feat_derivs%info(ft)%prec = lcl_feat_derivs%info(ft)%prec + &
+                            &tmp_feat_derivs%info(ft)%prec*tmpE * dydx(ft,atm)
+                
+                end if
+            end do
+        end subroutine append_atom_contribution
+
+
+        subroutine parse_feature_format_to_array_jac(gbl_feat_derivs,jac_array)
+            implicit none
+
+            !* args
+            type(feature_info),intent(in) :: gbl_feat_derivs
+            real(8),intent(inout) :: jac_array(:)
+
+            !* scratch
+            integer :: ft,ftype,cntr,ii,jj
+
+            cntr = 0
+
+            do ft=1,feature_params%num_features,1
+                ftype = gbl_feat_derivs%info(ft)%ftype
+
+                if (ftype.eq.featureID_StringToInt("atomic_number")) then
+                    cycle
+                else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr) = gbl_feat_derivs%info(ft)%eta
+                    
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr) = gbl_feat_derivs%info(ft)%rs
+                else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr) = gbl_feat_derivs%info(ft)%xi
+                    
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr) = gbl_feat_derivs%info(ft)%eta
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr) = gbl_feat_derivs%info(ft)%prec(1,1)
+                    
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr) = gbl_feat_derivs%info(ft)%mean(1)
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                    do ii=1,3,1
+                        do jj=ii,3,1
+                            call update_array_idx(cntr,1,size(jac_array))
+                            jac_array(cntr) = gbl_feat_derivs%info(ft)%prec(ii,jj)
+                        end do
+                    end do !* end loop over upper triangular matrix
+                    call update_array_idx(cntr,1,size(jac_array))
+                    jac_array(cntr:cntr+2) = gbl_feat_derivs%info(ft)%mean(1:3)
+                    call update_array_idx(cntr,2,size(jac_array))
+                end if
+            end do !* end loop over feature types
+        end subroutine parse_feature_format_to_array_jac
+
+        subroutine update_array_idx(current_val,increment,maxvalue)
+            implicit none
+            
+            integer,intent(inout) :: current_val
+            integer,intent(in) :: maxvalue,increment
+
+            if (current_val+increment.gt.maxvalue) then
+                call error("update_array_idx","Error parsing feature format into array")
+            else
+                current_val = current_val + increment
+            end if
+        end subroutine update_array_idx
 end module feature_selection
