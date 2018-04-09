@@ -1025,7 +1025,8 @@ module features
             end if
 
             !* exponential
-            tmp1 = sqrt_det*invsqrt2pi*exp(-0.5d0*prec*(dr-mean)**2)
+            !tmp1 = sqrt_det*invsqrt2pi*exp(-0.5d0*prec*(dr-mean)**2)
+            tmp1 = exp(-0.5d0*prec*(dr-mean)**2)
 
             !* tapering
             tmp2 = taper_1(dr,rcut,fs)
@@ -1097,7 +1098,9 @@ module features
                 !* atomic numbers
                 tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
 
-                tmp1 =  prec_const*exp(-0.5d0*prec*(dr_scl-mean)**2)  *  (tap_deriv - &
+                !tmp1 =  prec_const*exp(-0.5d0*prec*(dr_scl-mean)**2)  *  (tap_deriv - &
+                !        &prec*(dr_scl-mean)*tap) 
+                tmp1 =  exp(-0.5d0*prec*(dr_scl-mean)**2)  *  (tap_deriv - &
                         &prec*(dr_scl-mean)*tap) 
                 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
@@ -1123,7 +1126,8 @@ module features
             call dsymv('u',n,1.0d0,prec,n,x-mean,1,0.0d0,lwork,1)
 
             !* sum_i lwork_i*(x-mean)_i
-            func_normal = exp(-0.5d0*ddot(n,x-mean,1,lwork,1)) * (sqrt_det * pi_const)**n
+            !func_normal = exp(-0.5d0*ddot(n,x-mean,1,lwork,1)) * (sqrt_det * pi_const)**n
+            func_normal = exp(-0.5d0*ddot(n,x-mean,1,lwork,1)) 
         end function func_normal
 
         subroutine feature_iso_devel(atm,neigh_idx,ft_idx,current_val)

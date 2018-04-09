@@ -27,6 +27,12 @@ module feature_selection
             type(feature_info) :: gbl_derivs,lcl_derivs
             logical :: original_calc_status
             
+        
+        
+            if (num_optimizable_params().ne.size(jacobian)) then
+                call error("loss_feature_jacobian","Mismatch between length of Py and F95 jacobian")
+            end if 
+            
             !* need to read in net weights
             call parse_array_to_structure(flat_weights,net_weights)
             call copy_weights_to_nobiasT()
@@ -545,4 +551,29 @@ module feature_selection
                 current_val = current_val + increment
             end if
         end subroutine update_array_idx
+
+        integer function num_optimizable_params()
+            implicit none
+
+            integer :: cntr,ft,ftype
+
+            cntr = 0
+
+            do ft=1,feature_params%num_features,1
+                ftype = feature_params%info(ft)%ftype
+
+                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                    cntr = cntr + 2
+                else if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
+                    cntr = cntr + 2
+                else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                    cntr = cntr + 2
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                    cntr = cntr + 2
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                    cntr = cntr + 9
+                end if
+            end do
+            num_optimizable_params = cntr
+        end function num_optimizable_params
 end module feature_selection
