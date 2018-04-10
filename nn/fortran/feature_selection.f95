@@ -337,7 +337,7 @@ module feature_selection
                     return
                 end if
 
-                tmp_3 = scl_cnst*tap_ij*tap_ik*tmp_z
+                tmp_3 = scl_cnst*tap_ij*tap_ik*tap_jk*tmp_z
                 
                 mean = feature_params%info(ft_idx)%mean
                 prec = feature_params%info(ft_idx)%prec

@@ -434,8 +434,9 @@ module feature_util
 
             res = .false.
 
-            if (feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_behler-g5").or.&
-            &(feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+            !if (feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_behler-g5").or.&
+            !&(feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+            if (feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
                 res = .true.
             end if
             feat_doesnt_taper_drjk = res

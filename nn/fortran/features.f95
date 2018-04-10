@@ -1263,7 +1263,8 @@ module features
             drik = feature_threebody_info(atm)%dr(2,bond_idx)
             drjk = feature_threebody_info(atm)%dr(3,bond_idx)
             
-            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then!.or.(drjk.gt.rcut) ) then
+            !if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then!.or.(drjk.gt.rcut) ) then
+            if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
             end if
 
@@ -1284,6 +1285,7 @@ module features
 
             !* taper term
             tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)!*taper_1(drjk,rcut,fs)
+            tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
 
             data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
                     &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
@@ -1301,13 +1303,13 @@ module features
             !* scratch
             real(8) :: prec(1:3,1:3),sqrt_det
             real(8) :: mean(1:3),fs,rcut,za,zb
-            real(8) :: x(1:3,1:2)
-            real(8) :: drij,drik,cos_angle
+            real(8) :: x(1:3,1:2),drjkdrz(1:3)
+            real(8) :: drij,drik,drjk,cos_angle
             real(8) :: tmp_feat(1:2),tmp_vec(1:3,1:2)
             real(8) :: tmp_deriv1(1:3),tmp_deriv2(1:3)
             real(8) :: dxdr1(1:3,1:3),dxdr2(1:3,1:3)
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),tap_ij,tap_ik
-            real(8) :: tap_ij_deriv,tap_ik_deriv,tmpz
+            real(8) :: tap_ij_deriv,tap_ik_deriv,tmpz,tap_jk,tap_jk_deriv
             integer :: deriv_idx,zz
 
             !* feature parameters
@@ -1322,8 +1324,10 @@ module features
             !* atom-atom distances
             drij = feature_threebody_info(atm)%dr(1,bond_idx)
             drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            drjk = feature_threebody_info(atm)%dr(3,bond_idx)
             
-            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+            !if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+            if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
             end if
 
@@ -1339,8 +1343,10 @@ module features
             !* tapering
             tap_ij = taper_1(drij,rcut,fs)
             tap_ik = taper_1(drik,rcut,fs)
+            tap_jk = taper_1(drjk,rcut,fs)
             tap_ij_deriv = taper_deriv_1(drij,rcut,fs)
             tap_ik_deriv = taper_deriv_1(drik,rcut,fs)
+            tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
 
             !* atomic numbers
             tmpz = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
@@ -1372,14 +1378,17 @@ module features
                     ! zz=jj
                     drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
                     drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                    drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.2) then
                     ! zz=kk
                     drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
                     drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.3) then
                     ! zz=ii
                     drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
                     drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
                 end if
 
                 !* dx_{ijk} / dr_z |_ab = d x_{ijk}|_b / d r_z|_a
@@ -1396,8 +1405,10 @@ module features
 
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
                         &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                        &sum(tmp_feat)*(tap_ij*tap_ik_deriv*drikdrz + tap_ik*tap_ij_deriv*drijdrz)*tmpz - &
-                        &tap_ij*tap_ik*(tmp_feat(1)*tmp_deriv1+tmp_feat(2)*tmp_deriv2)*tmpz
+                        &sum(tmp_feat)*(tap_ij*tap_jk*tap_ik_deriv*drikdrz + &
+                        &tap_ik*tap_jk*tap_ij_deriv*drijdrz)*tmpz - &
+                        &tap_ij*tap_ik*tap_jk*(tmp_feat(1)*tmp_deriv1+tmp_feat(2)*tmp_deriv2)*tmpz &
+                        + tap_ij*tap_ik*tmpz*sum(tmp_feat)*tap_jk_deriv*drjkdrz !* this line is new
                  
             end do
             
