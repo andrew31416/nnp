@@ -131,8 +131,8 @@ module features
             end if
         end subroutine calculate_features_singleset
 
-        subroutine calculate_distance_distributions(set_type,sample_rate,twobody_dist,threebody_dist,&
-                &num_two,num_three)
+        subroutine calculate_distance_distributions(set_type,sample_rate,twobody_dist,&
+        &threebody_dist,num_two,num_three)
             implicit none
 
             !* args
@@ -450,14 +450,24 @@ module features
             !* is three-body term within rcut?
             allocate(bond_contributes(feature_threebody_info(atm)%n))
 
-            !* check given (feature,atom) has three-body terms within rcut
-            do ii=1,feature_threebody_info(atm)%n,1
-                if (maxval(feature_threebody_info(atm)%dr(:,ii)).le.rcut) then
-                    bond_contributes(ii) = .true.
-                else
-                    bond_contributes(ii) = .false.
-                end if
-            end do
+            if (feat_doesnt_taper_drjk(ft_idx)) then
+                do ii=1,feature_threebody_info(atm)%n,1
+                    if (maxval(feature_threebody_info(atm)%dr(1:2,ii)).le.rcut) then
+                        bond_contributes(ii) = .true.
+                    else
+                        bond_contributes(ii) = .false.
+                    end if
+                end do
+            else
+                do ii=1,feature_threebody_info(atm)%n,1
+                    if (maxval(feature_threebody_info(atm)%dr(1:3,ii)).le.rcut) then
+                        bond_contributes(ii) = .true.
+                    else
+                        !* since drjk is tapered, interaction is 0 for drjk > rcut
+                        bond_contributes(ii) = .false.
+                    end if
+                end do !* end loop over neighbours
+            end if
 
             if ( (any(bond_contributes).neqv..true.).or.(feature_threebody_info(atm)%n.eq.0) ) then
                 !* zero neighbours within rcut
@@ -906,7 +916,8 @@ module features
             !* taper term
             tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)
 
-            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
+            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
+                    &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
                     &+ 2**(1-xi)*(1.0d0 + lambda*cos_angle)**xi * &
                     &exp(-eta*(drij**2+drik**2))*tmp_taper*tmp_atmz
         end subroutine feature_behler_g5
@@ -1236,7 +1247,7 @@ module features
             real(8) :: prec(1:3,1:3)
             real(8) :: mean(1:3),fs,rcut,za,zb
             real(8) :: tmp_atmz,tmp_taper,x1(1:3),x2(1:3)
-            real(8) :: drij,drik,cos_angle,sqrt_det
+            real(8) :: drij,drik,drjk,cos_angle,sqrt_det
 
             !* feature parameters
             rcut     = feature_params%info(ft_idx)%rcut
@@ -1250,8 +1261,9 @@ module features
             !* atom-atom distances
             drij = feature_threebody_info(atm)%dr(1,bond_idx)
             drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            drjk = feature_threebody_info(atm)%dr(3,bond_idx)
             
-            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
+            if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then!.or.(drjk.gt.rcut) ) then
                 return
             end if
 
@@ -1271,7 +1283,7 @@ module features
                     &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
 
             !* taper term
-            tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)
+            tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)!*taper_1(drjk,rcut,fs)
 
             data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
                     &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&

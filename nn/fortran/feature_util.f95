@@ -426,6 +426,20 @@ module feature_util
             end do
         end subroutine calculate_twobody_info
         
+       
+        logical function feat_doesnt_taper_drjk(ft_idx)
+            integer,intent(in) :: ft_idx
+            
+            logical :: res
+
+            res = .false.
+
+            if (feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_behler-g5").or.&
+            &(feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+                res = .true.
+            end if
+            feat_doesnt_taper_drjk = res
+        end function feat_doesnt_taper_drjk
         
         subroutine calculate_threebody_info(set_type,conf,ultracart,ultraz,ultraidx)
             !===============================================================!
@@ -472,8 +486,8 @@ module feature_util
 
             any_rjk = .false.
             do ii=1,D
-                if (feature_params%info(ii)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
-                    !* behler g-5 has no constraint (tapering) on drjk
+                if (feat_doesnt_taper_drjk(ii)) then
+                    !* behler g-5 and normal b-3 have no constraint (tapering) on drjk
                     any_rjk = .true.
                 end if
             end do
@@ -513,7 +527,7 @@ module feature_util
                         if ( (dr2ik.lt.rtol2).or.(dr2ik.gt.rcut2).or.(dr2jk.lt.rtol2) ) then
                             cycle
                         else if ( (any_rjk.neqv..true.).and.(dr2jk.gt.rcut2) ) then
-                            !* only behler g-5 doesn't taper drjk
+                            !* only behler g-5 and normal b-3 do not taper drjk
                             cycle
                         end if
 

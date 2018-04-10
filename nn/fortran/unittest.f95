@@ -32,6 +32,9 @@ program unittest
 
             integer :: num_tests
 
+            !* default status
+            tests = .false.
+
             parallel = .false.
             !* do not scale features
             scale_features = .false.
@@ -73,12 +76,12 @@ program unittest
             !* perform unit tests *!
             !----------------------!
             
-            !tests(1)  = test_dydw()                       ! dydw
-            !call test_loss_jac(tests(2:5))                ! d loss / dw
-            !tests(6)  = test_dydx()                       ! dydx
-            !tests(7)  = test_threebody_derivatives()      ! d cos(angle) /dr_i etc.
-            !tests(8)  = test_dxdr()                       ! d feature / d atom position
-            !tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
+            tests(1)  = test_dydw()                       ! dydw
+            call test_loss_jac(tests(2:5))                ! d loss / dw
+            tests(6)  = test_dydx()                       ! dydx
+            tests(7)  = test_threebody_derivatives()      ! d cos(angle) /dr_i etc.
+            tests(8)  = test_dxdr()                       ! d feature / d atom position
+            tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
             tests(10) = test_feature_selection_loss_jac() ! dloss / d(feature)param
             
             do ii=1,num_tests
@@ -117,15 +120,18 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%ref_fi(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 4.0d0
+                    !data_sets(set_type)%configs(conf)%cell(1,1) = 4.0d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 6.5d0
                     data_sets(set_type)%configs(conf)%cell(2,1) = 0.1d0
                     data_sets(set_type)%configs(conf)%cell(3,1) = 0.2d0
                     data_sets(set_type)%configs(conf)%cell(1,2) = 0.1d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 4.0d0
+                    !data_sets(set_type)%configs(conf)%cell(2,2) = 4.0d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 6.5d0
                     data_sets(set_type)%configs(conf)%cell(3,2) = 0.3d0
                     data_sets(set_type)%configs(conf)%cell(1,3) = -0.1d0
                     data_sets(set_type)%configs(conf)%cell(2,3) = 0.2d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 4.0d0
+                    !data_sets(set_type)%configs(conf)%cell(3,3) = 4.0d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 6.5d0
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%ref_energy)
                     data_sets(set_type)%configs(conf)%ref_fi = 0.0d0
@@ -214,8 +220,8 @@ program unittest
             
             !* test feature 6
             feature_params%info(6)%ftype = featureID_StringToInt("acsf_behler-g5")
-            !feature_params%info(6)%rcut = 3.1d0
-            feature_params%info(6)%rcut = 4.1d0
+            feature_params%info(6)%rcut = 3.1d0
+            !feature_params%info(6)%rcut = 4.0d0
             feature_params%info(6)%fs = 0.2d0
             call random_number(feature_params%info(6)%lambda)
             call random_number(feature_params%info(6)%xi) 
@@ -225,7 +231,7 @@ program unittest
             
             !* test feature 7
             feature_params%info(7)%ftype = featureID_StringToInt("acsf_normal-b3")
-            feature_params%info(7)%rcut = 4.0d0
+            feature_params%info(7)%rcut = 3.0d0
             feature_params%info(7)%fs = 0.3d0
             allocate(feature_params%info(7)%prec(3,3))
             allocate(feature_params%info(7)%mean(3))
@@ -505,8 +511,7 @@ program unittest
             cntr = 1
             do ft=1,feature_params%num_features,1
                 ftype = feature_params%info(ft)%ftype
-write(*,*) ''
-write(*,*) 'FEATURE: ',ftype
+                
                 do ii=1,num_attributes(ftype),1
                     !* compare analytical and numerical approx
                     anl_jac_ok(cntr) = feature_selection_subsidiary_1(original_weights,&
@@ -515,7 +520,6 @@ write(*,*) 'FEATURE: ',ftype
                 end do !* loop over optimizable attributes for given feature
 
             end do !* end loop over features
-
             
             test_feature_selection_loss_jac = all(anl_jac_ok)
         end function test_feature_selection_loss_jac
@@ -629,7 +633,7 @@ write(*,*) 'FEATURE: ',ftype
 
             match_found = .false.
             do ww=1,num_steps,1
-                if (scalar_equal(num_jac(ww),anl_res,dble(1e-16),dble(1e-16),.true.)) then
+                if (scalar_equal(num_jac(ww),anl_res,dble(1e-6),dble(1e-14),.false.)) then
                     match_found = .true.
                 end if
             end do
@@ -678,16 +682,20 @@ write(*,*) 'FEATURE: ',ftype
                             &"Implementation error")
                 end if
             else if (ftype.eq.FeatureID_StringToInt("acsf_normal-b3")) then
+                !* remember that matrix is symmetric
                 if (attribute.eq.1) then
                     feature_params%info(ft)%prec(1,1) = newvalue
                 else if (attribute.eq.2) then
                     feature_params%info(ft)%prec(1,2) = newvalue
+                    feature_params%info(ft)%prec(2,1) = newvalue
                 else if (attribute.eq.3) then
                     feature_params%info(ft)%prec(1,3) = newvalue
+                    feature_params%info(ft)%prec(3,1) = newvalue
                 else if (attribute.eq.4) then
                     feature_params%info(ft)%prec(2,2) = newvalue
                 else if (attribute.eq.5) then
                     feature_params%info(ft)%prec(2,3) = newvalue
+                    feature_params%info(ft)%prec(3,2) = newvalue
                 else if (attribute.eq.6) then
                     feature_params%info(ft)%prec(3,3) = newvalue
                 else if (attribute.eq.7) then

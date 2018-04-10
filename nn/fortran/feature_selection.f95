@@ -122,7 +122,6 @@ module feature_selection
             tmpE = tmpE * loss_const_energy
 
             !* dy_atm / dparam = sum_ft dy_atm/dx_ft * dx_ft/dparam
-
             do atm=1,data_sets(set_type)%configs(conf)%n,1
                 !* atomic number of central atom
                 zatm = feature_isotropic(atm)%z_atom
@@ -163,7 +162,7 @@ module feature_selection
                     if (feature_threebody_info(atm)%n.le.0) then
                         cycle
                     end if
-
+                    
                     do bond=1,feature_threebody_info(atm)%n,1
                         do ft=1,feature_params%num_features,1
                             ftype = feature_params%info(ft)%ftype
@@ -279,7 +278,7 @@ module feature_selection
             real(8) :: tmp_4,mean(1:3),prec(1:3,1:3)
             real(8) :: lwork_1(1:3),lwork_2(1:3),perm_1(1:3)
             real(8) :: perm_2(1:3),exp_1,exp_2,fs
-            real(8) :: zj,zk
+            real(8) :: zj,zk,const
             integer :: ftype,ii,jj
 
             drij = dr_array(1)
@@ -333,6 +332,11 @@ module feature_selection
                 lcl_feat_deriv%eta = lcl_feat_deriv%eta - tmp_1*tmp_2*tmp_3*tmp_4
             
             else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                if ((dr_array(1).gt.rcut).or.(dr_array(2).gt.rcut)) then
+                    !* for performance
+                    return
+                end if
+
                 tmp_3 = scl_cnst*tap_ij*tap_ik*tmp_z
                 
                 mean = feature_params%info(ft_idx)%mean
@@ -351,13 +355,25 @@ module feature_selection
                 exp_1 = exp(-0.5d0*ddot(3,mean-perm_1,1,lwork_1,1))
                 exp_2 = exp(-0.5d0*ddot(3,mean-perm_2,1,lwork_2,1))
            
-                lcl_feat_deriv%mean = lcl_feat_deriv%mean + (lwork_1*exp_1 + lwork_2*exp_2)*tmp_3
+
+                lcl_feat_deriv%mean = lcl_feat_deriv%mean - (lwork_1*exp_1 + lwork_2*exp_2)*tmp_3
+
+                !* d /dLambda_a where a is an off diagonal is really d / dLambda_ij + d / dLambda_ji
+                !* ie need to double contribution
 
                 do ii=1,3,1
                     do jj=1,3,1
-                        lcl_feat_deriv%prec(ii,jj) = lcl_feat_deriv%prec(ii,jj) + (-0.5d0*exp_1*&
-                                &(mean(ii)-perm_1(ii))*(mean(jj)-perm_1(jj)) - 0.5d0*exp_2*&
-                                &(mean(ii)-perm_2(ii))*(mean(jj)-perm_2(jj))  )*tmp_3
+                        if(ii.eq.jj) then
+                            const = 0.5d0
+                        else
+                            !* for off diagonal contribution, we're really consdering summation of
+                            !* partial differentials of transpose element pairs
+                            const = 1.0d0
+                        end if
+
+                        lcl_feat_deriv%prec(ii,jj) = lcl_feat_deriv%prec(ii,jj) - (exp_1*&
+                                &(mean(ii)-perm_1(ii))*(mean(jj)-perm_1(jj)) +exp_2*&
+                                &(mean(ii)-perm_2(ii))*(mean(jj)-perm_2(jj))  )*tmp_3*const
                     end do
                 end do
             else
@@ -507,6 +523,7 @@ module feature_selection
             integer :: ft,ftype,cntr,ii,jj
 
             cntr = 0
+            jac_array = 0.0d0
 
             do ft=1,feature_params%num_features,1
                 ftype = gbl_feat_derivs%info(ft)%ftype

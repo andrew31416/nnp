@@ -141,8 +141,8 @@ module propagate
             !* derivative of net output wrt features *!
             !-----------------------------------------!
    
-            call dgemm('n','n',D,natm,net_dim%hl1,1.0d0,net_weights_nobiasT%hl1,D,net_units%delta%hl1,&
-                    &net_dim%hl1,0.0d0,dydx,D)
+            call dgemm('n','n',D,natm,net_dim%hl1,1.0d0,net_weights_nobiasT%hl1,D,&
+                    &net_units%delta%hl1,net_dim%hl1,0.0d0,dydx,D)
 
         end subroutine backward_propagate
 
