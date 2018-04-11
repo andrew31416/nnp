@@ -17,6 +17,8 @@ module feature_selection
 
     contains
         subroutine loss_feature_jacobian(flat_weights,set_type,parallel,jacobian)
+            use omp_lib
+            
             implicit none
 
             real(8),intent(in) :: flat_weights(:)
@@ -29,7 +31,8 @@ module feature_selection
             type(feature_info) :: gbl_derivs,lcl_derivs
             logical :: original_calc_status
             
-        
+            !* openMP variables
+            integer :: thread_start,thread_end,thread_idx,num_threads,dconf
         
             if (num_optimizable_params().ne.size(jacobian)) then
                 call error("loss_feature_jacobian","Mismatch between length of Py and F95 jacobian")
@@ -47,12 +50,45 @@ module feature_selection
             calc_feature_derivatives = .false.
 
             if (parallel) then
-                write(*,*) 'parallel section not implemented yet'
-                call exit(0)
+                !$omp parallel num_threads(omp_get_max_threads()),&
+                !$omp& default(shared),&
+                !$omp& private(conf,thread_start,thread_end,thread_idx,num_threads),&
+                !$omp& private(dconf,lcl_derivs)
+            
+                !* allocatable init
+                call init_feature_array(lcl_derivs)
+
+                !* [0,num_threads-1]
+                thread_idx = omp_get_thread_num()
+
+                !* number of threads
+                num_threads = omp_get_max_threads()
+
+                !* number of conds per thread (except final thread)
+                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
+
+                thread_start = thread_idx*dconf + 1
+
+                if (thread_idx.eq.num_threads-1) then
+                    thread_end = data_sets(set_type)%nconf
+                else
+                    thread_end = (thread_idx+1)*dconf
+                end if
+
+                do conf=thread_start,thread_end,1
+                    call single_conf_feat_jac(set_type,conf,lcl_derivs)
+                end do
+                
+                !$omp critical
+                    !* add local (thread) to global contribution
+                    call add_feat_param_derivs(gbl_derivs,lcl_derivs,1.0d0)
+                !$omp end critical
+
+                !$omp end parallel
             else
 
                 do conf=1,data_sets(set_type)%nconf,1
-                    call single_set(set_type,conf,gbl_derivs)
+                    call single_conf_feat_jac(set_type,conf,gbl_derivs)
                 end do !* end loop over confs
             end if
 
@@ -61,7 +97,7 @@ module feature_selection
             call parse_feature_format_to_array_jac(gbl_derivs,jacobian)
         end subroutine loss_feature_jacobian
 
-        subroutine single_set(set_type,conf,lcl_feat_derivs)
+        subroutine single_conf_feat_jac(set_type,conf,lcl_feat_derivs)
             implicit none
 
             integer,intent(in) :: set_type,conf
@@ -74,19 +110,19 @@ module feature_selection
             integer :: atm,neigh,ftype,bond,ft
             logical :: calc_threebody
             type(feature_info) :: tmp_feat_derivs
-           
+            
             !* init param allocatables 
             call init_feature_array(tmp_feat_derivs)
-
+            
             !* max cut off of all interactions
             mxrcut = maxrcut(0)
 
             !* whether three body interactions are present
             calc_threebody = threebody_features_present()
-
+            
             !* get all nearest neighbours
             call get_ultracell(mxrcut,5000,set_type,conf,ultra_cart,ultra_idx,ultra_z)
-
+            
             !* get atom-neighbour distances
             call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
 
@@ -96,7 +132,7 @@ module feature_selection
 
             !* compute new features
             call calculate_all_features(set_type,conf)
-           
+            
             !* allocate mem. for dydx,a,z,a',delta
             call allocate_dydx(set_type,conf)
             call allocate_units(set_type,conf)
@@ -106,7 +142,6 @@ module feature_selection
     
             !* need dy_atm/dx for all atoms and features
             call backward_propagate(set_type,conf)
-            
             
             !* (E_ref - \sum_i E_i)^2
             tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
@@ -129,7 +164,7 @@ module feature_selection
                 if (feature_isotropic(atm)%n.le.0) then
                     cycle
                 end if
-               
+                
                 !* dx/dparam for atm, too many neighbours to keep info for all
                 !* atoms at once
                 call zero_feature_info(tmp_feat_derivs)
@@ -157,7 +192,7 @@ module feature_selection
                                 &tmp_feat_derivs%info(ft))
                     end do !* end loop over features
                 end do !* end loop over two body neighbours to atm
-              
+
                 if (calc_threebody) then
                     if (feature_threebody_info(atm)%n.le.0) then
                         cycle
@@ -185,7 +220,7 @@ module feature_selection
                 !* dy_atm / dparam = sum_ft dy_atm/dx_ft * dx_ft/dparam
                 call append_atom_contribution(atm,tmp_feat_derivs,tmpE,lcl_feat_derivs)
             end do !* end loop over atoms
-
+            
             deallocate(ultra_z)
             deallocate(ultra_idx)
             deallocate(ultra_cart)
@@ -193,11 +228,7 @@ module feature_selection
             if (calc_threebody) then
                 deallocate(feature_threebody_info)
             end if
-
-
-            !call add_feat_param_derivs(lcl_feat_derivs,tmp_feat_derivs,1.0d0)
-
-        end subroutine single_set
+        end subroutine single_conf_feat_jac
 
         subroutine feature_TwoBody_param_deriv(dr,zatm,zngh,ft_idx,feature_deriv)
             implicit none
@@ -443,13 +474,13 @@ module feature_selection
             end do
         end subroutine zero_feature_info
 
-        subroutine add_feat_param_derivs(lcl_feat_derivs,tmp_feat_derivs,const)
+        subroutine add_feat_param_derivs(gbl_feat_derivs,lcl_feat_derivs,const)
             !* add tmp_feat_derivs*const to lcl_feat_derivs
             
             implicit none
 
-            type(feature_info),intent(inout) :: lcl_feat_derivs
-            type(feature_info),intent(in) :: tmp_feat_derivs
+            type(feature_info),intent(inout) :: gbl_feat_derivs
+            type(feature_info),intent(in) :: lcl_feat_derivs
             real(8),intent(in) :: const
 
             !* scratch
@@ -459,11 +490,25 @@ module feature_selection
                 ftype = feature_params%info(ft)%ftype
 
                 if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                    lcl_feat_derivs%info(ft)%eta = lcl_feat_derivs%info(ft)%eta + &
-                            &tmp_feat_derivs%info(ft)%eta*const
+                    gbl_feat_derivs%info(ft)%eta = gbl_feat_derivs%info(ft)%eta + &
+                            &lcl_feat_derivs%info(ft)%eta*const
                     
-                    lcl_feat_derivs%info(ft)%xi = lcl_feat_derivs%info(ft)%xi + &
-                            &tmp_feat_derivs%info(ft)%xi*const
+                    gbl_feat_derivs%info(ft)%rs = gbl_feat_derivs%info(ft)%rs + &
+                            &lcl_feat_derivs%info(ft)%rs*const
+                else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+                    gbl_feat_derivs%info(ft)%eta = gbl_feat_derivs%info(ft)%eta + &
+                            &lcl_feat_derivs%info(ft)%eta*const
+                    
+                    gbl_feat_derivs%info(ft)%xi = gbl_feat_derivs%info(ft)%xi + &
+                            &lcl_feat_derivs%info(ft)%xi*const
+                else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+                    gbl_feat_derivs%info(ft)%mean = gbl_feat_derivs%info(ft)%mean + &
+                            &lcl_feat_derivs%info(ft)%mean*const
+                    
+                    gbl_feat_derivs%info(ft)%prec = gbl_feat_derivs%info(ft)%prec + &
+                            &lcl_feat_derivs%info(ft)%prec*const
                 end if
             end do !* end loop over features
         end subroutine
