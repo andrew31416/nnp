@@ -34,6 +34,7 @@ module config
         integer,allocatable :: idx(:)
         integer :: n
         real(8),allocatable :: vec(:,:)
+        integer,allocatable :: idx_map(:,:) !* BUG IN gcc 5.4.0 means this must appear here
     end type feature_derivatives
 
     !* atomic structure type
@@ -97,6 +98,10 @@ module config
 
     !* (forward and back)-prop behaviour
     logical,public :: calc_feature_derivatives = .true.
+
+    !* performance related keys
+    logical,public,save :: atom_neigh_info_needs_updating = .true.
+    logical,public,save :: updating_net_weights_only = .true.
 
     !* openmp directives for private globally scoped variables
     !$omp threadprivate(dydx)

@@ -103,7 +103,6 @@ def _parse_configs_to_fortran(gip,set_type):
     >>> gip.parse_all('.')
     >>> nnp.util.io._parse_configs_to_fortran(gip,"test")
     """
-
     if set_type not in ['test','holdout','train']:
         raise IoError('{} not a supported set type : {}'.format(set_type,'test,train'))
 
@@ -140,7 +139,6 @@ def _parse_configs_from_fortran(set_type):
     set_type : String, allowed values = 'test','train'
         Which data set to parse
     """
-
     set_type = set_type.lower()
     if set_type not in ['test','holdout','train']:
         raise IoError("{} not a supported set type : {}".format(set_type,'test,train'))

@@ -13,6 +13,8 @@ module feature_config
     type,public :: feature_info_twobody
         integer :: n                        ! number of 2-body terms
         real(8),allocatable :: dr(:)        ! distance to neighbour
+        real(8),allocatable :: dr_taper(:)  ! tapering applied to dr
+        real(8),allocatable :: dr_taper_deriv(:)
         integer,allocatable :: idx(:)       ! index of neighbour
         real(8),allocatable :: drdri(:,:)   ! derivative of distance wrt atom
         real(8),allocatable :: z(:)         ! atomic number of neighbour
@@ -23,6 +25,8 @@ module feature_config
         integer :: n                            ! number of 3-body terms
         real(8),allocatable :: cos_ang(:)       ! dtheta_{ijk}
         real(8),allocatable :: dr(:,:)          ! displacements between atoms
+        real(8),allocatable :: dr_taper(:,:)    ! tapering applied to dr
+        real(8),allocatable :: dr_taper_deriv(:,:)
         real(8),allocatable :: z(:,:)           ! atomic number of neighbours
         integer,allocatable :: idx(:,:)         ! identifier of neighbours
         real(8) :: z_atom                       ! atomic number of central atom
@@ -79,6 +83,9 @@ module feature_config
     !* three body information for a single structure used to generate features
     type(feature_info_threebody),allocatable :: feature_threebody_info(:)
 
+    !* whether or not to use low mem (slow performance) or high mem (high performance)
+    logical :: performance_options(1:2) 
+
     !* openMP pragma necessary for globally scoped variables
     !$omp threadprivate(feature_isotropic)
     !$omp threadprivate(feature_threebody_info)
@@ -134,12 +141,92 @@ module feature_config
             integer,intent(in) :: ftype
         
             logical :: tmp
-
-            if ( (ftype.eq.1).or.(ftype.eq.2).or.(ftype.eq.5).or.(ftype.eq.7) ) then
+            
+            if ( (ftype.eq.featureID_StringToInt("acsf_behler-g1")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_behler-g2")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_normal-b2")).or.&
+                &(ftype.eq.featureID_StringToInt("devel_iso")) ) then
                 tmp = .true.
             else
                 tmp = .false.
             end if
             feature_IsTwoBody = tmp
         end function
+        
+        logical function feature_IsThreeBody(ftype)
+            implicit none
+
+            integer,intent(in) :: ftype
+        
+            logical :: tmp
+
+            if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+                tmp = .true.
+            else
+                tmp = .false.
+            end if
+            feature_IsThreeBody = tmp
+        end function feature_IsThreeBody
+        
+        integer function SpeedUpID_StringToIdx(speedup)
+            !=======================================================!
+            ! convert a string identifier for symmetry function to  !
+            ! an integer identifier                                 !
+            !=======================================================!
+
+            implicit none
+
+            character(len=*),intent(in) :: speedup
+            
+            integer :: idx = -1
+
+            if (speedup.eq."twobody_rcut") then
+                !* all two body features have same rcut 
+                idx = 1
+            else if (speedup.eq."threebody_rcut") then
+                !* all threebody features have same rcut
+                idx = 2
+            else
+                write(*,*) ""
+                write(*,*) "***********************************************"
+                write(*,*) "error raised in routine : SpeedUpID_StringToIdx" 
+                write(*,*) "***********************************************"
+                write(*,*) ""
+                write(*,*) "Error : unrecognised speed up",speedup
+                write(*,*) ""
+                call exit(0)
+            end if
+    
+            if ((idx.lt.1).or.(idx.gt.size(performance_options))) then
+                write(*,*) ""
+                write(*,*) "***********************************************"
+                write(*,*) "error raised in routine : SpeedUpID_StringToIdx" 
+                write(*,*) "***********************************************"
+                write(*,*) ""
+                write(*,*) "Error : performance_options array is wrong shape"
+                write(*,*) ""
+                call exit(0)
+            end if
+
+            SpeedUpID_StringToIdx = idx
+        end function SpeedUpID_StringToIdx
+
+        logical function speedup_applies(speedup)
+            implicit none
+
+            character(len=*),intent(in) :: speedup
+
+            speedup_applies = performance_options(SpeedUpID_StringToIdx(speedup))
+        end function speedup_applies
+
+        subroutine activate_performance_option(speedup)
+            implicit none
+
+            character(len=*),intent(in) :: speedup
+
+            performance_options(SpeedUpID_StringToIdx(speedup)) = .true.
+        end subroutine activate_performance_option
+
 end module feature_config

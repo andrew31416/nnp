@@ -139,6 +139,7 @@ module feature_util
             logical :: pairfound
             real(8) :: localcell(1:3,1:3),invcell(1:3,1:3)
             integer :: natm
+
             
             ultranatm = 0
 
@@ -249,6 +250,7 @@ module feature_util
             ultraidx(1:ultranatm) = tmpidx(1:ultranatm)
             ultraZ(1:ultranatm) = tmpZ(1:ultranatm)
 
+
         end subroutine get_ultracell
 
         real(8) function maxrcut(arg)
@@ -340,6 +342,7 @@ module feature_util
             !===============================================================!
             !* calculate isotropic atom-atom distances and derivatives     *!
             !===============================================================!
+            use tapering, only : taper_1,taper_deriv_1
 
             implicit none
 
@@ -348,14 +351,20 @@ module feature_util
 
             !* scratch
             integer :: dim(1:1),ii,jj,cntr
-            real(8) :: rcut2,dr2,rtol2
+            real(8) :: rcut2,dr2,rtol2,rcut
             real(8) :: drii(1:3),drjj(1:3)
+            real(8) :: fs=0.d0
+        
+            if (speedup_applies("twobody_rcut")) then
+                fs = get_Nbody_common_fs(2)
+            end if
 
             !* dim(1) = number atoms in ultra cell
             dim = shape(ultraidx)
 
             !* max isotropic interaction cut off
-            rcut2 = maxrcut(1)**2
+            rcut = maxrcut(1)
+            rcut2 = rcut**2
 
             !* min distance between 2 different atoms allowed
             rtol2 = (0.0000001)**2
@@ -389,6 +398,11 @@ module feature_util
                 allocate(feature_isotropic(ii)%idx(cntr))
                 allocate(feature_isotropic(ii)%z(cntr))
                 allocate(feature_isotropic(ii)%drdri(3,cntr))
+                if (speedup_applies("twobody_rcut")) then
+                    !* all two body feature share same rcut,fs
+                    allocate(feature_isotropic(ii)%dr_taper(cntr))
+                    allocate(feature_isotropic(ii)%dr_taper_deriv(cntr))
+                end if
                
                 !* number of neighbours 
                 feature_isotropic(ii)%n = cntr
@@ -408,6 +422,13 @@ module feature_util
                     else 
                         !* atom-atom distance
                         feature_isotropic(ii)%dr(cntr) = sqrt(dr2)
+
+                        if (speedup_applies("twobody_rcut")) then
+                            feature_isotropic(ii)%dr_taper(cntr) = taper_1(&
+                                    &feature_isotropic(ii)%dr(cntr),rcut,fs)
+                            feature_isotropic(ii)%dr_taper_deriv(cntr) = taper_deriv_1(&
+                                    &feature_isotropic(ii)%dr(cntr),rcut,fs)
+                        end if
 
                         !* local cell identifier of neighbour cntr
                         feature_isotropic(ii)%idx(cntr) = ultraidx(jj)
@@ -446,6 +467,7 @@ module feature_util
             !===============================================================!
             !* calculate isotropic atom-atom distances and derivatives     *!
             !===============================================================!
+            use tapering, only : taper_1,taper_deriv_1
 
             implicit none
 
@@ -457,7 +479,7 @@ module feature_util
             real(8) :: rcut2,dr2ij,dr2ik,dr2jk,rtol2
             real(8) :: rii(1:3),rjj(1:3),rkk(1:3),drij,drik,drjk
             real(8) :: drij_vec(1:3),drik_vec(1:3),drjk_vec(1:3)
-            real(8) :: sign_ij(1:3),sign_ik(1:3)
+            real(8) :: sign_ij(1:3),sign_ik(1:3),rcut,fs
             integer :: maxbuffer
             type(feature_info_threebody) :: aniso_info
             logical :: any_rjk
@@ -466,13 +488,18 @@ module feature_util
             dim = shape(ultraidx)
 
             !* max anisotropic interaction cut off
-            rcut2 = maxrcut(2)**2
+            rcut = maxrcut(2)
+            rcut2 = rcut**2
             
             !* min distance between 2 different atoms allowed
             rtol2 = (0.0000001)**2
 
             !* max number of assumed 3-body terms per atom
             maxbuffer = 50000
+            
+            if (speedup_applies("threebody_rcut")) then
+                fs = get_Nbody_common_fs(3)
+            end if
 
 
             !* structure for all three body info associated with structure
@@ -484,6 +511,10 @@ module feature_util
             allocate(aniso_info%idx(2,maxbuffer))
             allocate(aniso_info%dcos_dr(3,3,maxbuffer))
             allocate(aniso_info%drdri(3,6,maxbuffer))
+            if (speedup_applies("threebody_rcut")) then
+                allocate(aniso_info%dr_taper(3,maxbuffer))
+                allocate(aniso_info%dr_taper_deriv(3,maxbuffer))
+            end if
 
             any_rjk = .false.
             do ii=1,D
@@ -552,6 +583,16 @@ module feature_util
                         aniso_info%dr(1,cntr) = drij    ! central vs. jj
                         aniso_info%dr(2,cntr) = drik    ! central vs. kk
                         aniso_info%dr(3,cntr) = drjk    ! jj vs. kk
+          
+                        !* tapering
+                        if (speedup_applies("threebody_rcut")) then
+                            aniso_info%dr_taper(1,cntr) = taper_1(drij,rcut,fs)
+                            aniso_info%dr_taper(2,cntr) = taper_1(drik,rcut,fs)
+                            aniso_info%dr_taper(3,cntr) = taper_1(drjk,rcut,fs)
+                            aniso_info%dr_taper_deriv(1,cntr) = taper_deriv_1(drij,rcut,fs)
+                            aniso_info%dr_taper_deriv(2,cntr) = taper_deriv_1(drik,rcut,fs)
+                            aniso_info%dr_taper_deriv(3,cntr) = taper_deriv_1(drjk,rcut,fs)
+                        end if 
            
                         !* atomic number
                         aniso_info%z(1,cntr) = ultraz(jj)
@@ -683,6 +724,10 @@ module feature_util
                 allocate(feature_threebody_info(ii)%idx(2,cntr))
                 allocate(feature_threebody_info(ii)%dcos_dr(3,3,cntr))
                 allocate(feature_threebody_info(ii)%drdri(3,6,cntr))
+                if (speedup_applies("threebody_rcut")) then
+                    allocate(feature_threebody_info(ii)%dr_taper(3,cntr))
+                    allocate(feature_threebody_info(ii)%dr_taper_deriv(3,cntr))
+                end if
                
                 !* number of three-body terms centered on ii
                 feature_threebody_info(ii)%n = cntr
@@ -696,6 +741,12 @@ module feature_util
                 feature_threebody_info(ii)%idx(:,:) = aniso_info%idx(:,1:cntr)
                 feature_threebody_info(ii)%dcos_dr(:,:,:) = aniso_info%dcos_dr(:,:,1:cntr)
                 feature_threebody_info(ii)%drdri(:,:,:) = aniso_info%drdri(:,:,1:cntr)
+                if (speedup_applies("threebody_rcut")) then
+                    feature_threebody_info(ii)%dr_taper(:,:) = aniso_info%dr_taper(:,1:cntr)
+                    feature_threebody_info(ii)%dr_taper_deriv(:,:) = aniso_info%dr_taper_deriv(:,&
+                            &1:cntr)
+                end if
+
                 
             end do !* end loop ii over local cell atoms
             
@@ -705,6 +756,10 @@ module feature_util
             deallocate(aniso_info%idx)
             deallocate(aniso_info%dcos_dr)
             deallocate(aniso_info%drdri)
+            if (speedup_applies("threebody_rcut")) then
+                deallocate(aniso_info%dr_taper)
+                deallocate(aniso_info%dr_taper_deriv)
+            end if
         end subroutine calculate_threebody_info
 
         real(8) function distance2(dr1,dr2)
@@ -866,10 +921,11 @@ module feature_util
             end do
         end subroutine computeall_feature_scaling_constants
 
-        subroutine scale_set_features(set_type)
+        subroutine scale_set_features(set_type,scale_derivatives)
             implicit none
 
             integer,intent(in) :: set_type
+            logical,intent(in) :: scale_derivatives
 
             !* scratch
             integer :: ii,conf,atm,jj
@@ -887,17 +943,151 @@ module feature_util
                     data_sets(set_type)%configs(conf)%x(ii+1,:) = &
                             &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst + cnst_add
 
-                    do atm=1,data_sets(set_type)%configs(conf)%n
-                        if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
-                            cycle
-                        end if
+                    if (scale_derivatives) then
+                        do atm=1,data_sets(set_type)%configs(conf)%n
+                            if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
+                                cycle
+                            end if
 
-                        do jj=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
-                            data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) = cnst*&
-                                    &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj)  
-                        end do !* end loop over neighbours to atm
-                    end do !* end loop over atoms
+                            do jj=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
+                                data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) = cnst*&
+                                        &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj)  
+                            end do !* end loop over neighbours to atm
+                        end do !* end loop over atoms
+                    end if 
+
                 end do !* end loop over configurations
             end do !* end loop over features
         end subroutine
+
+        subroutine Nbody_cutoff_parameters(N,rcut_array,fs_array)
+            !* return array of rcut and fs parameters for all two body features
+            
+            implicit none
+
+            !* args
+            real(8),allocatable,intent(inout) :: rcut_array(:),fs_array(:)
+            integer,intent(in) :: N
+
+            !* scratch
+            integer :: ft,ftype,cntr
+
+            if ((N.ne.2).and.(N.ne.3)) then
+                call error("Nbody_cutoff_parameters","incorrect param value N")
+            end if
+
+            cntr = 0
+
+            do ft=1,feature_params%num_features,1
+                ftype = feature_params%info(ft)%ftype
+
+                if (N.eq.2) then
+                    if (feature_IsTwoBody(ftype)) then
+                        cntr = cntr + 1
+                    end if
+                else if (N.eq.3) then
+                    if (feature_IsThreeBody(ftype)) then
+                        cntr = cntr + 1
+                    end if
+                end if
+            end do
+
+            if (cntr.eq.0) then
+                call error("Nbody_cutoff_parameters","no features found for given approximation")
+            end if
+
+            allocate(rcut_array(cntr))
+            allocate(fs_array(cntr))
+
+            cntr = 1
+            do ft=1,feature_params%num_features,1
+                ftype = feature_params%info(ft)%ftype
+
+                if (N.eq.2) then
+                    if (feature_IsTwoBody(ftype)) then
+                        rcut_array(cntr) = feature_params%info(ft)%rcut
+                        fs_array(cntr) = feature_params%info(ft)%fs
+                        cntr = cntr + 1
+                    end if
+                else if (N.eq.3) then
+                    if (feature_IsThreeBody(ftype)) then
+                        rcut_array(cntr) = feature_params%info(ft)%rcut
+                        fs_array(cntr) = feature_params%info(ft)%fs
+                        cntr = cntr + 1
+                    end if
+
+                end if
+            end do
+        end subroutine Nbody_cutoff_parameters
+
+        logical function performance_option_Nbody_rcut_applies(N)
+            !* return True if all two body features share same rcut and fs
+            use util, only : scalar_equal
+            
+            implicit none
+
+            integer,intent(in) :: N
+
+            !* scratch
+            real(8),allocatable :: rcut_array(:),fs_array(:)
+            real(8) :: minx,maxx
+            logical :: tmp(1:2)
+
+            !* fetch (rcut,fs) for all two body features
+            call Nbody_cutoff_parameters(N,rcut_array,fs_array)
+
+            tmp = .false.
+
+            minx = minval(rcut_array)
+            maxx = maxval(rcut_array)
+
+            if (scalar_equal(minx,maxx,dble(1e-15),dble(1e-15),.false.)) then
+                !* all rcuts are the same
+                tmp(1) = .true.
+            end if
+            
+            minx = minval(fs_array)
+            maxx = maxval(fs_array)
+
+            if (scalar_equal(minx,maxx,dble(1e-15),dble(1e-15),.false.)) then
+                !* all fs' are the same
+                tmp(2) = .true.
+            end if
+
+            performance_option_Nbody_rcut_applies = all(tmp)
+        end function performance_option_Nbody_rcut_applies
+
+        real(8) function get_Nbody_common_fs(N)
+            !* return fs in common with all two body features
+            implicit none
+
+            !* args
+            integer,intent(in) :: N
+
+            !* scratch
+            real(8) :: val = 0.0d0
+            real(8),allocatable :: rcut_array(:),fs_array(:)
+
+            if (N.eq.2) then
+                if (speedup_applies("twobody_rcut")) then
+                    call Nbody_cutoff_parameters(2,rcut_array,fs_array)
+
+                    val = fs_array(1)
+                else
+                    call error("get_Nbody_common_fs","two body features have different fs")
+                end if
+            else if (N.eq.3) then
+                if (speedup_applies("threebody_rcut")) then
+                    call Nbody_cutoff_parameters(3,rcut_array,fs_array)
+
+                    val = fs_array(1)
+                else
+                    call error("get_Nbody_common_fs","three body features have different fs")
+                end if
+            else
+                call error("get_Nbody_common_fs","order of interaction not supported.")
+            end if
+
+            get_Nbody_common_fs = val
+        end function get_Nbody_common_fs
 end module        

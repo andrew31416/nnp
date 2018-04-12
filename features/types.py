@@ -13,6 +13,7 @@ from os import listdir
 from sklearn import mixture
 from scipy import optimize
 import parsers
+import time
 
 class feature():
     """feature
@@ -461,12 +462,13 @@ class features():
                 _ = self.features.pop()
         return np.asarray(twobody[:n2],order='C'),np.asarray(threebody.T[:n3],order='C')
   
-    def calculate_precondition(self):
+    def calculate_precondition(self,updating_features=False):
         """
         Compute a and b : x-> a*x + b and x \in [-1,1] and set these values for
         all features in self.features
         """
-        feature_list = self.calculate(set_type="train",derivatives=False,scale=False,safe=True)
+        feature_list = self.calculate(set_type="train",derivatives=False,scale=False,safe=True,\
+                updating_features=updating_features)
    
         xmax = np.max(feature_list,axis=1)
         xmin = np.min(feature_list,axis=1)
@@ -481,7 +483,8 @@ class features():
         self.precondition_computed = True
         del feature_list                    
 
-    def calculate(self,set_type="train",derivatives=False,scale=False,safe=True):
+    def calculate(self,set_type="train",derivatives=False,scale=False,safe=True,\
+    updating_features=False):
         """
         Compute the value of all features for the given set type
         
@@ -520,15 +523,24 @@ class features():
 
         set_type = set_type.lower()
 
+        t1 = time.time()
+
         # parse features to fortran data structures
         self._parse_features_to_fortran()
 
         # initialise feature vector mem. and derivatives wrt. atoms
         getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=self._set_map[set_type])
        
+        t2 = time.time()
+        print(updating_features)
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=self._set_map[set_type],\
-                derivatives=derivatives,scale_features=scale,parallel=self.parallel)
+                derivatives=derivatives,scale_features=scale,parallel=self.parallel,\
+                updating_features=updating_features)
+
+        t3 = time.time()
+        print('disk write time : {}s feature comp. time : {}s parallel = {}'.format(t2-t1,t3-t2,\
+                self.parallel))
 
         if safe:
             # abort if Nan found in features or their derivatives
@@ -838,12 +850,12 @@ class features():
                
         # write configs to disk
         self.set_configuration(gip=X,set_type="train")
-        
-        # compute pre conditioning
-        self.calculate_precondition()
+        #print('comnputing precondition')    
+        ## compute pre conditioning
+        #self.calculate_precondition(updating_features=True)
 
         # instance of neural net class
-        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[1,1])
+        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10])
         
         # only consider energy term
         for _key,_value in {"energy":1.0,"forces":0.0,"regularization":0.0}.items():
@@ -851,13 +863,17 @@ class features():
         
         # for forward prop to initialise weights
         self.mlpp.set_features(features=self)
-       
+      
         # compute pre conditioning and initialise net
-        self.mlpp._prepare_data_structures(X=X,set_type="train")
+        self.mlpp._prepare_data_structures(X=X,set_type="train",derivatives=False,\
+                updating_features=True)
+  
+        print('finished prepping')
    
         # compute initial weights and concacenate weights with feature params 
         x0 = self._init_concacenation()
-    
+      
+        
         # check parsing to be safe
         self._parse_param_array_to_class(parameters=x0)
         x1 = self._concacenate_parameters()
@@ -866,10 +882,26 @@ class features():
         except AssertionError:
             raise FeaturesError("Implementation error in feature parameter parsing")
         del x1 
-       
+
+        print('1st jac evaluation')
+        self._feature_loss_jacobian(parameters=x0)
+        asdfg
+
+        # log for loss with optimization
+        self._loss_log = []
+        
         # do optimization 
-        jac = self._feature_loss_jacobian(parameters=x0)
-    
+        self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
+                jac=self._feature_loss_jacobian,x0=x0,\
+                method='bfgs',options={"gtol":1e-16,"maxiter":2})
+  
+        print(self.OptimizeResult["status"])
+   
+        # write final parameters to feature class instances 
+        self._parse_param_array_to_class(parameters=self.OptimizeResult["x"])
+
+        # recompute scaling constants for preconditioning
+        self.calculate_precondition()
 
     def _feature_loss(self,parameters):
         """
@@ -878,8 +910,8 @@ class features():
 
         Parameters
         ----------
-        parameters : np.ndarray
-            Concacenation of neural net weights and basis function parameters
+        : np.ndarray
+        of neural net weights and basis function parameters
 
         Returns
         -------
@@ -887,9 +919,10 @@ class features():
         """
         # parse new params to feature instances
         self._parse_param_array_to_class(parameters)
-
+        
         # write new features to fortran and compute feature values (no derivs)
-        self.calculate(set_type="train",derivatives=False,scale=True,safe=True)
+        self.calculate(set_type="train",derivatives=False,scale=True,safe=True,\
+                updating_features=True)
     
         loss = self.mlpp._loss(weights=parameters[:self.mlpp.num_weights],set_type="train",\
                 log_loss=False)
@@ -897,6 +930,9 @@ class features():
         if np.isnan(loss) or np.isinf(loss):
             raise FeaturesError("Nan or Inf returned from fortran loss")
 
+        # keep loss during optimization
+        self._loss_log.append(loss)
+        print(parameters,loss)
         return loss
 
     def _feature_loss_jacobian(self,parameters):
@@ -910,6 +946,13 @@ class features():
             Concacenation of neural net weights and basis function parameters
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
+
+        # parse features to Python format
+        self._parse_param_array_to_class(parameters)
+
+        # write new features to fortran and compute X for loss jacobian
+        self.calculate(set_type="train",derivatives=False,scale=True,safe=True,\
+                updating_features=True)
 
         # check not trying to use forces or regularization
         for _hyperparam in ['forces','regularization']:
@@ -1055,7 +1098,7 @@ class features():
             symmetric_matrix[idx] = symmetric_matrix.T[idx]
         
             return symmetric_matrix
-        elif key in ['prec','mean']:
+        elif key in ['prec','mean'] and len(value)!=1:
             return np.asarray(value)
         else:
             # we pass in an array slice

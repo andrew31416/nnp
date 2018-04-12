@@ -94,8 +94,12 @@ module measures
             
             call backward_propagate(set_type,conf)                
 
-            !* calculate forces in configuration
-            call calculate_forces(set_type,conf)
+            !* when forces constant = 0, do not compute forces
+            if (scalar_equal(loss_const_forces,0.0d0,dble(1e-15),&
+            &dble(1e-10)**2,.false.).neqv..true.) then
+                !* calculate forces in configuration
+                call calculate_forces(set_type,conf)
+            end if
         end subroutine loss_confloop
 
         subroutine loss_jacobian(flat_weights,set_type,parallel,jacobian)

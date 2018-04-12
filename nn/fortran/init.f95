@@ -25,7 +25,7 @@ module init
             call allocate_weights(net_weights)
             call allocate_weights_nobiasT(net_weights_nobiasT)
             call allocate_weights(dydw)
-           
+
             !if (allocated(net_units%a%hl1)) then
             !    deallocate(net_units%a%hl1)
             !    deallocate(net_units%a%hl2)
@@ -257,6 +257,8 @@ module init
             !* scratch
             integer :: conf,natm,dim(1:1)
 
+            atom_neigh_info_needs_updating = .true.
+
             if ( data_sets(set_type)%nconf.ne.0 ) then
                 !* need to deallocate now deprecated data
                 deallocate(data_sets(set_type)%configs)
@@ -287,6 +289,8 @@ module init
         end subroutine init_configs_from_disk
 
         subroutine init_features_from_disk(filepath)
+            use feature_util, only : performance_option_Nbody_rcut_applies
+            
             implicit none
 
             character(len=1024),intent(in) :: filepath
@@ -302,6 +306,17 @@ module init
             allocate(feature_params%info(feature_params%num_features))
 
             call read_features(filepath)
+
+            !* check if any performance criteria apply
+            if (performance_option_Nbody_rcut_applies(2)) then
+                call activate_performance_option("twobody_rcut")
+            end if
+            if (performance_option_Nbody_rcut_applies(3)) then
+                call activate_performance_option("threebody_rcut")
+            end if
+
+            write(*,*) 'have initiated features :',performance_options,'seepdup applies = ',&
+                    &speedup_applies("twobody_rcut"),speedup_applies("threebody_rcut")
         end subroutine init_features_from_disk
 
         subroutine init_feature_vectors(init_type)

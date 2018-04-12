@@ -94,6 +94,9 @@ module feature_selection
 
             calc_feature_derivatives = original_calc_status
             
+            !* performance flag
+            atom_neigh_info_needs_updating = .false.
+            
             call parse_feature_format_to_array_jac(gbl_derivs,jacobian)
         end subroutine loss_feature_jacobian
 
@@ -131,7 +134,7 @@ module feature_selection
             end if
 
             !* compute new features
-            call calculate_all_features(set_type,conf)
+            call calculate_all_features(set_type,conf,.true.)
             
             !* allocate mem. for dydx,a,z,a',delta
             call allocate_dydx(set_type,conf)
