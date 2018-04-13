@@ -358,6 +358,14 @@ module feature_util
             if (speedup_applies("twobody_rcut")) then
                 fs = get_Nbody_common_fs(2)
             end if
+            if (speedup_applies("keep_all_neigh_info")) then
+                if (allocated(set_neigh_info(conf)%twobody)) then
+                    call error("calculate_twobody_info","have needlessly called this function")
+                end if
+            end if
+
+            !* neighbour info for all atoms in conf
+            allocate(set_neigh_info(conf)%twobody(data_sets(set_type)%configs(conf)%n))
 
             !* dim(1) = number atoms in ultra cell
             dim = shape(ultraidx)
@@ -370,7 +378,7 @@ module feature_util
             rtol2 = (0.0000001)**2
 
             !* info for each atom
-            allocate(feature_isotropic(data_sets(set_type)%configs(conf)%n))
+            !allocate(feature_isotropic(data_sets(set_type)%configs(conf)%n))
 
             do ii=1,data_sets(set_type)%configs(conf)%n,1
                 !* iterate over local atoms
@@ -393,23 +401,36 @@ module feature_util
                 end do
 
 
+                ! redundant v
                 !* allocate neighbour mem
-                allocate(feature_isotropic(ii)%dr(cntr))
-                allocate(feature_isotropic(ii)%idx(cntr))
-                allocate(feature_isotropic(ii)%z(cntr))
-                allocate(feature_isotropic(ii)%drdri(3,cntr))
+                !allocate(feature_isotropic(ii)%dr(cntr))
+                !allocate(feature_isotropic(ii)%idx(cntr))
+                !allocate(feature_isotropic(ii)%z(cntr))
+                !allocate(feature_isotropic(ii)%drdri(3,cntr))
+                !if (speedup_applies("twobody_rcut")) then
+                !    !* all two body feature share same rcut,fs
+                !    allocate(feature_isotropic(ii)%dr_taper(cntr))
+                !    allocate(feature_isotropic(ii)%dr_taper_deriv(cntr))
+                !end if
+                !!* number of neighbours 
+                !feature_isotropic(ii)%n = cntr
+                !
+                !!* atomic number of central atom in interaction
+                !feature_isotropic(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
+                ! redundant ^
+
+                allocate(set_neigh_info(conf)%twobody(ii)%dr(cntr))
+                allocate(set_neigh_info(conf)%twobody(ii)%idx(cntr))
+                allocate(set_neigh_info(conf)%twobody(ii)%z(cntr))
+                allocate(set_neigh_info(conf)%twobody(ii)%drdri(3,cntr))
                 if (speedup_applies("twobody_rcut")) then
                     !* all two body feature share same rcut,fs
-                    allocate(feature_isotropic(ii)%dr_taper(cntr))
-                    allocate(feature_isotropic(ii)%dr_taper_deriv(cntr))
+                    allocate(set_neigh_info(conf)%twobody(ii)%dr_taper(cntr))
+                    allocate(set_neigh_info(conf)%twobody(ii)%dr_taper_deriv(cntr))
                 end if
+                set_neigh_info(conf)%twobody(ii)%n = cntr
+                set_neigh_info(conf)%twobody(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
                
-                !* number of neighbours 
-                feature_isotropic(ii)%n = cntr
-                
-                !* atomic number of central atom in interaction
-                feature_isotropic(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
-
                 cntr = 1
                 do jj=1,dim(1),1
                     drjj(:) = ultracart(:,jj)
@@ -421,24 +442,36 @@ module feature_util
                         cycle
                     else 
                         !* atom-atom distance
-                        feature_isotropic(ii)%dr(cntr) = sqrt(dr2)
+                        !feature_isotropic(ii)%dr(cntr) = sqrt(dr2) ! DEPRECATED
+                        set_neigh_info(conf)%twobody(ii)%dr(cntr) = sqrt(dr2)
 
                         if (speedup_applies("twobody_rcut")) then
-                            feature_isotropic(ii)%dr_taper(cntr) = taper_1(&
-                                    &feature_isotropic(ii)%dr(cntr),rcut,fs)
-                            feature_isotropic(ii)%dr_taper_deriv(cntr) = taper_deriv_1(&
-                                    &feature_isotropic(ii)%dr(cntr),rcut,fs)
+                            !feature_isotropic(ii)%dr_taper(cntr) = taper_1(&             ! DEP. 
+                            !        &feature_isotropic(ii)%dr(cntr),rcut,fs)             ! DEP.
+                            !feature_isotropic(ii)%dr_taper_deriv(cntr) = taper_deriv_1(& ! DEP.
+                            !        &feature_isotropic(ii)%dr(cntr),rcut,fs)             ! DEP.
+                            
+                            set_neigh_info(conf)%twobody(ii)%dr_taper(cntr) = taper_1(&
+                                    &set_neigh_info(conf)%twobody(ii)%dr(cntr),rcut,fs)
+                            set_neigh_info(conf)%twobody(ii)%dr_taper_deriv(cntr) = taper_deriv_1(&
+                                    &set_neigh_info(conf)%twobody(ii)%dr(cntr),rcut,fs)
                         end if
 
                         !* local cell identifier of neighbour cntr
-                        feature_isotropic(ii)%idx(cntr) = ultraidx(jj)
+                        !feature_isotropic(ii)%idx(cntr) = ultraidx(jj) ! DEP.
+                        set_neigh_info(conf)%twobody(ii)%idx(cntr) = ultraidx(jj)
 
                         !* d rij / drj 
-                        feature_isotropic(ii)%drdri(:,cntr) = (drjj(:) - drii(:)) / &
-                                &feature_isotropic(ii)%dr(cntr)
+                        !feature_isotropic(ii)%drdri(:,cntr) = (drjj(:) - drii(:)) / & ! DEP.
+                        !        &feature_isotropic(ii)%dr(cntr)                       ! DEP.
+                        
+                        set_neigh_info(conf)%twobody(ii)%drdri(:,cntr) = (drjj(:) - drii(:)) / &
+                                &set_neigh_info(conf)%twobody(ii)%dr(cntr)
                         
                         !* Z of neighbour cntr
-                        feature_isotropic(ii)%z(cntr) = ultraz(jj) 
+                        !feature_isotropic(ii)%z(cntr) = ultraz(jj) ! DEP. 
+                        set_neigh_info(conf)%twobody(ii)%z(cntr) = ultraz(jj) 
+                        
                         cntr = cntr + 1    
                     end if
                 end do
@@ -483,7 +516,23 @@ module feature_util
             integer :: maxbuffer
             type(feature_info_threebody) :: aniso_info
             logical :: any_rjk
+            
+            if (.not.allocated(set_neigh_info)) then
+                call error("calculate_threebody_info","have failed to allcoate set_neigh_info")
+            else
+                if (allocated(set_neigh_info(conf)%threebody)) then
+                    if (speedup_applies("keep_all_neigh_info")) then
+                        call error("calculate_threebody_info","have needlessly called this func.")
+                    else
+                        call error("calculate_threebody_info",&
+                                &"have failed to deallocate 3body info")
+                    end if
+                end if
+            end if
 
+            !* neighbour info for all atoms in conf
+            allocate(set_neigh_info(conf)%threebody(data_sets(set_type)%configs(conf)%n))
+            
             !* dim(1) = number atoms in ultra cell
             dim = shape(ultraidx)
 
@@ -503,7 +552,7 @@ module feature_util
 
 
             !* structure for all three body info associated with structure
-            allocate(feature_threebody_info(data_sets(set_type)%configs(conf)%n))
+            !allocate(feature_threebody_info(data_sets(set_type)%configs(conf)%n))
             
             allocate(aniso_info%cos_ang(maxbuffer))
             allocate(aniso_info%dr(3,maxbuffer))
@@ -523,6 +572,7 @@ module feature_util
                     any_rjk = .true.
                 end if
             end do
+
 
             do ii=1,data_sets(set_type)%configs(conf)%n,1
                 !* iterate over local atoms
@@ -717,34 +767,62 @@ module feature_util
                 end do !* end loop jj over first neighbours
                 
 
-                !* now copy into 
-                allocate(feature_threebody_info(ii)%cos_ang(cntr))
-                allocate(feature_threebody_info(ii)%dr(3,cntr))
-                allocate(feature_threebody_info(ii)%z(2,cntr))
-                allocate(feature_threebody_info(ii)%idx(2,cntr))
-                allocate(feature_threebody_info(ii)%dcos_dr(3,3,cntr))
-                allocate(feature_threebody_info(ii)%drdri(3,6,cntr))
+                !* now copy into DEP. vv
+                !allocate(feature_threebody_info(ii)%cos_ang(cntr))
+                !allocate(feature_threebody_info(ii)%dr(3,cntr))
+                !allocate(feature_threebody_info(ii)%z(2,cntr))
+                !allocate(feature_threebody_info(ii)%idx(2,cntr))
+                !allocate(feature_threebody_info(ii)%dcos_dr(3,3,cntr))
+                !allocate(feature_threebody_info(ii)%drdri(3,6,cntr))
+                !if (speedup_applies("threebody_rcut")) then
+                !    allocate(feature_threebody_info(ii)%dr_taper(3,cntr))
+                !    allocate(feature_threebody_info(ii)%dr_taper_deriv(3,cntr))
+                !end if
+                !! DEP ^^
+                
+                allocate(set_neigh_info(conf)%threebody(ii)%cos_ang(cntr))
+                allocate(set_neigh_info(conf)%threebody(ii)%dr(3,cntr))
+                allocate(set_neigh_info(conf)%threebody(ii)%z(2,cntr))
+                allocate(set_neigh_info(conf)%threebody(ii)%idx(2,cntr))
+                allocate(set_neigh_info(conf)%threebody(ii)%dcos_dr(3,3,cntr))
+                allocate(set_neigh_info(conf)%threebody(ii)%drdri(3,6,cntr))
                 if (speedup_applies("threebody_rcut")) then
-                    allocate(feature_threebody_info(ii)%dr_taper(3,cntr))
-                    allocate(feature_threebody_info(ii)%dr_taper_deriv(3,cntr))
+                    allocate(set_neigh_info(conf)%threebody(ii)%dr_taper(3,cntr))
+                    allocate(set_neigh_info(conf)%threebody(ii)%dr_taper_deriv(3,cntr))
                 end if
                
                 !* number of three-body terms centered on ii
-                feature_threebody_info(ii)%n = cntr
+                !feature_threebody_info(ii)%n = cntr ! DEP.
+                set_neigh_info(conf)%threebody(ii)%n = cntr
 
                 !* atomic number of central atom
-                feature_threebody_info(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
+                !feature_threebody_info(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii) ! DEP.
+                set_neigh_info(conf)%threebody(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
                
-                call dcopy(cntr,aniso_info%cos_ang,1,feature_threebody_info(ii)%cos_ang,1)                
-                feature_threebody_info(ii)%dr(:,:) = aniso_info%dr(:,1:cntr)
-                feature_threebody_info(ii)%z(:,:) = aniso_info%z(:,1:cntr)
-                feature_threebody_info(ii)%idx(:,:) = aniso_info%idx(:,1:cntr)
-                feature_threebody_info(ii)%dcos_dr(:,:,:) = aniso_info%dcos_dr(:,:,1:cntr)
-                feature_threebody_info(ii)%drdri(:,:,:) = aniso_info%drdri(:,:,1:cntr)
+                ! DEP vv
+                !call dcopy(cntr,aniso_info%cos_ang,1,feature_threebody_info(ii)%cos_ang,1) 
+                !feature_threebody_info(ii)%dr(:,:) = aniso_info%dr(:,1:cntr)
+                !feature_threebody_info(ii)%z(:,:) = aniso_info%z(:,1:cntr)
+                !feature_threebody_info(ii)%idx(:,:) = aniso_info%idx(:,1:cntr)
+                !feature_threebody_info(ii)%dcos_dr(:,:,:) = aniso_info%dcos_dr(:,:,1:cntr)
+                !feature_threebody_info(ii)%drdri(:,:,:) = aniso_info%drdri(:,:,1:cntr)
+                !if (speedup_applies("threebody_rcut")) then
+                !    feature_threebody_info(ii)%dr_taper(:,:) = aniso_info%dr_taper(:,1:cntr)
+                !    feature_threebody_info(ii)%dr_taper_deriv(:,:) = aniso_info%dr_taper_deriv(:,&
+                !            &1:cntr)
+                !end if
+                !! DEP ^^
+                
+                call dcopy(cntr,aniso_info%cos_ang,1,set_neigh_info(conf)%threebody(ii)%cos_ang,1)
+                set_neigh_info(conf)%threebody(ii)%dr(:,:) = aniso_info%dr(:,1:cntr)
+                set_neigh_info(conf)%threebody(ii)%z(:,:) = aniso_info%z(:,1:cntr)
+                set_neigh_info(conf)%threebody(ii)%idx(:,:) = aniso_info%idx(:,1:cntr)
+                set_neigh_info(conf)%threebody(ii)%dcos_dr(:,:,:) = aniso_info%dcos_dr(:,:,1:cntr)
+                set_neigh_info(conf)%threebody(ii)%drdri(:,:,:) = aniso_info%drdri(:,:,1:cntr)
                 if (speedup_applies("threebody_rcut")) then
-                    feature_threebody_info(ii)%dr_taper(:,:) = aniso_info%dr_taper(:,1:cntr)
-                    feature_threebody_info(ii)%dr_taper_deriv(:,:) = aniso_info%dr_taper_deriv(:,&
-                            &1:cntr)
+                    set_neigh_info(conf)%threebody(ii)%dr_taper(:,:) = aniso_info%dr_taper(:,1:cntr)
+                    set_neigh_info(conf)%threebody(ii)%dr_taper_deriv(:,:) = aniso_info%&
+                            &dr_taper_deriv(:,1:cntr)
                 end if
 
                 

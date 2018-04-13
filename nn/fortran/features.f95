@@ -3,6 +3,7 @@ module features
     use feature_config
     use feature_util
     use tapering, only : taper_1,taper_deriv_1
+    use init, only : init_set_neigh_info
    
     implicit none
 
@@ -44,6 +45,12 @@ module features
 ! DEBUG
 real(8) :: t1,t2,t3,t4,t5,t6
 ! DEBUG
+            
+            if (updating_features) then
+                !* only recomputing features benefits from storing all neigh info
+                call activate_performance_option("keep_all_neigh_info")
+            end if
+
             !* max cut off of all interactions
             mxrcut = maxrcut(0)
             
@@ -52,6 +59,17 @@ real(8) :: t1,t2,t3,t4,t5,t6
             
             !* set whether or not to calculate feature derivatives
             calc_feature_derivatives = derivatives
+
+            if (speedup_applies("keep_all_neigh_info")) then
+                if (allocated(set_neigh_info).neqv..true.) then
+                    !* this is the first time running through
+                    call init_set_neigh_info(set_type)
+                end if
+            else
+                !* if no info is kept, always need to recompute
+                call init_set_neigh_info(set_type)
+            end if
+
 ! DEBUG
 !!write(*,*) 'derivs = ',calc_feature_derivatives
 ! DEBUG           
@@ -79,27 +97,40 @@ real(8) :: t1,t2,t3,t4,t5,t6
 
                 do conf=thread_start,thread_end,1
 
-                    call get_ultracell(mxrcut,5000,set_type,conf,&
-                            &ultra_cart,ultra_idx,ultra_z)
+                    if (.not.allocated(set_neigh_info(conf)%twobody)) then
+                        !* only calculate if first time running
+                        call get_ultracell(mxrcut,5000,set_type,conf,&
+                                &ultra_cart,ultra_idx,ultra_z)
 
-                    !* always calc. two-body info for features
-                    call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
-                
-                    if (calc_threebody) then
-                        !* calc. threebody info
-                        call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
-                    end if
+                        !* always calc. two-body info for features
+                        call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
                     
+                        if (calc_threebody) then
+                            !* calc. threebody info
+                            call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                        end if
+                   end if 
 
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
 
-                    deallocate(ultra_z)
-                    deallocate(ultra_idx)
-                    deallocate(ultra_cart)
-                    deallocate(feature_isotropic)
-                    if (calc_threebody) then
-                        deallocate(feature_threebody_info)
+                    ! deprecated v
+                    if (allocated(ultra_z)) then
+                        deallocate(ultra_z)
+                        deallocate(ultra_idx)
+                        deallocate(ultra_cart)
+                    end if
+                    !deallocate(feature_isotropic)
+                    !if (calc_threebody) then
+                    !    deallocate(feature_threebody_info)
+                    !end if
+                    ! deprecated ^
+
+                    if (speedup_applies("keep_all_neigh_info").eqv..false.) then
+                        deallocate(set_neigh_info(conf)%twobody)
+                        if (calc_threebody) then
+                            deallocate(set_neigh_info(conf)%threebody)
+                        end if
                     end if
                 end do !* end loop over configurations
 
@@ -107,29 +138,31 @@ real(8) :: t1,t2,t3,t4,t5,t6
             else
                 do conf=1,data_sets(set_type)%nconf
 
+                    if (.not.allocated(set_neigh_info(conf)%twobody)) then
 ! DEBUG
 call cpu_time(t1)
 ! DEBUG
-                    call get_ultracell(mxrcut,5000,set_type,conf,&
-                            &ultra_cart,ultra_idx,ultra_z)
+                        call get_ultracell(mxrcut,5000,set_type,conf,&
+                                &ultra_cart,ultra_idx,ultra_z)
 ! DEBUG
 call cpu_time(t2)
 ! DEBUG
 
-                    !* always calc. two-body info for features
-                    call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                        !* always calc. two-body info for features
+                        call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
 ! DEBUG
 call cpu_time(t3)
 ! DEBUG
                 
-                    if (calc_threebody) then
-                        !* calc. threebody info
-                        call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
-                    end if
+                        if (calc_threebody) then
+                            !* calc. threebody info
+                            call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                        end if
 ! DEBUG
 call cpu_time(t4)
 ! DEBUG
-                    
+                    end if
+                                  
 
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
@@ -140,12 +173,23 @@ call cpu_time(t5)
 !write(*,*) t2-t1,t3-t2,t4-t3,t5-t4
 ! DEBUG
 
-                    deallocate(ultra_z)
-                    deallocate(ultra_idx)
-                    deallocate(ultra_cart)
-                    deallocate(feature_isotropic)
-                    if (calc_threebody) then
-                        deallocate(feature_threebody_info)
+                    ! deprecated v
+                    if (allocated(ultra_z)) then
+                        deallocate(ultra_z)
+                        deallocate(ultra_idx)
+                        deallocate(ultra_cart)
+                    end if
+                    !deallocate(feature_isotropic)
+                    !if (calc_threebody) then
+                    !    deallocate(feature_threebody_info)
+                    !end if
+                    ! deprecated ^
+
+                    if (speedup_applies("keep_all_neigh_info").eqv..false.) then
+                        deallocate(set_neigh_info(conf)%twobody)
+                        if (calc_threebody) then
+                            deallocate(set_neigh_info(conf)%threebody)
+                        end if
                     end if
                 end do !* end loop over configurations
             end if !* end if parallel section
@@ -153,6 +197,11 @@ call cpu_time(t5)
             if (updating_features) then
                 !* store pre computed neighbour info
                 atom_neigh_info_needs_updating = .false.
+            end if
+
+            if (speedup_applies("keep_all_neigh_info").eqv..false.) then
+                !* lets not be misleading
+                deallocate(set_neigh_info)
             end if
 
             if (scale_features) then
@@ -202,9 +251,12 @@ call cpu_time(t5)
                 call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
             
                 do atm=1,data_sets(set_type)%configs(conf)%n
-                    if (feature_isotropic(atm)%n.gt.0) then
-                        do bond=1,feature_isotropic(atm)%n,1
-                            if ((abs(sample_rate(1)-1.0d0).lt.1e-10).or.(rand().lt.sample_rate(1))) then
+                    !if (feature_isotropic(atm)%n.gt.0) then
+                    if (set_neigh_info(conf)%twobody(atm)%n.gt.0) then
+                        !do bond=1,feature_isotropic(atm)%n,1
+                        do bond=1,set_neigh_info(conf)%twobody(atm)%n,1
+                            if ((abs(sample_rate(1)-1.0d0).lt.1e-10).or.&
+                            &(rand().lt.sample_rate(1))) then
                                 !* book keeping
                                 num_two = num_two + 1
                                
@@ -214,7 +266,7 @@ call cpu_time(t5)
                                 end if
                                 
                                 !* store atom-atom distance from this bond
-                                twobody_dist(num_two) = feature_isotropic(atm)%dr(bond)
+                                twobody_dist(num_two) = set_neigh_info(conf)%twobody(atm)%dr(bond)
                             end if
                         end do
                     end if
@@ -225,9 +277,12 @@ call cpu_time(t5)
                     call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
                 
                     do atm=1,data_sets(set_type)%configs(conf)%n
-                        if (feature_threebody_info(atm)%n.gt.0) then
-                            do bond=1,feature_threebody_info(atm)%n,1
-                                if ((abs(sample_rate(2)-1.0d0).lt.1e-10).or.(rand().lt.sample_rate(2))) then
+                        !if (feature_threebody_info(atm)%n.gt.0) then
+                        if (set_neigh_info(conf)%threebody(atm)%n.gt.0) then
+                            !do bond=1,feature_threebody_info(atm)%n,1
+                            do bond=1,set_neigh_info(conf)%threebody(atm)%n,1
+                                if ((abs(sample_rate(2)-1.0d0).lt.1e-10).or.&
+                                &(rand().lt.sample_rate(2))) then
                                     !* book keeping
                                     num_three = num_three + 1
                                 
@@ -236,8 +291,14 @@ call cpu_time(t5)
                                             &"three-body buffer too small, increase or decrease sample rate.")
                                     end if
 
-                                    threebody_dist(1:2,num_three) = feature_threebody_info(atm)%dr(1:2,bond)
-                                    threebody_dist(3,num_three) = feature_threebody_info(atm)%cos_ang(bond)
+                                    !threebody_dist(1:2,num_three) = feature_threebody_info(atm)%&
+                                    !&dr(1:2,bond)
+                                    threebody_dist(1:2,num_three) = set_neigh_info(conf)%&
+                                            &threebody(atm)%dr(1:2,bond)
+                                    !threebody_dist(3,num_three) = feature_threebody_info(atm)%&
+                                    !&cos_ang(bond)
+                                    threebody_dist(3,num_three) = set_neigh_info(conf)%&
+                                            &threebody(atm)%cos_ang(bond)
                                 end if
                             end do !* end loop over bonds
                         end if 
@@ -245,14 +306,22 @@ call cpu_time(t5)
                 end if
                    
                                   
-                    
-                deallocate(ultra_z)
-                deallocate(ultra_idx)
-                deallocate(ultra_cart)
-                deallocate(feature_isotropic)
+                if (allocated(ultra_z)) then   
+                    deallocate(ultra_z)
+                    deallocate(ultra_idx)
+                    deallocate(ultra_cart)
+                end if
+                !deallocate(feature_isotropic) ! DEP.
                 
-                if (calc_threebody) then
-                    deallocate(feature_threebody_info)
+                !if (calc_threebody) then
+                !    deallocate(feature_threebody_info) ! DEP.
+                !end if
+
+                if (speedup_applies("keep_all_neigh_info").neqv..true.) then
+                    deallocate(set_neigh_info(conf)%twobody)
+                    if (calc_threebody) then
+                        deallocate(set_neigh_info(conf)%threebody)
+                    end if
                 end if
             end do !* end loop over confs
         end subroutine calculate_distance_distributions
@@ -341,7 +410,7 @@ call cpu_time(t2)
             !* scratch
             integer :: arr_idx ,ii,cntr,arg,ftype
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
-            integer :: idx_to_contrib(1:feature_isotropic(atm)%n)
+            integer :: idx_to_contrib(1:set_neigh_info(conf)%twobody(atm)%n)
             logical :: zero_neighbours 
             real(8) :: rcut
             
@@ -356,10 +425,10 @@ call cpu_time(t2)
             !* type of interaction
             ftype = feature_params%info(ft_idx)%ftype
 
-            if (feature_isotropic(atm)%n.gt.0) then
-                do ii=1,feature_isotropic(atm)%n,1
+            if (set_neigh_info(conf)%twobody(atm)%n.gt.0) then
+                do ii=1,set_neigh_info(conf)%twobody(atm)%n,1
                     !* search for neighbour with cut off radius
-                    if (feature_isotropic(atm)%dr(ii).le.rcut) then
+                    if (set_neigh_info(conf)%twobody(atm)%dr(ii).le.rcut) then
                         zero_neighbours = .false.
                     end if
                 end do
@@ -377,15 +446,16 @@ call cpu_time(t2)
 
             cntr = 1
 
-            do ii=1,feature_isotropic(atm)%n,1
-                if ( int_in_intarray(feature_isotropic(atm)%idx(ii),contrib_atms(1:cntr),arg) ) then
+            do ii=1,set_neigh_info(conf)%twobody(atm)%n,1
+                if ( int_in_intarray(set_neigh_info(conf)%twobody(atm)%idx(ii),&
+                &contrib_atms(1:cntr),arg) ) then
                     !* Local atom already in list, note corresponding idx in contrib_atms
                     idx_to_contrib(ii) = arg
                     cycle
-                else if (feature_isotropic(atm)%dr(ii).le.rcut) then
+                else if (set_neigh_info(conf)%twobody(atm)%dr(ii).le.rcut) then
                     cntr = cntr + 1
                     !* note this local atom contributes to this feature for atom
-                    contrib_atms(cntr) = feature_isotropic(atm)%idx(ii)
+                    contrib_atms(cntr) = set_neigh_info(conf)%twobody(atm)%idx(ii)
                     idx_to_contrib(ii) = cntr
                 else
                     !* atom is beyond interaction cut off
@@ -414,42 +484,44 @@ call cpu_time(t2)
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
             
-            do ii=1,feature_isotropic(atm)%n
-                if (feature_isotropic(atm)%dr(ii).le.rcut) then
+            !do ii=1,feature_isotropic(atm)%n
+            do ii=1,set_neigh_info(conf)%twobody(atm)%n
+                !if (feature_isotropic(atm)%dr(ii).le.rcut) then
+                if (set_neigh_info(conf)%twobody(atm)%dr(ii).le.rcut) then
                     !* contributing interaction
                     if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
-                        call feature_behler_g1(atm,ii,ft_idx,&
+                        call feature_behler_g1(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calc_feature_derivatives) then
-                            call feature_behler_g1_deriv(atm,ii,ft_idx,&
+                            call feature_behler_g1_deriv(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                 &vec(1:3,idx_to_contrib(ii)))
                         end if
                     else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                        call feature_behler_g2(atm,ii,ft_idx,&
+                        call feature_behler_g2(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calc_feature_derivatives) then
-                            call feature_behler_g2_deriv(atm,ii,ft_idx,&
+                            call feature_behler_g2_deriv(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                 &vec(1:3,idx_to_contrib(ii)))
                         end if
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                        call feature_normal_iso(atm,ii,ft_idx,&
+                        call feature_normal_iso(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calc_feature_derivatives) then
-                            call feature_normal_iso_deriv(atm,ii,ft_idx,&
+                            call feature_normal_iso_deriv(conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &vec(1:3,idx_to_contrib(ii)))
                         end if
                     else if (ftype.eq.featureID_StringToInt("devel_iso")) then
-                        call feature_iso_devel(atm,ii,ft_idx,&
+                        call feature_iso_devel(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
                         
                         if (calc_feature_derivatives) then
-                            call feature_iso_devel_deriv(atm,ii,ft_idx,&
+                            call feature_iso_devel_deriv(conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &vec(1:3,idx_to_contrib(ii)))
                         end if
@@ -460,16 +532,16 @@ call cpu_time(t2)
             !* derivative wrt. central atm
             if (calc_feature_derivatives) then 
                 if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
-                    call feature_behler_g1_deriv(atm,0,ft_idx,&
+                    call feature_behler_g1_deriv(conf,atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                    call feature_behler_g2_deriv(atm,0,ft_idx,&
+                    call feature_behler_g2_deriv(conf,atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                    call feature_normal_iso_deriv(atm,0,ft_idx,&
+                    call feature_normal_iso_deriv(conf,atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("devel_iso")) then
-                    call feature_iso_devel_deriv(atm,0,ft_idx,&
+                    call feature_iso_devel_deriv(conf,atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 end if
             end if
@@ -501,19 +573,24 @@ call cpu_time(t1)
             ftype = feature_params%info(ft_idx)%ftype
 
             !* is three-body term within rcut?
-            allocate(bond_contributes(feature_threebody_info(atm)%n))
-
+            !allocate(bond_contributes(feature_threebody_info(atm)%n))
+            allocate(bond_contributes(set_neigh_info(conf)%threebody(atm)%n))
+            
             if (feat_doesnt_taper_drjk(ft_idx)) then
-                do ii=1,feature_threebody_info(atm)%n,1
-                    if (maxval(feature_threebody_info(atm)%dr(1:2,ii)).le.rcut) then
+                !do ii=1,feature_threebody_info(atm)%n,1
+                do ii=1,set_neigh_info(conf)%threebody(atm)%n,1
+                    !if (maxval(feature_threebody_info(atm)%dr(1:2,ii)).le.rcut) then
+                    if (maxval(set_neigh_info(conf)%threebody(atm)%dr(1:2,ii)).le.rcut) then
                         bond_contributes(ii) = .true.
                     else
                         bond_contributes(ii) = .false.
                     end if
                 end do
             else
-                do ii=1,feature_threebody_info(atm)%n,1
-                    if (maxval(feature_threebody_info(atm)%dr(1:3,ii)).le.rcut) then
+                !do ii=1,feature_threebody_info(atm)%n,1
+                do ii=1,set_neigh_info(conf)%threebody(atm)%n,1
+                    !if (maxval(feature_threebody_info(atm)%dr(1:3,ii)).le.rcut) then
+                    if (maxval(set_neigh_info(conf)%threebody(atm)%dr(1:3,ii)).le.rcut) then
                         bond_contributes(ii) = .true.
                     else
                         !* since drjk is tapered, interaction is 0 for drjk > rcut
@@ -521,15 +598,15 @@ call cpu_time(t1)
                     end if
                 end do !* end loop over neighbours
             end if
-
-            if ( (any(bond_contributes).neqv..true.).or.(feature_threebody_info(atm)%n.eq.0) ) then
+            !if ( (any(bond_contributes).neqv..true.).or.(feature_threebody_info(atm)%n.eq.0) ) then
+            if ( (any(bond_contributes).neqv..true.).or.&
+            &(set_neigh_info(conf)%threebody(atm)%n.eq.0) ) then
                 !* zero neighbours within rcut
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%n=0
                 data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
                 return
             end if
             
-
 ! DEBUG
 call cpu_time(t2)
 ! this section is slow vv CAN FACTORISE THIS IF ALL 2body and 3body features 
@@ -553,20 +630,25 @@ call cpu_time(t2)
                 contrib_atms(1) = atm  
 
 
+                !allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(1:2,&
+                !        &1:feature_threebody_info(atm)%n))
                 allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(1:2,&
-                        &1:feature_threebody_info(atm)%n))
+                        &1:set_neigh_info(conf)%threebody(atm)%n))
                 
                 !* NULL value for terms not within rcut
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(:,:) = -1
 
                 cntr = 1
-                do ii=1,feature_threebody_info(atm)%n,1
+                !do ii=1,feature_threebody_info(atm)%n,1
+                do ii=1,set_neigh_info(conf)%threebody(atm)%n,1
                     if (bond_contributes(ii).neqv..true.) then
                         cycle
                     end if
 
                     do jj=1,2
-                        if ( int_in_intarray(feature_threebody_info(atm)%idx(jj,ii),&
+                        !if ( int_in_intarray(feature_threebody_info(atm)%idx(jj,ii),&
+                        !&contrib_atms(1:cntr),arg) ) then
+                        if ( int_in_intarray(set_neigh_info(conf)%threebody(atm)%idx(jj,ii),&
                         &contrib_atms(1:cntr),arg) ) then
                             !* Local atom already in list, note corresponding idx in contrib_atms
                             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
@@ -575,7 +657,8 @@ call cpu_time(t2)
                         else 
                             cntr = cntr + 1
                             !* note this local atom contributes to this feature for atom
-                            contrib_atms(cntr) = feature_threebody_info(atm)%idx(jj,ii)
+                            !contrib_atms(cntr) = feature_threebody_info(atm)%idx(jj,ii)
+                            contrib_atms(cntr) = set_neigh_info(conf)%threebody(atm)%idx(jj,ii)
                             
                             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &idx_map(jj,ii) = cntr
@@ -592,7 +675,6 @@ call cpu_time(t2)
                 !* local indices of atoms contributing to feature
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx(:) = contrib_atms(1:cntr)
             end if !* update idx,idx_map
-
 ! DEBUG
 call cpu_time(t3)
 ! THIS section is slow vv
@@ -618,7 +700,8 @@ call cpu_time(t3)
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
 
-            do ii=1,feature_threebody_info(atm)%n,1
+            !do ii=1,feature_threebody_info(atm)%n,1
+            do ii=1,set_neigh_info(conf)%threebody(atm)%n,1
                 if(bond_contributes(ii).neqv..true.) then
                     cycle
                 end if
@@ -656,22 +739,22 @@ call cpu_time(t3)
 ! DEBUG
 call cpu_time(t4)
 !write(*,*) t2-t1,t3-t2,t4-t3
-! DEBUG
-        
+! DEBUG       
         end subroutine feature_threebody
         
-        subroutine feature_behler_g1(atm,neigh_idx,ft_idx,current_val)
+        subroutine feature_behler_g1(conf,atm,neigh_idx,ft_idx,current_val)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: current_val
 
             !* scratch
             real(8) :: dr,tmp2,tmp3,za,zb,rcut,fs
            
             !* atom-neigh_idx distance 
-            dr  = feature_isotropic(atm)%dr(neigh_idx)
-            
+            !dr  = feature_isotropic(atm)%dr(neigh_idx)
+            dr = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
+
             !* symmetry function params
             za   = feature_params%info(ft_idx)%za
             zb   = feature_params%info(ft_idx)%zb
@@ -686,23 +769,26 @@ call cpu_time(t4)
 
             !* tapering
             if (speedup_applies("twobody_rcut")) then
-                tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                !tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                tmp2 = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh_idx)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
         
             !* atomic numbers
-            tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
-                    &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+            !tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+            !        &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                    &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
 
             
             current_val = current_val + tmp2*tmp3
         end subroutine feature_behler_g1
         
-        subroutine feature_behler_g1_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_behler_g1_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -720,7 +806,8 @@ call cpu_time(t4)
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
-                lim2 = feature_isotropic(atm)%n
+                !lim2 = feature_isotropic(atm)%n
+                lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
             else
                 lim1 = neigh_idx
@@ -731,32 +818,40 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
-                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                !if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle
                 end if
                 
                 !* atom-atom distance
-                dr_scl = feature_isotropic(atm)%dr(ii)
+                !dr_scl = feature_isotropic(atm)%dr(ii)
+                dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
                 
                 if (dr_scl.gt.rcut) then
                     cycle
                 end if
 
                 !* (r_neighbour - r_centralatom)/dr_scl
-                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                !dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
                 
                 !* tapering
                 if (speedup_applies("twobody_rcut")) then
-                    tap = feature_isotropic(atm)%dr_taper(ii)
-                    tap_deriv = feature_isotropic(atm)%dr_taper_deriv(ii)
+                    !tap = feature_isotropic(atm)%dr_taper(ii)
+                    tap = set_neigh_info(conf)%twobody(atm)%dr_taper(ii)
+                    !tap_deriv = feature_isotropic(atm)%dr_taper_deriv(ii)
+                    tap_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(ii)
                 else
                     tap = taper_1(dr_scl,rcut,fs)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
                 !* atomic numbers
-                tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
+                !tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+                !        &(feature_isotropic(atm)%z(ii)+1.0d0)**zb
+                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                        &(set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
 
                 tmp1 = tap_deriv
                 
@@ -764,18 +859,19 @@ call cpu_time(t4)
             end do
         end subroutine feature_behler_g1_deriv
         
-        subroutine feature_behler_g2(atm,neigh_idx,ft_idx,current_val)
+        subroutine feature_behler_g2(conf,atm,neigh_idx,ft_idx,current_val)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: current_val
 
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,eta,rs,fs
            
             !* atom-neigh_idx distance 
-            dr  = feature_isotropic(atm)%dr(neigh_idx)
-            
+            !dr  = feature_isotropic(atm)%dr(neigh_idx)
+            dr = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
+
             !* symmetry function params
             za   = feature_params%info(ft_idx)%za
             zb   = feature_params%info(ft_idx)%zb
@@ -789,22 +885,25 @@ call cpu_time(t4)
 
             !* tapering
             if (speedup_applies("twobody_rcut")) then
-                tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                !tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                tmp2 = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh_idx)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
         
             !* atomic numbers
-            tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
-                    &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+            !tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+            !        &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                    &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
 
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_behler_g2
       
-        subroutine feature_behler_g2_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_behler_g2_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -823,7 +922,8 @@ call cpu_time(t4)
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
-                lim2 = feature_isotropic(atm)%n
+                !lim2 = feature_isotropic(atm)%n
+                lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
             else
                 lim1 = neigh_idx
@@ -834,28 +934,36 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
-                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                !if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle
                 end if
                 
                 !* atom-atom distance
-                dr_scl = feature_isotropic(atm)%dr(ii)
+                !dr_scl = feature_isotropic(atm)%dr(ii)
+                dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
 
                 !* (r_neighbour - r_centralatom)/dr_scl
-                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                !dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
                 
                 !* tapering
                 if (speedup_applies("twobody_rcut")) then
-                    tap = feature_isotropic(atm)%dr_taper(ii)
-                    tap_deriv = feature_isotropic(atm)%dr_taper_deriv(ii)
+                    !tap = feature_isotropic(atm)%dr_taper(ii)
+                    tap = set_neigh_info(conf)%twobody(atm)%dr_taper(ii)
+                    !tap_deriv = feature_isotropic(atm)%dr_taper_deriv(ii)
+                    tap_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(ii)
                 else
                     tap = taper_1(dr_scl,rcut,fs)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
                 !* atomic numbers
-                tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
+                !tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za *&
+                !        & (feature_isotropic(atm)%z(ii)+1.0d0)**zb
+                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za *&
+                        & (set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
 
                 tmp1 =  exp(-eta*(dr_scl-rs)**2)  *  (tap_deriv - &
                         &2.0d0*eta*(dr_scl-rs)*tap) 
@@ -885,25 +993,33 @@ call cpu_time(t4)
             zb     = feature_params%info(ft_idx)%zb
 
             !* atom-atom distances
-            drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            drik = feature_threebody_info(atm)%dr(2,bond_idx)
-            drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            !drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
+            drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond_idx)
 
             if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
             end if
 
-            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             if (speedup_applies("threebody_rcut")) then
-                tmp_taper = product(feature_threebody_info(atm)%dr_taper(1:3,bond_idx))
+                !tmp_taper = product(feature_threebody_info(atm)%dr_taper(1:3,bond_idx))
+                tmp_taper = product(set_neigh_info(conf)%threebody(atm)%dr_taper(1:3,bond_idx))
             else
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
             end if
 
-            tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
-                    &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+            !tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
+            !        &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+            !        &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+            tmp_atmz = (set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za *&
+                    &( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb
 
             data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
                     &+ 2**(1-xi)*(1.0d0 + lambda*cos_angle)**xi * &
@@ -935,25 +1051,35 @@ call cpu_time(t4)
             zb     = feature_params%info(ft_idx)%zb
 
             !* atom-atom distances
-            drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            drik = feature_threebody_info(atm)%dr(2,bond_idx)
-            drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            !drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
+            drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond_idx)
             
             if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
             end if
 
-            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* tapering
             if (speedup_applies("threebody_rcut")) then
                 !* same rcut,rs for all threebody features
-                tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
-                tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
-                tap_jk = feature_threebody_info(atm)%dr_taper(3,bond_idx)
-                tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
-                tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
-                tap_jk_deriv = feature_threebody_info(atm)%dr_taper_deriv(3,bond_idx)
+                !tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
+                !tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
+                !tap_jk = feature_threebody_info(atm)%dr_taper(3,bond_idx)
+                !tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
+                !tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
+                !tap_jk_deriv = feature_threebody_info(atm)%dr_taper_deriv(3,bond_idx)
+                tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond_idx)
+                tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond_idx)
+                tap_jk = set_neigh_info(conf)%threebody(atm)%dr_taper(3,bond_idx)
+                tap_ij_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(1,bond_idx)
+                tap_ik_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(2,bond_idx)
+                tap_jk_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(3,bond_idx)
             else
                 tap_ij = taper_1(drij,rcut,fs)
                 tap_ik = taper_1(drik,rcut,fs)
@@ -964,9 +1090,12 @@ call cpu_time(t4)
             end if
 
             !* atomic numbers
-            tmp_z = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-                    &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+            !tmp_z = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+            !         &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+            !         &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+            tmp_z = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                     &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+                     &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
 
             tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * tmp_z
             tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
@@ -981,23 +1110,33 @@ call cpu_time(t4)
                 end if
                 
                 !* derivatives wrt r_zz
-                dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                !dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                dcosdrz =  set_neigh_info(conf)%threebody(atm)%dcos_dr(:,zz,bond_idx)
                 
                 if (zz.eq.1) then
                     ! zz=jj
-                    drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
-                    drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    !drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    !drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                    !drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,4,bond_idx)
+                    drjkdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.2) then
                     ! zz=kk
-                    drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
-                    drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
-                    drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    !drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
+                    !drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    !drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.3) then
                     ! zz=ii
-                    drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
-                    drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
+                    !drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    !drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    !drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
+                    drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
 
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
@@ -1033,23 +1172,30 @@ call cpu_time(t4)
             zb     = feature_params%info(ft_idx)%zb
 
             !* atom-atom distances
-            drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
             
             if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
                 return
             end if
 
-            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* atomic number term
-            tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
-                    &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+            !tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
+            !        &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+            !        &(  feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+            tmp_atmz = (set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za *&
+                    &( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(  set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb
 
             !* taper term
             if (speedup_applies("threebody_rcut")) then
-                tmp_taper = product(feature_threebody_info(atm)%dr_taper(1:2,bond_idx))
+                !tmp_taper = product(feature_threebody_info(atm)%dr_taper(1:2,bond_idx))
+                tmp_taper = product(set_neigh_info(conf)%threebody(atm)%dr_taper(1:2,bond_idx))
             else
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)
             end if
@@ -1085,21 +1231,28 @@ call cpu_time(t4)
             zb     = feature_params%info(ft_idx)%zb
 
             !* atom-atom distances
-            drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
             
             if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
                 return
             end if
 
-            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* tapering
             if (speedup_applies("threebody_rcut")) then
-                tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
-                tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
-                tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
-                tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
+                !tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
+                !tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
+                !tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
+                !tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
+                tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond_idx)
+                tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond_idx)
+                tap_ij_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(1,bond_idx)
+                tap_ik_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(2,bond_idx)
             else
                 tap_ij = taper_1(drij,rcut,fs)
                 tap_ik = taper_1(drik,rcut,fs)
@@ -1108,9 +1261,12 @@ call cpu_time(t4)
             end if
 
             !* atomic numbers
-            tmp_z = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-                    &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+            !tmp_z = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+            !         &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+            !         &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+            tmp_z = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                     &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+                     &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
 
             tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2))*tmp_z 
             tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
@@ -1125,20 +1281,27 @@ call cpu_time(t4)
                 end if
                 
                 !* derivatives wrt r_zz
-                dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                !dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                dcosdrz =  set_neigh_info(conf)%threebody(atm)%dcos_dr(:,zz,bond_idx)
                 
                 if (zz.eq.1) then
                     ! zz=jj
-                    drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                    !drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    !drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,4,bond_idx)
                 else if (zz.eq.2) then
                     ! zz=kk
-                    drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
-                    drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    !drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
+                    !drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                 else if (zz.eq.3) then
                     ! zz=ii
-                    drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    !drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    !drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                 end if
 
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
@@ -1152,10 +1315,10 @@ call cpu_time(t4)
             
         end subroutine feature_behler_g5_deriv
         
-        subroutine feature_normal_iso(atm,neigh_idx,ft_idx,current_val)
+        subroutine feature_normal_iso(conf,atm,neigh_idx,ft_idx,current_val)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: current_val
 
             !* scratch
@@ -1165,7 +1328,8 @@ call cpu_time(t4)
             invsqrt2pi = 0.3989422804014327d0
 
             !* atom-neigh_idx distance 
-            dr  = feature_isotropic(atm)%dr(neigh_idx)
+            !dr  = feature_isotropic(atm)%dr(neigh_idx)
+            dr  = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
            
             !* symmetry function params
             za       = feature_params%info(ft_idx)%za
@@ -1186,22 +1350,25 @@ call cpu_time(t4)
 
             !* tapering
             if (speedup_applies("twobody_rcut")) then
-                tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                !tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                tmp2 = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh_idx)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
         
             !* atomic numbers
-            tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
-                    &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+            !tmp3 = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+            !      &(feature_isotropic(atm)%z(neigh_idx)+1.0d0)**zb
+            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                  &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
 
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_normal_iso
         
-        subroutine feature_normal_iso_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_normal_iso_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -1225,7 +1392,8 @@ call cpu_time(t4)
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
-                lim2 = feature_isotropic(atm)%n
+                !lim2 = feature_isotropic(atm)%n
+                lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
             else
                 lim1 = neigh_idx
@@ -1236,32 +1404,40 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
-                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                !if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle
                 end if
                 
                 !* atom-atom distance
-                dr_scl = feature_isotropic(atm)%dr(ii)
+                !dr_scl = feature_isotropic(atm)%dr(ii)
+                dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
 
                 if (dr_scl.gt.rcut) then
                     cycle
                 end if
 
                 !* (r_neighbour - r_centralatom)/dr_scl
-                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                !dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
                 
                 !* tapering
                 if (speedup_applies("twobody_rcut")) then
-                    tap = feature_isotropic(atm)%dr_taper(ii)
-                    tap_deriv = feature_isotropic(atm)%dr_taper_deriv(ii)
+                    !tap = feature_isotropic(atm)%dr_taper(ii)
+                    !tap_deriv = feature_isotropic(atm)%dr_taper_deriv(ii)
+                    tap = set_neigh_info(conf)%twobody(atm)%dr_taper(ii)
+                    tap_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(ii)
                 else
                     tap = taper_1(dr_scl,rcut,fs)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
                 !* atomic numbers
-                tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * (feature_isotropic(atm)%z(ii)+1.0d0)**zb
+                !tmpz = (feature_isotropic(atm)%z_atom+1.0d0)**za * &
+                !      &(feature_isotropic(atm)%z(ii)+1.0d0)**zb
+                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                      &(set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
 
                 !tmp1 =  prec_const*exp(-0.5d0*prec*(dr_scl-mean)**2)  *  (tap_deriv - &
                 !        &prec*(dr_scl-mean)*tap) 
@@ -1272,11 +1448,11 @@ call cpu_time(t4)
             end do
         end subroutine feature_normal_iso_deriv
         
-        real(8) function func_normal(x,mean,prec,sqrt_det)
+        real(8) function func_normal(x,mean,prec)
             implicit none
             
             !* args
-            real(8),intent(in) :: sqrt_det,x(:),mean(:),prec(:,:)
+            real(8),intent(in) :: x(:),mean(:),prec(:,:)
 
             !* scratch
             integer :: n
@@ -1295,12 +1471,12 @@ call cpu_time(t4)
             func_normal = exp(-0.5d0*ddot(n,x-mean,1,lwork,1)) 
         end function func_normal
 
-        subroutine feature_iso_devel(atm,neigh_idx,ft_idx,current_val)
+        subroutine feature_iso_devel(conf,atm,neigh_idx,ft_idx,current_val)
             use propagate, only : logistic
 
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: current_val
 
             real(8) :: dr,rcuts(1:2),mean,const,r_taper
@@ -1317,7 +1493,8 @@ call cpu_time(t4)
             rcuts(2) = mean + 2.0d0*std 
 
             r_taper = minval(rcuts)
-            dr  = feature_isotropic(atm)%dr(neigh_idx)
+            !dr  = feature_isotropic(atm)%dr(neigh_idx)
+            dr  = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
             tmp_taper = taper_1(dr,r_taper,fs)
 
             xtilde = const*(dr-mean)
@@ -1325,12 +1502,12 @@ call cpu_time(t4)
             current_val = current_val + logistic(xtilde)*tmp_taper
         end subroutine feature_iso_devel
         
-        subroutine feature_iso_devel_deriv(atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_iso_devel_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
             use propagate, only : logistic,logistic_deriv
             
             implicit none
 
-            integer,intent(in) :: atm,neigh_idx,ft_idx
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             integer :: lim1,lim2,ii
@@ -1353,7 +1530,8 @@ call cpu_time(t4)
             
             if (neigh_idx.eq.0) then
                 lim1 = 1
-                lim2 = feature_isotropic(atm)%n
+                !lim2 = feature_isotropic(atm)%n
+                lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
             else
                 lim1 = neigh_idx
@@ -1364,20 +1542,23 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
-                if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                !if (atm.eq.feature_isotropic(atm)%idx(ii)) then
+                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle
                 end if
                 
                 !* atom-atom distance
-                dr_scl = feature_isotropic(atm)%dr(ii)
+                !dr_scl = feature_isotropic(atm)%dr(ii)
+                dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
 
                 if (dr_scl.gt.r_taper) then
                     cycle
                 end if
 
                 !* (r_neighbour - r_centralatom)/dr_scl
-                dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                !dr_vec(:) = feature_isotropic(atm)%drdri(:,ii)
+                dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
                 
                 !* tapering
                 tap = taper_1(dr_scl,r_taper,fs)
@@ -1405,24 +1586,28 @@ call cpu_time(t4)
 
             !* feature parameters
             rcut     = feature_params%info(ft_idx)%rcut
-            prec    = feature_params%info(ft_idx)%prec
-            mean    = feature_params%info(ft_idx)%mean
+            prec     = feature_params%info(ft_idx)%prec
+            mean     = feature_params%info(ft_idx)%mean
             fs       = feature_params%info(ft_idx)%fs
             za       = feature_params%info(ft_idx)%za
             zb       = feature_params%info(ft_idx)%zb
             sqrt_det = feature_params%info(ft_idx)%sqrt_det
 
             !* atom-atom distances
-            drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            drik = feature_threebody_info(atm)%dr(2,bond_idx)
-            drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            !drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
+            drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond_idx)
             
             !if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then!.or.(drjk.gt.rcut) ) then
             if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
             end if
 
-            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* must permute atom order to retain invariance
             x1(1) = drij
@@ -1433,20 +1618,24 @@ call cpu_time(t4)
             x2(3) = cos_angle
 
             !* atomic number term
-            tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
-                    &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+            !tmp_atmz = (feature_threebody_info(atm)%z_atom+1.0d0)**za *&
+            !        &( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+            !        &(  feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb
+            tmp_atmz = (set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za *&
+                    &( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(  set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb
 
             !* taper term
             if (speedup_applies("threebody_rcut")) then
-                tmp_taper = product(feature_threebody_info(atm)%dr_taper(1:3,bond_idx))
+                !tmp_taper = product(feature_threebody_info(atm)%dr_taper(1:3,bond_idx))
+                tmp_taper = product(set_neigh_info(conf)%threebody(atm)%dr_taper(1:3,bond_idx))
             else
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
             end if
 
             data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
                     &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
-                    + (func_normal(x1,mean,prec,sqrt_det) + func_normal(x2,mean,prec,sqrt_det)) * &
+                    + (func_normal(x1,mean,prec) + func_normal(x2,mean,prec)) * &
                     &tmp_atmz*tmp_taper
         end subroutine feature_normal_threebody
         
@@ -1479,16 +1668,20 @@ call cpu_time(t4)
             sqrt_det = feature_params%info(ft_idx)%sqrt_det
 
             !* atom-atom distances
-            drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            drik = feature_threebody_info(atm)%dr(2,bond_idx)
-            drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
+            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
+            !drjk = feature_threebody_info(atm)%dr(3,bond_idx)
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
+            drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond_idx)
             
             !if ( (drij.gt.rcut).or.(drik.gt.rcut) ) then
             if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
             end if
 
-            cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* must permuate atom ordering to retain invariance
             x(1,1) = drij
@@ -1499,12 +1692,18 @@ call cpu_time(t4)
 
             !* tapering
             if (speedup_applies("threebody_rcut")) then
-                tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
-                tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
-                tap_jk = feature_threebody_info(atm)%dr_taper(3,bond_idx)
-                tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
-                tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
-                tap_jk_deriv = feature_threebody_info(atm)%dr_taper_deriv(3,bond_idx)
+                !tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
+                !tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
+                !tap_jk = feature_threebody_info(atm)%dr_taper(3,bond_idx)
+                !tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
+                !tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
+                !tap_jk_deriv = feature_threebody_info(atm)%dr_taper_deriv(3,bond_idx)
+                tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond_idx)
+                tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond_idx)
+                tap_jk = set_neigh_info(conf)%threebody(atm)%dr_taper(3,bond_idx)
+                tap_ij_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(1,bond_idx)
+                tap_ik_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(2,bond_idx)
+                tap_jk_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(3,bond_idx)
             else
                 tap_ij = taper_1(drij,rcut,fs)
                 tap_ik = taper_1(drik,rcut,fs)
@@ -1515,12 +1714,15 @@ call cpu_time(t4)
             end if
 
             !* atomic numbers
-            tmpz = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-                    &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+            !tmpz = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
+            !        &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+            !        &(feature_threebody_info(atm)%z_atom+1.0d0)**za
+            tmpz = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
+                    &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
 
-            tmp_feat(1) = func_normal(x(:,1),mean,prec,sqrt_det)
-            tmp_feat(2) = func_normal(x(:,2),mean,prec,sqrt_det)
+            tmp_feat(1) = func_normal(x(:,1),mean,prec)
+            tmp_feat(2) = func_normal(x(:,2),mean,prec)
 
             do zz=1,2
                 !* prec * (x - mean)
@@ -1538,23 +1740,33 @@ call cpu_time(t4)
                 end if
                 
                 !* derivatives wrt r_zz
-                dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                !dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
+                dcosdrz =  set_neigh_info(conf)%threebody(atm)%dcos_dr(:,zz,bond_idx)
                 
                 if (zz.eq.1) then
                     ! zz=jj
-                    drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
-                    drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    !drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    !drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
+                    !drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,4,bond_idx)
+                    drjkdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.2) then
                     ! zz=kk
-                    drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
-                    drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
-                    drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    !drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
+                    !drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    !drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.3) then
                     ! zz=ii
-                    drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
-                    drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
+                    !drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
+                    !drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
+                    !drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
+                    drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
 
                 !* dx_{ijk} / dr_z |_ab = d x_{ijk}|_b / d r_z|_a

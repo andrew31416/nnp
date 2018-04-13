@@ -486,6 +486,10 @@ program unittest
             !* set loss function parameters
             call init_loss(loss_const_energy,loss_const_forces,loss_const_reglrn,loss_norm_type)
             
+            if (.not.allocated(set_neigh_info)) then
+                allocate(set_neigh_info(data_sets(set_type)%nconf))
+            end if
+
             !* init array
             num_params = num_optimizable_params()
             allocate(anl_jac(num_params))
@@ -522,6 +526,8 @@ program unittest
             end do !* end loop over features
             
             test_feature_selection_loss_jac = all(anl_jac_ok)
+
+            deallocate(set_neigh_info)
         end function test_feature_selection_loss_jac
 
         logical function feature_selection_subsidiary_1(original_weights,set_type,&
@@ -999,8 +1005,12 @@ program unittest
             ftol = dble(1e-7)
             rtol = dble(1e-8)
 
+
             !do set_type=1,2
             do set_type=1,1
+                !* initialise set_neigh_info
+                call init_set_neigh_info(set_type)
+                
                 !do conf=1,data_sets(set_type)%nconf
                 do conf=1,1
                     !* all interacting atom projections
@@ -1012,10 +1022,10 @@ program unittest
                     deallocate(ultraz)
                     deallocate(ultraidx)
                     
-                    nmax = feature_threebody_info(1)%n
+                    nmax = set_neigh_info(conf)%threebody(1)%n
                     do atm=2,data_sets(set_type)%configs(conf)%n
-                        if (feature_threebody_info(atm)%n.gt.nmax) then
-                            nmax = feature_threebody_info(atm)%n
+                        if (set_neigh_info(conf)%threebody(atm)%n.gt.nmax) then
+                            nmax = set_neigh_info(conf)%threebody(atm)%n
                         end if
                     end do
 
@@ -1025,8 +1035,9 @@ program unittest
                     deriv_ok_cos = 0
 
                     !* copy threebody info
-                    call copy_threebody_feature_info(feature_threebody_info,threebody_ref)
-                    deallocate(feature_threebody_info)
+                    call copy_threebody_feature_info(set_neigh_info(conf)%threebody,threebody_ref)
+                    deallocate(set_neigh_info(conf)%threebody)
+                    !deallocate(feature_threebody_info) ! DEP.
 
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         do dd=1,3,1
@@ -1047,31 +1058,36 @@ program unittest
                                     call get_ultracell(maxrcut(0),5000,set_type,conf,&
                                             &ultracart,ultraidx,ultraz)
                                     
-                                    call calculate_threebody_info(set_type,conf,ultracart,ultraz,ultraidx)
+                                    call calculate_threebody_info(set_type,conf,ultracart,&
+                                            &ultraz,ultraidx)
                                     deallocate(ultracart)
                                     deallocate(ultraz)
                                     deallocate(ultraidx)
                                     
                                     if (ii.eq.1) then
-                                        call copy_threebody_feature_info(feature_threebody_info,&
-                                                &threebody_dif) 
+                                        call copy_threebody_feature_info(&
+                                                &set_neigh_info(conf)%threebody,threebody_dif) 
                                     else
                                         !* compute finite difference
                                         do jj=1,data_sets(set_type)%configs(conf)%n
-                                            if (size(feature_threebody_info(jj)%cos_ang).ne.&
-                                            &size(threebody_dif(jj)%cos_ang)) then
-                                                write(*,*) 'dw = ',dw,'too large in threebody deriv test'
+                                            if (size(set_neigh_info(conf)%threebody(jj)%cos_ang)&
+                                            &.ne.size(threebody_dif(jj)%cos_ang)) then
+                                                write(*,*) 'dw = ',dw,&
+                                                        &'too large in threebody deriv test'
                                                 call exit(0)
                                             end if
                                             
-                                            threebody_dif(jj)%cos_ang = (threebody_dif(jj)%cos_ang - &
-                                                    &feature_threebody_info(jj)%cos_ang)/(2.0d0*dw)
+                                            threebody_dif(jj)%cos_ang = (threebody_dif(jj)%cos_ang &
+                                                    &- set_neigh_info(conf)%threebody(jj)%cos_ang)&
+                                                    &/(2.0d0*dw)
                                             threebody_dif(jj)%dr = (threebody_dif(jj)%dr - &
-                                                    &feature_threebody_info(jj)%dr)/(2.0d0*dw)
+                                                    &set_neigh_info(conf)%threebody(jj)%dr)/&
+                                                    &(2.0d0*dw)
                                         end do
                                     end if
 
-                                    deallocate(feature_threebody_info)
+                                    deallocate(set_neigh_info(conf)%threebody)
+                                    !deallocate(feature_threebody_info)
                                 end do !* end loop over +/- dw
 
                                 !* if true, error in derivatives
@@ -1235,6 +1251,8 @@ program unittest
                     deallocate(deriv_ok_cos)
                     deallocate(threebody_ref)
                 end do !* end loop over configs
+            
+                deallocate(set_neigh_info)
             end do !* end loop over sets
 
             test_threebody_derivatives = all_ok

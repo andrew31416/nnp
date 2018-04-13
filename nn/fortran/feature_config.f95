@@ -70,6 +70,11 @@ module feature_config
         real(8) :: pca_threshold
     end type feature_info
 
+    type,public :: neigh_info
+        type(feature_info_twobody),allocatable :: twobody(:)
+        type(feature_info_threebody),allocatable :: threebody(:)
+    end type neigh_info
+
     !===================!
     !* initialisations *!
     !===================!
@@ -83,8 +88,11 @@ module feature_config
     !* three body information for a single structure used to generate features
     type(feature_info_threebody),allocatable :: feature_threebody_info(:)
 
+    !* for storing all neighbourhood info of a single set
+    type(neigh_info),allocatable :: set_neigh_info(:)
+
     !* whether or not to use low mem (slow performance) or high mem (high performance)
-    logical :: performance_options(1:2) 
+    logical :: performance_options(1:3) = .false. 
 
     !* openMP pragma necessary for globally scoped variables
     !$omp threadprivate(feature_isotropic)
@@ -188,6 +196,9 @@ module feature_config
             else if (speedup.eq."threebody_rcut") then
                 !* all threebody features have same rcut
                 idx = 2
+            else if (speedup.eq."keep_all_neigh_info") then
+                !* keep all nearest neighbour info once computed
+                idx = 3
             else
                 write(*,*) ""
                 write(*,*) "***********************************************"

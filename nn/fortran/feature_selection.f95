@@ -113,6 +113,10 @@ module feature_selection
             integer :: atm,neigh,ftype,bond,ft
             logical :: calc_threebody
             type(feature_info) :: tmp_feat_derivs
+
+            if (.not.allocated(set_neigh_info)) then
+                call error("single_conf_feat_jac","set_neigh_info should be initialised")
+            end if
             
             !* init param allocatables 
             call init_feature_array(tmp_feat_derivs)
@@ -122,15 +126,17 @@ module feature_selection
 
             !* whether three body interactions are present
             calc_threebody = threebody_features_present()
-            
-            !* get all nearest neighbours
-            call get_ultracell(mxrcut,5000,set_type,conf,ultra_cart,ultra_idx,ultra_z)
-            
-            !* get atom-neighbour distances
-            call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+           
+            if (.not.allocated(set_neigh_info(conf)%twobody)) then
+                !* get all nearest neighbours
+                call get_ultracell(mxrcut,5000,set_type,conf,ultra_cart,ultra_idx,ultra_z)
+                
+                !* get atom-neighbour distances
+                call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
 
-            if (calc_threebody) then
-                call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                if (calc_threebody) then
+                    call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                end if
             end if
 
             !* compute new features
@@ -162,9 +168,11 @@ module feature_selection
             !* dy_atm / dparam = sum_ft dy_atm/dx_ft * dx_ft/dparam
             do atm=1,data_sets(set_type)%configs(conf)%n,1
                 !* atomic number of central atom
-                zatm = feature_isotropic(atm)%z_atom
+                !zatm = feature_isotropic(atm)%z_atom
+                zatm = set_neigh_info(conf)%twobody(atm)%z_atom
                
-                if (feature_isotropic(atm)%n.le.0) then
+                !if (feature_isotropic(atm)%n.le.0) then
+                if (set_neigh_info(conf)%twobody(atm)%n.le.0) then
                     cycle
                 end if
                 
@@ -172,12 +180,15 @@ module feature_selection
                 !* atoms at once
                 call zero_feature_info(tmp_feat_derivs)
                 
-                do neigh=1,feature_isotropic(atm)%n,1
+                !do neigh=1,feature_isotropic(atm)%n,1
+                do neigh=1,set_neigh_info(conf)%twobody(atm)%n,1
                     !* atom-atom distance
-                    dr = feature_isotropic(atm)%dr(neigh)
+                    !dr = feature_isotropic(atm)%dr(neigh)
+                    dr = set_neigh_info(conf)%twobody(atm)%dr(neigh)
 
                     !* atomic number
-                    zngh = feature_isotropic(atm)%z(neigh)
+                    !zngh = feature_isotropic(atm)%z(neigh)
+                    zngh = set_neigh_info(conf)%twobody(atm)%z(neigh)
 
                     do ft=1,feature_params%num_features,1
                         ftype = feature_params%info(ft)%ftype
@@ -197,11 +208,13 @@ module feature_selection
                 end do !* end loop over two body neighbours to atm
 
                 if (calc_threebody) then
-                    if (feature_threebody_info(atm)%n.le.0) then
+                    !if (feature_threebody_info(atm)%n.le.0) then
+                    if (set_neigh_info(conf)%threebody(atm)%n.le.0) then
                         cycle
                     end if
                     
-                    do bond=1,feature_threebody_info(atm)%n,1
+                    !do bond=1,feature_threebody_info(atm)%n,1
+                    do bond=1,set_neigh_info(conf)%threebody(atm)%n,1
                         do ft=1,feature_params%num_features,1
                             ftype = feature_params%info(ft)%ftype
                             
@@ -211,10 +224,15 @@ module feature_selection
                                 cycle
                             end if
                             
+                            !call feature_ThreeBody_param_deriv(&
+                            !        &feature_threebody_info(atm)%dr(1:3,bond),&
+                            !        &feature_threebody_info(atm)%cos_ang(bond),&
+                            !        zatm,feature_threebody_info(atm)%z(1:2,bond),ft,&
+                            !        &tmp_feat_derivs%info(ft))
                             call feature_ThreeBody_param_deriv(&
-                                    &feature_threebody_info(atm)%dr(1:3,bond),&
-                                    &feature_threebody_info(atm)%cos_ang(bond),&
-                                    zatm,feature_threebody_info(atm)%z(1:2,bond),ft,&
+                                    &set_neigh_info(conf)%threebody(atm)%dr(1:3,bond),&
+                                    &set_neigh_info(conf)%threebody(atm)%cos_ang(bond),&
+                                    zatm,set_neigh_info(conf)%threebody(atm)%z(1:2,bond),ft,&
                                     &tmp_feat_derivs%info(ft))
                         end do !* end loop over features
                     end do !* end loop over threebody bonds to atm
@@ -223,14 +241,18 @@ module feature_selection
                 !* dy_atm / dparam = sum_ft dy_atm/dx_ft * dx_ft/dparam
                 call append_atom_contribution(atm,tmp_feat_derivs,tmpE,lcl_feat_derivs)
             end do !* end loop over atoms
-            
-            deallocate(ultra_z)
-            deallocate(ultra_idx)
-            deallocate(ultra_cart)
-            deallocate(feature_isotropic)
-            if (calc_threebody) then
-                deallocate(feature_threebody_info)
+           
+            if (allocated(ultra_z)) then 
+                deallocate(ultra_z)
+                deallocate(ultra_idx)
+                deallocate(ultra_cart)
             end if
+            ! deprecated vv
+            !deallocate(feature_isotropic)
+            !if (calc_threebody) then
+            !    deallocate(feature_threebody_info)
+            !end if
+            ! deprecated ^^
         end subroutine single_conf_feat_jac
 
         subroutine feature_TwoBody_param_deriv(dr,zatm,zngh,ft_idx,feature_deriv)

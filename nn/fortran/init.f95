@@ -438,4 +438,18 @@ module init
             allocate(net_units%delta%hl2(1:net_dim%hl2,1:natm))
         end subroutine allocate_units
 
+        subroutine init_set_neigh_info(set_type)
+            !* initialise neighbour info for all confs in given set
+
+            implicit none
+
+            integer,intent(in) :: set_type
+
+            if (allocated(set_neigh_info)) then
+                deallocate(set_neigh_info)
+            end if
+
+            allocate(set_neigh_info(data_sets(set_type)%nconf))
+        end subroutine init_set_neigh_info
+
 end module init
