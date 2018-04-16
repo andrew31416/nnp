@@ -311,8 +311,10 @@ module init
             if (performance_option_Nbody_rcut_applies(2)) then
                 call activate_performance_option("twobody_rcut")
             end if
-            if (performance_option_Nbody_rcut_applies(3)) then
-                call activate_performance_option("threebody_rcut")
+            if (threebody_features_present()) then
+                if (performance_option_Nbody_rcut_applies(3)) then
+                    call activate_performance_option("threebody_rcut")
+                end if
             end if
 
         end subroutine init_features_from_disk
