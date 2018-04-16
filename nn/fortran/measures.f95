@@ -155,16 +155,6 @@ module measures
                 !* split as evenly as possible
                 call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
 
-                !!* number of confs per thread (except final thread)
-                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
-                !
-                !thread_start = thread_idx*dconf + 1
-                !
-                !if (thread_idx.eq.num_threads-1) then
-                !    thread_end = data_sets(set_type)%nconf
-                !else
-                !    thread_end = (thread_idx+1)*dconf
-                !end if 
                 !* initialise force loss subsidiary mem.
                 call init_forceloss_subsidiary_mem()
                 call allocate_weights(loss_jac_local)
@@ -200,7 +190,8 @@ module measures
                 call allocate_weights(d2ydxdw)
                 
                 do conf=1,data_sets(set_type)%nconf,1
-                    call loss_jacobian_confloop(set_type,conf,include_force_loss,tmp1_jac,tmp2_jac,loss_jac_shared)
+                    call loss_jacobian_confloop(set_type,conf,include_force_loss,&
+                            &tmp1_jac,tmp2_jac,loss_jac_shared)
                 end do !* end loop over confs
 
                 call deallocate_weights(tmp1_jac)

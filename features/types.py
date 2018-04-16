@@ -140,20 +140,6 @@ class feature():
         params : dict
             Key,value pairs of parameters for specific feature type
         """
-        #if isinstance(params,dict)!=True:
-        #    raise FeatureError("{} is not dict".format(type(params)))
-
-        #_ftype = (int,np.int16,np.int32,np.int64,float,np.float32,np.float64)
-        #_atype = (list,np.ndarray,int,float,np.float32,np.float64)
-        #_types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
-        #        'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
-        #        'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype}
-        ## constraints on bound parameters
-        #_constraints_ok = {"xi":lambda x: x>=1,\
-        #                   "rcut":lambda x: x>0,\
-        #                   "lambda":lambda x: x in [-1.0,1.0],\
-        #                   "eta":lambda x: x>=0}
-   
 
         # DO NOT CHANGE ORDER OF VARIABLES _UPDATE_ME !! 
         if self.type == 'atomic_number':
@@ -180,38 +166,43 @@ class feature():
             raise FeatureError("supplied keys {} != {}".format(params.keys(),_keys))
         for _attr in params:
             self.set_param(_attr,params[_attr])
-        #    
-        #    # check param type
-        #    if type(params[_attr]) not in _types[_attr]:
-        #        raise FeatureError("param type {} != {}".format(type(params[_attr]),_types[_attr]))
 
-        #    if _attr in _constraints_ok.keys():
-        #        # check any constraints are OK
-        #        if not _constraints_ok[_attr](params[_attr]):
-        #            raise FeatureError("param type {} has invalid value {}".format(_attr,\
-        #                    params[_attr]))
-        #if "lambda" in params.keys():
-        #    if params["lambda"] not in [-1,1]:
-        #        raise FeatureError("lambda params must have values -1 or 1 only")
-        #
-        #if self.type in ["acsf_normal-b3"]:
-        #    # check length of arrays
-        #    if self.type == "acsf_normal-b2":
-        #        _length = {"mean":1,"prec":1}
-        #    elif self.type == "acsf_normal-b3":
-        #        _length = {"mean":3,"prec":9}
-        #    for _attr in ["mean","prec"]:
-        #        params[_attr] = np.asarray(params[_attr],dtype=np.float64)
-        #        if params[_attr].flatten().shape[0] != _length[_attr]:
-        #            raise FeatureError("arrays lengths are not as expected")
-
-        #    try:
-        #        # check that matrix is symmetric
-        #        np.testing.assert_array_almost_equal(params["prec"],params["prec"].T)
-        #    except AssertionError:
-        #        raise FeatureError("Supplied precision matrix for 3-body gaussian is not symmetric")
-
-        #self.params = deepcopy(params)
+    def get_bounds(self,key):
+        """
+        Return bounds of parameters as constrained opt. of params is necessary.
+        For feature params of scalar length > 1, a list of 2 elements lists is
+        returned, eg [ [None,10] , [-1,3] ]
+        
+        Parameters
+        ----------
+        key : String, allowed vales = self.update_keys
+            Parameter key name as in self.params
+        """
+        if key not in self.update_keys:
+            raise FeatureError("feature parameter {} is not in {}".format(key,self.update_keys))
+        
+        value = None
+        if key == "xi":
+            value = [[1,None]]
+        elif key == "eta":
+            value = [[0,None]]
+        elif key == "rs":
+            value = [[None,None]]
+        elif key == "mean":
+            if self.type == "acsf_normal-b2":
+                value = [[None,None]]
+            elif self.type == "acsf_normal-b3":
+                value = [[None,None] for ii in range(3)]
+            else:
+                raise FeatureError("Implementation Error")
+        elif key == "prec":
+            if self.type == "acsf_normal-b2":
+                value = [[0,None]]
+            elif self.type == "acsf_normal-b3":
+                value = [[None,None] for ii in range(6)]
+        else:
+            raise FeatureError("Need to write get_bounds for key {}".format(key))
+        return value 
 
     def _write_to_disk(self,file_object):
         """
@@ -321,6 +312,9 @@ class features():
 
         # set type map (String->Int)
         self._set_map = {"train":1,"holdout":2,"test":3}
+
+        # this improves regression by tuning features to be [-1,1]
+        self.scale_features = True
 
     def set_parallel(self,parallel):
         """
@@ -532,15 +526,14 @@ class features():
         getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=self._set_map[set_type])
        
         t2 = time.time()
-        print(updating_features)
+        
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=self._set_map[set_type],\
                 derivatives=derivatives,scale_features=scale,parallel=self.parallel,\
                 updating_features=updating_features)
 
         t3 = time.time()
-        print('disk write time : {}s feature comp. time : {}s parallel = {}'.format(t2-t1,t3-t2,\
-                self.parallel))
+        #print('feature comp. time : {}s parallel = {}'.format(t3-t2,self.parallel))
 
         if safe:
             # abort if Nan found in features or their derivatives
@@ -867,8 +860,6 @@ class features():
         # compute pre conditioning and initialise net
         self.mlpp._prepare_data_structures(X=X,set_type="train",derivatives=False,\
                 updating_features=True)
-  
-        print('finished prepping')
    
         # compute initial weights and concacenate weights with feature params 
         x0 = self._init_concacenation()
@@ -883,9 +874,6 @@ class features():
             raise FeaturesError("Implementation error in feature parameter parsing")
         del x1 
 
-        print('1st jac evaluation')
-        self._feature_loss_jacobian(parameters=x0)
-        asdfg
 
         # log for loss with optimization
         self._loss_log = []
@@ -893,7 +881,8 @@ class features():
         # do optimization 
         self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
                 jac=self._feature_loss_jacobian,x0=x0,\
-                method='bfgs',options={"gtol":1e-16,"maxiter":2})
+                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":2},\
+                bounds=self.concacenated_bounds)
   
         print(self.OptimizeResult["status"])
    
@@ -932,7 +921,7 @@ class features():
 
         # keep loss during optimization
         self._loss_log.append(loss)
-        print(parameters,loss)
+        #print(parameters,loss)
         return loss
 
     def _feature_loss_jacobian(self,parameters):
@@ -972,11 +961,12 @@ class features():
         basis_func_jac = np.zeros(parameters.shape[0]-self.mlpp.num_weights,dtype=np.float64)
 
         getattr(f95_api,"f90wrap_loss_feature_jacobian")(flat_weights=net_weights,\
-                set_type=self._set_map["train"],parallel=self.parallel,jacobian=basis_func_jac) 
+                set_type=self._set_map["train"],parallel=self.parallel,\
+                scale_features=self.scale_features,jacobian=basis_func_jac) 
         
         if np.isnan(basis_func_jac).any() or np.isinf(basis_func_jac).any():
             raise FeaturesError("Nan or Inf raised in loss jacobian wrt. basis func. params")
-   
+        
         return np.hstack((nn_weight_jac,basis_func_jac))
 
     def _feature_opt_callback(self,parameters):
@@ -1020,6 +1010,9 @@ class features():
         weights and feature params concacenated, np.ndarray, shape = (N,)
         """
 
+        # need constrained minimization for some basis func. params
+        self.concacenated_bounds = [[None,None] for ii in range(self.mlpp.weights.shape[0])]
+
         offset = self.mlpp.weights.shape[0]
         
         x0 = list(self.mlpp.weights)
@@ -1044,6 +1037,9 @@ class features():
                     
                     idx = np.triu_indices(3,0)
                     _value = self.features[_ft_idx].params[_key][idx] 
+              
+                # fetch bounds for basis func param type 
+                self.concacenated_bounds += self.features[_ft_idx].get_bounds(_key)
                 
                 # append params to list
                 x0 += list(_value)
@@ -1054,6 +1050,9 @@ class features():
                 # book keeping
                 offset = len(x0)
 
+        if len(self.concacenated_bounds)!=len(x0):
+            raise FeaturesError("shape mismatch between concatenated parameters and bounds")
+        
         return np.asarray(x0)
 
     def _init_concacenation(self):
@@ -1092,11 +1091,10 @@ class features():
             # upper triangular (including diagonal)
             symmetric_matrix[idx] = value
 
-            # lower triangular indices
-            idx = np.tril_indices(3,1)
-
+            # lower triangular indices (not including diagonals)
+            idx = np.tril_indices(3,-1)
             symmetric_matrix[idx] = symmetric_matrix.T[idx]
-        
+            
             return symmetric_matrix
         elif key in ['prec','mean'] and len(value)!=1:
             return np.asarray(value)

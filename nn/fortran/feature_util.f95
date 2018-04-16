@@ -1006,7 +1006,21 @@ module feature_util
             logical,intent(in) :: scale_derivatives
 
             !* scratch
-            integer :: ii,conf,atm,jj
+            integer :: conf
+                
+            do conf=1,data_sets(set_type)%nconf,1
+                call scale_conf_features(set_type,conf,scale_derivatives)
+            end do !* end loop over configurations
+        end subroutine
+        
+        subroutine scale_conf_features(set_type,conf,scale_derivatives)
+            implicit none
+
+            integer,intent(in) :: set_type,conf
+            logical,intent(in) :: scale_derivatives
+
+            !* scratch
+            integer :: ii,atm,jj
             real(8) :: cnst,cnst_add
 
             do ii=1,feature_params%num_features,1
@@ -1017,26 +1031,24 @@ module feature_util
                 cnst = feature_params%info(ii)%scl_cnst
                 cnst_add = feature_params%info(ii)%add_cnst
                 
-                do conf=1,data_sets(set_type)%nconf,1
-                    data_sets(set_type)%configs(conf)%x(ii+1,:) = &
-                            &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst + cnst_add
+                data_sets(set_type)%configs(conf)%x(ii+1,:) = &
+                        &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst + cnst_add
 
-                    if (scale_derivatives) then
-                        do atm=1,data_sets(set_type)%configs(conf)%n
-                            if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
-                                cycle
-                            end if
+                if (scale_derivatives) then
+                    do atm=1,data_sets(set_type)%configs(conf)%n
+                        if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
+                            cycle
+                        end if
 
-                            do jj=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
-                                data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) = cnst*&
-                                        &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj)  
-                            end do !* end loop over neighbours to atm
-                        end do !* end loop over atoms
-                    end if 
+                        do jj=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
+                            data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) = cnst*&
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj)  
+                        end do !* end loop over neighbours to atm
+                    end do !* end loop over atoms
+                end if 
 
-                end do !* end loop over configurations
             end do !* end loop over features
-        end subroutine
+        end subroutine scale_conf_features
 
         subroutine Nbody_cutoff_parameters(N,rcut_array,fs_array)
             !* return array of rcut and fs parameters for all two body features

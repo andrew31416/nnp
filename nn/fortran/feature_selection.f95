@@ -1,6 +1,7 @@
 module feature_selection
     use feature_util, only : get_ultracell, maxrcut, threebody_features_present
     use feature_util, only : calculate_threebody_info,calculate_twobody_info
+    use feature_util, only : scale_conf_features
     use tapering, only : taper_1
     use propagate, only : forward_propagate,backward_propagate
     use features, only : calculate_all_features
@@ -16,15 +17,15 @@ module feature_selection
     real(8),external :: ddot
 
     contains
-        subroutine loss_feature_jacobian(flat_weights,set_type,parallel,jacobian)
+        subroutine loss_feature_jacobian(flat_weights,set_type,scale_features,parallel,jacobian)
             use omp_lib
             
             implicit none
 
             real(8),intent(in) :: flat_weights(:)
             integer,intent(in) :: set_type
-            logical,intent(in) :: parallel
-            real(8),intent(inout) :: jacobian(:)
+            logical,intent(in) :: scale_features,parallel
+            real(8),intent(out) :: jacobian(:)
 
             !* scratch
             integer :: conf
@@ -33,7 +34,7 @@ module feature_selection
             
             !* openMP variables
             integer :: thread_idx,num_threads,bounds(1:2)
-        
+            
             if (num_optimizable_params().ne.size(jacobian)) then
                 call error("loss_feature_jacobian","Mismatch between length of Py and F95 jacobian")
             end if 
@@ -71,19 +72,8 @@ module feature_selection
                 !* split as evenly as possible
                 call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
 
-                !!* number of conds per thread (except final thread)
-                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
-
-                !thread_start = thread_idx*dconf + 1
-
-                !if (thread_idx.eq.num_threads-1) then
-                !    thread_end = data_sets(set_type)%nconf
-                !else
-                !    thread_end = (thread_idx+1)*dconf
-                !end if
-
                 do conf=bounds(1),bounds(2),1
-                    call single_conf_feat_jac(set_type,conf,lcl_derivs)
+                    call single_conf_feat_jac(set_type,conf,scale_features,lcl_derivs)
                 end do
                 
                 !$omp critical
@@ -95,7 +85,7 @@ module feature_selection
             else
 
                 do conf=1,data_sets(set_type)%nconf,1
-                    call single_conf_feat_jac(set_type,conf,gbl_derivs)
+                    call single_conf_feat_jac(set_type,conf,scale_features,gbl_derivs)
                 end do !* end loop over confs
             end if
 
@@ -107,11 +97,12 @@ module feature_selection
             call parse_feature_format_to_array_jac(gbl_derivs,jacobian)
         end subroutine loss_feature_jacobian
 
-        subroutine single_conf_feat_jac(set_type,conf,lcl_feat_derivs)
+        subroutine single_conf_feat_jac(set_type,conf,scale_features,lcl_feat_derivs)
             implicit none
 
             integer,intent(in) :: set_type,conf
             type(feature_info),intent(inout) :: lcl_feat_derivs
+            logical,intent(in) :: scale_features
 
             !* scratch
             real(8) :: mxrcut,dr,zatm,zngh,tmpE,invN
@@ -148,7 +139,11 @@ module feature_selection
 
             !* compute new features
             call calculate_all_features(set_type,conf,.true.)
-            
+            if (scale_features) then
+                !* don't touch feature derivatives wrt atoms
+                call scale_conf_features(set_type,conf,.false.)
+            end if
+
             !* allocate mem. for dydx,a,z,a',delta
             call allocate_dydx(set_type,conf)
             call allocate_units(set_type,conf)
@@ -158,7 +153,7 @@ module feature_selection
     
             !* need dy_atm/dx for all atoms and features
             call backward_propagate(set_type,conf)
-            
+
             !* (E_ref - \sum_i E_i)^2
             tmpE = sum(data_sets(set_type)%configs(conf)%current_ei) &
                     &-data_sets(set_type)%configs(conf)%ref_energy 
