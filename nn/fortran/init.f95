@@ -315,8 +315,6 @@ module init
                 call activate_performance_option("threebody_rcut")
             end if
 
-            write(*,*) 'have initiated features :',performance_options,'seepdup applies = ',&
-                    &speedup_applies("twobody_rcut"),speedup_applies("threebody_rcut")
         end subroutine init_features_from_disk
 
         subroutine init_feature_vectors(init_type)

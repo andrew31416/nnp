@@ -398,6 +398,43 @@ module util
 
             float_error = res
         end function float_error
+
+        subroutine load_balance_alg_1(thread_id,num_threads,nconf,bounds)
+            implicit none
+
+            !* args
+            integer,intent(in) :: thread_id,num_threads,nconf
+            integer,intent(out) :: bounds(1:2)
+
+            !* scratch
+            integer :: dconf,all_bounds(1:2,1:num_threads),difference,thread
+
+            dconf = int(floor(float(nconf)/float(num_threads)))
+
+            ! # remaining confs to allocate
+            difference = nconf - dconf*num_threads
+
+            if (difference.gt.num_threads) then
+                call error_util("load_balance_alg_1","Algorithm bug")
+            else if ((thread_id.lt.0).or.(thread_id.ge.num_threads)) then
+                call error_util("load_balance_alg_1","Implementation error")
+            end if
+
+            all_bounds(1,1) = 1
+            all_bounds(2,1) = all_bounds(1,1) + dconf - 1
+            if (1.le.difference) then
+                all_bounds(2,1) = all_bounds(2,1) + 1
+            end if
+
+            do thread=2,num_threads,1
+                all_bounds(1,thread) = all_bounds(2,thread-1) + 1
+                all_bounds(2,thread) = all_bounds(1,thread) + dconf - 1
+                if (thread.le.difference) then
+                    all_bounds(2,thread) = all_bounds(2,thread) + 1
+                end if
+            end do 
+            bounds(1:2) = all_bounds(1:2,thread_id+1)
+        end subroutine load_balance_alg_1
         
         subroutine error_util(routine,message)
             implicit none

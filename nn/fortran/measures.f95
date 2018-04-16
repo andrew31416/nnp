@@ -25,8 +25,7 @@ module measures
             real(8) :: tmp_energy,tmp_forces,tmp_reglrn
             
             !* openMP variables
-            integer :: thread_start,thread_end,thread_idx,num_threads
-            integer :: dconf
+            integer :: thread_idx,num_threads,bounds(1:2)
 
             !* read in NN weights
             call parse_array_to_structure(flat_weights,net_weights)
@@ -36,26 +35,29 @@ module measures
                 !$omp parallel num_threads(omp_get_max_threads()),&
                 !$omp& shared(data_sets,net_weights,net_weights_nobiasT,nwght,net_dim,nlf,D,set_type),&
                 !$omp& shared(loss_norm_type,loss_const_energy,loss_const_forces,loss_const_reglrn),&
-                !$omp& private(conf,thread_start,thread_end,thread_idx)
+                !$omp& private(conf,thread_idx,bounds)
 
                 !* [0,num_threads-1]
                 thread_idx = omp_get_thread_num()
                 
                 !* number of threads
                 num_threads = omp_get_max_threads()
+               
+                !* split as evenly as possible
+                call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
                 
-                !* number of confs per thread (except final thread)
-                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
-                
-                thread_start = thread_idx*dconf + 1
-                
-                if (thread_idx.eq.num_threads-1) then
-                    thread_end = data_sets(set_type)%nconf
-                else
-                    thread_end = (thread_idx+1)*dconf
-                end if 
+                !!* number of confs per thread (except final thread)
+                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
+                !
+                !thread_start = thread_idx*dconf + 1
+                !
+                !if (thread_idx.eq.num_threads-1) then
+                !    thread_end = data_sets(set_type)%nconf
+                !else
+                !    thread_end = (thread_idx+1)*dconf
+                !end if 
 
-                do conf=thread_start,thread_end,1
+                do conf=bounds(1),bounds(2),1
                     call loss_confloop(set_type,conf)
                 end do
                 
@@ -122,8 +124,7 @@ module measures
             type(weights) :: tmp2_jac
             
             !* openMP variables
-            integer :: thread_start,thread_end,thread_idx,num_threads
-            integer :: dconf
+            integer :: thread_idx,num_threads,bounds(1:2)
             
             !* read in supplied weights
             call parse_array_to_structure(flat_weights,net_weights)
@@ -142,7 +143,7 @@ module measures
             if (parallel) then
                 !$omp parallel num_threads(omp_get_max_threads()),&
                 !$omp& default(shared),&
-                !$omp& private(conf,thread_start,thread_end,thread_idx,tmp1_jac),&
+                !$omp& private(conf,thread_idx,tmp1_jac,bounds),&
                 !$omp& private(tmp2_jac,loss_jac_local)
 
                 !* [0,num_threads-1]
@@ -150,17 +151,20 @@ module measures
                 
                 !* number of threads
                 num_threads = omp_get_max_threads()
+                
+                !* split as evenly as possible
+                call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
 
-                !* number of confs per thread (except final thread)
-                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
-                
-                thread_start = thread_idx*dconf + 1
-                
-                if (thread_idx.eq.num_threads-1) then
-                    thread_end = data_sets(set_type)%nconf
-                else
-                    thread_end = (thread_idx+1)*dconf
-                end if 
+                !!* number of confs per thread (except final thread)
+                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
+                !
+                !thread_start = thread_idx*dconf + 1
+                !
+                !if (thread_idx.eq.num_threads-1) then
+                !    thread_end = data_sets(set_type)%nconf
+                !else
+                !    thread_end = (thread_idx+1)*dconf
+                !end if 
                 !* initialise force loss subsidiary mem.
                 call init_forceloss_subsidiary_mem()
                 call allocate_weights(loss_jac_local)
@@ -170,7 +174,7 @@ module measures
                 call allocate_weights(dydw)
                 call zero_weights(loss_jac_local)
                 
-                do conf=thread_start,thread_end,1
+                do conf=bounds(1),bounds(2),1
                     call loss_jacobian_confloop(set_type,conf,include_force_loss,&
                             &tmp1_jac,tmp2_jac,loss_jac_local)
                 end do !* end loop over confs

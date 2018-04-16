@@ -7,7 +7,7 @@ module feature_selection
     use io, only : error
     use init, only : allocate_units
     use util, only : parse_array_to_structure,copy_weights_to_nobiasT
-    use util, only : allocate_dydx
+    use util, only : allocate_dydx,load_balance_alg_1
     use feature_config
     use config
 
@@ -32,7 +32,7 @@ module feature_selection
             logical :: original_calc_status
             
             !* openMP variables
-            integer :: thread_start,thread_end,thread_idx,num_threads,dconf
+            integer :: thread_idx,num_threads,bounds(1:2)
         
             if (num_optimizable_params().ne.size(jacobian)) then
                 call error("loss_feature_jacobian","Mismatch between length of Py and F95 jacobian")
@@ -49,11 +49,15 @@ module feature_selection
             !* only use total energies in loss
             calc_feature_derivatives = .false.
 
+            if (.not.allocated(set_neigh_info)) then
+                allocate(set_neigh_info(data_sets(set_type)%nconf))
+            end if
+
             if (parallel) then
                 !$omp parallel num_threads(omp_get_max_threads()),&
                 !$omp& default(shared),&
-                !$omp& private(conf,thread_start,thread_end,thread_idx,num_threads),&
-                !$omp& private(dconf,lcl_derivs)
+                !$omp& private(conf,thread_idx,num_threads,bounds),&
+                !$omp& private(lcl_derivs)
             
                 !* allocatable init
                 call init_feature_array(lcl_derivs)
@@ -64,18 +68,21 @@ module feature_selection
                 !* number of threads
                 num_threads = omp_get_max_threads()
 
-                !* number of conds per thread (except final thread)
-                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
+                !* split as evenly as possible
+                call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
 
-                thread_start = thread_idx*dconf + 1
+                !!* number of conds per thread (except final thread)
+                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
 
-                if (thread_idx.eq.num_threads-1) then
-                    thread_end = data_sets(set_type)%nconf
-                else
-                    thread_end = (thread_idx+1)*dconf
-                end if
+                !thread_start = thread_idx*dconf + 1
 
-                do conf=thread_start,thread_end,1
+                !if (thread_idx.eq.num_threads-1) then
+                !    thread_end = data_sets(set_type)%nconf
+                !else
+                !    thread_end = (thread_idx+1)*dconf
+                !end if
+
+                do conf=bounds(1),bounds(2),1
                     call single_conf_feat_jac(set_type,conf,lcl_derivs)
                 end do
                 

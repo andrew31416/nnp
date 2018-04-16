@@ -126,7 +126,7 @@ real(8) :: t1,t2,t3,t4,t5,t6
                     !end if
                     ! deprecated ^
 
-                    if (speedup_applies("keep_all_neigh_info").eqv..false.) then
+                    if (.not.speedup_applies("keep_all_neigh_info")) then
                         deallocate(set_neigh_info(conf)%twobody)
                         if (calc_threebody) then
                             deallocate(set_neigh_info(conf)%threebody)
@@ -185,7 +185,7 @@ call cpu_time(t5)
                     !end if
                     ! deprecated ^
 
-                    if (speedup_applies("keep_all_neigh_info").eqv..false.) then
+                    if (.not.speedup_applies("keep_all_neigh_info")) then
                         deallocate(set_neigh_info(conf)%twobody)
                         if (calc_threebody) then
                             deallocate(set_neigh_info(conf)%threebody)
@@ -199,7 +199,7 @@ call cpu_time(t5)
                 atom_neigh_info_needs_updating = .false.
             end if
 
-            if (speedup_applies("keep_all_neigh_info").eqv..false.) then
+            if (.not.speedup_applies("keep_all_neigh_info")) then
                 !* lets not be misleading
                 deallocate(set_neigh_info)
             end if
