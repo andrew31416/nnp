@@ -3,6 +3,7 @@ module init
     use util
     use feature_config
     use io, only : read_natm, read_config, read_nfeatures, read_features, info_features, error
+    use feature_util, only : threebody_features_present
 
     implicit none
     
