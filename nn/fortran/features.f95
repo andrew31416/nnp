@@ -4,6 +4,7 @@ module features
     use feature_util
     use tapering, only : taper_1,taper_deriv_1
     use init, only : init_set_neigh_info
+    use util, only : load_balance_alg_1
    
     implicit none
 
@@ -40,8 +41,7 @@ module features
             integer :: conf
 
             !* openMP variables
-            integer :: thread_start,thread_end,thread_idx,num_threads
-            integer :: dconf
+            integer :: thread_idx,num_threads,bounds(1:2)
 ! DEBUG
 real(8) :: t1,t2,t3,t4,t5,t6
 ! DEBUG
@@ -76,7 +76,7 @@ real(8) :: t1,t2,t3,t4,t5,t6
             if (parallel) then
                 !$omp parallel num_threads(omp_get_max_threads()),&
                 !$omp& default(shared),&
-                !$omp& private(conf,thread_start,thread_end,thread_idx,ultra_cart),&
+                !$omp& private(thread_idx,ultra_cart,bounds,num_threads),&
                 !$omp& private(ultra_idx,ultra_z)
 
                 !* thread_idx = [0,num_threads-1]    
@@ -84,18 +84,20 @@ real(8) :: t1,t2,t3,t4,t5,t6
                 
                 num_threads = omp_get_max_threads()
 
-                !* number of confs for thread
-                dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads))) 
+                call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
+    
+                !!* number of confs for thread
+                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads))) 
 
-                thread_start = thread_idx*dconf + 1
+                !thread_start = thread_idx*dconf + 1
 
-                if (thread_idx.eq.num_threads-1) then
-                    thread_end = data_sets(set_type)%nconf 
-                else
-                    thread_end = (thread_idx+1)*dconf
-                end if
+                !if (thread_idx.eq.num_threads-1) then
+                !    thread_end = data_sets(set_type)%nconf 
+                !else
+                !    thread_end = (thread_idx+1)*dconf
+                !end if
 
-                do conf=thread_start,thread_end,1
+                do conf=bounds(1),bounds(2),1
 
                     if (.not.allocated(set_neigh_info(conf)%twobody)) then
                         !* only calculate if first time running
