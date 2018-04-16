@@ -466,6 +466,7 @@ program unittest
             real(8),dimension(:),allocatable :: anl_jac,original_weights
             logical,allocatable :: anl_jac_ok(:) 
             integer :: loss_norm_type,num_params,num_attributes(0:7)
+            logical :: scale_feats = .false.
 
             allocate(original_weights(nwght))
             
@@ -493,14 +494,14 @@ program unittest
             !* init array
             num_params = num_optimizable_params()
             allocate(anl_jac(num_params))
-            call loss_feature_jacobian(original_weights,set_type,.false.,anl_jac)
+            call loss_feature_jacobian(original_weights,set_type,scale_feats,.false.,anl_jac)
             allocate(anl_jac_ok(num_params))
 
             !-------------------------------!
             !* analytical jacobian of loss *!
             !-------------------------------!
 
-            call loss_feature_jacobian(original_weights,set_type,.false.,anl_jac)
+            call loss_feature_jacobian(original_weights,set_type,scale_feats,.false.,anl_jac)
             
             !* number of optimizable attributes for each feature
             num_attributes(featureID_StringToInt("atomic_number"))  = 0
