@@ -467,7 +467,7 @@ class features():
         xmax = np.max(feature_list,axis=1)
         xmin = np.min(feature_list,axis=1)
 
-        if np.isclose(xmax,xmin).any():
+        if np.isclose(xmax,xmin,rtol=1e-20,atol=1e-20).any():
             raise FeaturesError("Feature found with possibly no support in training set")
 
         for _feature in range(len(self.features)):
@@ -835,17 +835,23 @@ class features():
         
         return np.asarray(all_features,order='C')
         
-    def fit(self,X):
+    def fit(self,X,feature_save_interval=0):
         """
         Fine tune basis function parameters using PES 
+        
+        Parameters
+        ----------
+        feature_save_interval : int, default value = 0
+            If not 0, write current features to disk (as in callback to feature
+            loss), every feature_save_interval iterations of minimizer
         """ 
         import nnp.nn.mlpp
+
+        # interval between writing features to disk during optimization
+        self.feature_save_interval = feature_save_interval
                
         # write configs to disk
         self.set_configuration(gip=X,set_type="train")
-        #print('comnputing precondition')    
-        ## compute pre conditioning
-        #self.calculate_precondition(updating_features=True)
 
         # instance of neural net class
         self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10])
@@ -881,13 +887,14 @@ class features():
         # do optimization 
         self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
                 jac=self._feature_loss_jacobian,x0=x0,\
-                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":2},\
-                bounds=self.concacenated_bounds)
-  
-        print(self.OptimizeResult["status"])
+                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":200},\
+                bounds=self.concacenated_bounds,callback=self._feature_opt_callback)
    
         # write final parameters to feature class instances 
         self._parse_param_array_to_class(parameters=self.OptimizeResult["x"])
+
+        for _ft in self.features:
+            print(_ft.params["rs"],_ft.params["eta"])
 
         # recompute scaling constants for preconditioning
         self.calculate_precondition()
@@ -963,6 +970,9 @@ class features():
         getattr(f95_api,"f90wrap_loss_feature_jacobian")(flat_weights=net_weights,\
                 set_type=self._set_map["train"],parallel=self.parallel,\
                 scale_features=self.scale_features,jacobian=basis_func_jac) 
+       
+        #print('<weight jac> = {} <param jac> = {}'.format(np.average(nn_weight_jac),\
+        #        np.average(basis_func_jac)))
         
         if np.isnan(basis_func_jac).any() or np.isinf(basis_func_jac).any():
             raise FeaturesError("Nan or Inf raised in loss jacobian wrt. basis func. params")
@@ -975,6 +985,13 @@ class features():
         terminate optimization
         """
         terminate_opt = False
+
+        iter_num = len(self._loss_log)
+
+        if self.feature_save_interval > 0:
+            # write features to disk
+            if np.mod(iter_num,self.feature_save_interval)==0:
+                self.save('feature_opt-{}'.format(iter_num))
 
         return terminate_opt
     
