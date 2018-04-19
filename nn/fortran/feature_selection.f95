@@ -36,7 +36,8 @@ module feature_selection
             integer :: thread_idx,num_threads,bounds(1:2)
             
             if (num_optimizable_params().ne.size(jacobian)) then
-                call error("loss_feature_jacobian","Mismatch between length of Py and F95 jacobian")
+                call error("loss_feature_jacobian",&
+                        &"Mismatch between length of Py and F95 jacobian")
             end if 
             
             !* need to read in net weights
@@ -529,8 +530,8 @@ module feature_selection
                     
                     gbl_feat_derivs%info(ft)%xi = gbl_feat_derivs%info(ft)%xi + &
                             &lcl_feat_derivs%info(ft)%xi*const
-                else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
-                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+                else if ( (ftype.eq.featureID_StringToInt("acsf_normal-b2")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
                     gbl_feat_derivs%info(ft)%mean = gbl_feat_derivs%info(ft)%mean + &
                             &lcl_feat_derivs%info(ft)%mean*const
                     

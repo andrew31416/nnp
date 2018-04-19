@@ -53,7 +53,6 @@ module propagate
             call dgemm('n','n',net_dim%hl1,natm,D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
                     &data_sets(set_type)%configs(conf)%x,D+1,0.0d0,net_units%a%hl1,net_dim%hl1)
 
-
             do atm=1,natm,1
                 !* null value for bias
                 net_units%z%hl1(0,atm) = 1.0d0

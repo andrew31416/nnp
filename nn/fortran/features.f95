@@ -244,6 +244,11 @@ call cpu_time(t5)
             !* shape of input array
             dim_1 = size(twobody_dist)
             dim_2 = shape(threebody_dist)
+           
+            if (allocated(set_neigh_info)) then
+                deallocate(set_neigh_info)
+            end if
+            allocate(set_neigh_info(data_sets(set_type)%nconf))
             
             do conf=1,data_sets(set_type)%nconf
                 call get_ultracell(mxrcut,5000,set_type,conf,&
