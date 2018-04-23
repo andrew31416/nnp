@@ -707,10 +707,9 @@ class MultiLayerPerceptronPotential():
         self.features.set_configuration(gip=X,set_type=set_type)
    
         if set_type == "train" and self.scale_features:
-            print('doing pre conditioning')
             # need to compute pre conditioning coefficients
             self.features.calculate_precondition(updating_features=updating_features)
-        print('prepping data from mlpp')        
+        
         # initialise feature mem and compute for set_type
         self.computed_features = self.features.calculate(set_type=set_type,\
                 derivatives=derivatives,scale=self.scale_features,\

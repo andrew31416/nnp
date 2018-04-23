@@ -854,7 +854,7 @@ class features():
         self.set_configuration(gip=X,set_type="train")
 
         # instance of neural net class
-        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10])
+        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[5,5])
         
         # only consider energy term
         for _key,_value in {"energy":1.0,"forces":0.0,"regularization":0.0}.items():
@@ -887,14 +887,11 @@ class features():
         # do optimization 
         self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
                 jac=self._feature_loss_jacobian,x0=x0,\
-                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":200},\
+                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":20000},\
                 bounds=self.concacenated_bounds,callback=self._feature_opt_callback)
    
         # write final parameters to feature class instances 
         self._parse_param_array_to_class(parameters=self.OptimizeResult["x"])
-
-        for _ft in self.features:
-            print(_ft.params["rs"],_ft.params["eta"])
 
         # recompute scaling constants for preconditioning
         self.calculate_precondition()
@@ -916,8 +913,13 @@ class features():
         # parse new params to feature instances
         self._parse_param_array_to_class(parameters)
         
+        if np.isclose(self.mlpp.hyper_params["forces"],0.0,1e-20,1e-20):
+            force_derivatives = False
+        else:
+            force_derivatives = True
+
         # write new features to fortran and compute feature values (no derivs)
-        self.calculate(set_type="train",derivatives=False,scale=True,safe=True,\
+        self.calculate(set_type="train",derivatives=force_derivatives,scale=True,safe=True,\
                 updating_features=True)
     
         loss = self.mlpp._loss(weights=parameters[:self.mlpp.num_weights],set_type="train",\
@@ -947,17 +949,20 @@ class features():
         self._parse_param_array_to_class(parameters)
 
         # write new features to fortran and compute X for loss jacobian
-        self.calculate(set_type="train",derivatives=False,scale=True,safe=True,\
-                updating_features=True)
+        #self.calculate(set_type="train",derivatives=False,scale=True,safe=True,\
+        #        updating_features=True)
 
         # check not trying to use forces or regularization
         for _hyperparam in ['forces','regularization']:
             if not np.isclose(self.mlpp.hyper_params[_hyperparam],0.0):
-                raise FeaturesError("Basis function parameter optimization only supported for \
-                        energy squared error, not forces or regularization")
+                if _hyperparam == 'regularization':
+                    raise FeaturesError("Basis function parameter optimization only supported for \
+                            energy squared error, not forces or regularization")
+                else:
+                    print('WARNING - basis func. opt. using forces is buggy')
    
         net_weights = parameters[:self.mlpp.num_weights]
-
+        
         # neural net weights
         nn_weight_jac = self.mlpp._loss_jacobian(weights=net_weights,set_type="train")
 
@@ -971,8 +976,8 @@ class features():
                 set_type=self._set_map["train"],parallel=self.parallel,\
                 scale_features=self.scale_features,jacobian=basis_func_jac) 
        
-        #print('<weight jac> = {} <param jac> = {}'.format(np.average(nn_weight_jac),\
-        #        np.average(basis_func_jac)))
+        print('<weight jac> = {} <param jac> = {}'.format(np.average(nn_weight_jac),\
+                np.average(basis_func_jac)))
         
         if np.isnan(basis_func_jac).any() or np.isinf(basis_func_jac).any():
             raise FeaturesError("Nan or Inf raised in loss jacobian wrt. basis func. params")

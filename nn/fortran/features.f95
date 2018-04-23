@@ -904,6 +904,7 @@ call cpu_time(t4)
             tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
                     &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
 
+
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_behler_g2
       
@@ -974,6 +975,8 @@ call cpu_time(t4)
 
                 tmp1 =  exp(-eta*(dr_scl-rs)**2)  *  (tap_deriv - &
                         &2.0d0*eta*(dr_scl-rs)*tap) 
+               
+
                 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
             end do

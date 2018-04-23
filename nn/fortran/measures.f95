@@ -355,6 +355,7 @@ module measures
             do conf=1,data_sets(set_type)%nconf,1
                 do atm=1,data_sets(set_type)%configs(conf)%n,1
                     do ii=1,3,1
+
                         tmp = abs(data_sets(set_type)%configs(conf)%current_fi(ii,atm) - &
                         & data_sets(set_type)%configs(conf)%ref_fi(ii,atm))
                         
@@ -463,7 +464,7 @@ module measures
                     end if
                 end do
             end do
-
+            
             do atm=1,data_sets(set_type)%configs(conf)%n
                 call forceloss_weight_derivative_subsidiary1(atm)
                 

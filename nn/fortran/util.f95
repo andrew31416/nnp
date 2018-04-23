@@ -169,7 +169,8 @@ module util
 
             equal = .false.
 
-            if ( (abs(scl1-0.0d0).lt.1e-10).or.(abs(scl2-0.0d0).lt.1e-10) ) then
+            !if ( (abs(scl1-0.0d0).lt.1e-10).or.(abs(scl2-0.0d0).lt.1e-10) ) then
+            if ( (abs(scl1-0.0d0).lt.1e-20).or.(abs(scl2-0.0d0).lt.1e-20) ) then
                 !* use absolute difference
                 if (abs(scl1-scl2).le.rtol) then
                     equal = .true.

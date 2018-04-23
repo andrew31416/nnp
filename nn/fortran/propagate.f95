@@ -17,6 +17,7 @@ module propagate
     real(8),public,allocatable,save :: sub_A1(:,:),sub_A2(:,:),sub_A2A1(:,:)
     real(8),public,allocatable,save :: sub_B(:,:),sub_C(:,:),sub_D(:,:),sub_BT(:,:)
     real(8),public,allocatable,save :: hprimeprime_1(:),hprimeprime_2(:),tmp_l1(:)
+    real(8),public,allocatable,save :: d2ydx2(:,:)
 
     !$omp threadprivate(d2ydxdw)
     !$omp threadprivate(sub_A1)
@@ -29,6 +30,7 @@ module propagate
     !$omp threadprivate(hprimeprime_1)
     !$omp threadprivate(hprimeprime_2)
     !$omp threadprivate(tmp_l1)
+    !$omp threadprivate(d2ydx2)
 
 
     contains
@@ -356,8 +358,8 @@ module propagate
                     do deriv_idx=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
                         !* d feature_{ii,atm} / d r_jj
                         jj = data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%idx(deriv_idx)
-       
-                         !* -= d E_atm / d feature_{ii,atm} * d feature_{ii,atm} / d r_jj
+                        
+                        !* -= d E_atm / d feature_{ii,atm} * d feature_{ii,atm} / d r_jj
                         data_sets(set_type)%configs(conf)%current_fi(:,jj) = &
                                 &data_sets(set_type)%configs(conf)%current_fi(:,jj) - dydx(ii,atm) * &
                                 &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,deriv_idx)
@@ -415,6 +417,60 @@ module propagate
 !                deallocate(dydx)
 !            end do
 !        end subroutine backprop_all_forces
+
+        subroutine calculate_d2ydx2(set_type,conf)
+            !* for use with feature selection
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf
+
+            !* scratch
+            integer :: ii,atm,ft,ll,mm
+            real(8) :: hprimeprime_1(1:net_dim%hl1,1:data_sets(set_type)%configs(conf)%n)
+            real(8) :: hprimeprime_2(1:net_dim%hl2,1:data_sets(set_type)%configs(conf)%n)
+            real(8) :: tmp_ll(1:2)
+            
+            ! d2yx2(ft,atm)
+
+            if (allocated(d2ydx2)) then
+                deallocate(d2ydx2)
+            end if
+            allocate(d2ydx2(feature_params%num_features,data_sets(set_type)%configs(conf)%n))
+            d2ydx2 = 0.0d0
+
+            !* activation second derivatives
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                do ii=1,net_dim%hl1
+                    !* h''(a^(1)))
+                    hprimeprime_1(ii,atm) = activation_derivderiv(net_units%a%hl1(ii,atm)) 
+                end do
+                do ii=1,net_dim%hl2
+                    !* h''(a^(2))
+                    hprimeprime_2(ii,atm) = activation_derivderiv(net_units%a%hl2(ii,atm))
+                end do
+            end do !* end loop over atoms
+
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                do ft=1,feature_params%num_features
+                    do ll=1,net_dim%hl2
+                        tmp_ll = 0.0d0
+                        do mm=1,net_dim%hl1
+                            tmp_ll(1) = tmp_ll(1) + net_weights%hl2(ll,mm)*&
+                                    &net_units%a_deriv%hl1(mm,atm)*net_weights%hl1(mm,ft)
+
+                            tmp_ll(2) = tmp_ll(2) + net_weights%hl2(ll,mm)*hprimeprime_1(mm,atm)*&
+                                    &(net_weights%hl1(mm,ft)**2)
+                        end do
+
+                        d2ydx2(ft,atm) = d2ydx2(ft,atm) + net_weights%hl3(ll)*&
+                                &( hprimeprime_2(ll,atm)*(tmp_ll(1)**2) + &
+                                &net_units%a_deriv%hl2(ll,atm)*tmp_ll(2) )
+                    end do
+                end do !* end loop over features
+            end do !* end loop over atoms
+
+        end subroutine calculate_d2ydx2
 
         real(8) function activation(ain)
             implicit none

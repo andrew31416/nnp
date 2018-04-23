@@ -18,7 +18,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:10)
+            logical :: tests(1:11)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -83,6 +83,7 @@ program unittest
             tests(8)  = test_dxdr()                       ! d feature / d atom position
             tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
             tests(10) = test_feature_selection_loss_jac() ! dloss / d(feature)param
+            tests(11) = test_d2ydx2()                     ! d^2 y / dx^2 
             
             do ii=1,num_tests
                 call unittest_test(ii,tests(ii))    
@@ -603,13 +604,13 @@ program unittest
             end if
 
             !* number of finite differences attempted
-            num_steps = 7
+            num_steps = 25
             allocate(num_jac(num_steps))
             cntr = 1
 
-            do ww=0,0+num_steps-1,1
+            do ww=-5,-5+num_steps-1,1
                 !* finite difference
-                dw = 1.0d0/(5.0d0**(ww))
+                dw = 1.0d0/(2.0d0**(ww))
 
                 do plusminus=1,2,1
                     if (plusminus.eq.1) then
@@ -640,7 +641,7 @@ program unittest
 
             match_found = .false.
             do ww=1,num_steps,1
-                if (scalar_equal(num_jac(ww),anl_res,dble(1e-6),dble(1e-14),.false.)) then
+                if (scalar_equal(num_jac(ww),anl_res,dble(1e-5),dble(1e-14),.false.)) then
                     match_found = .true.
                 end if
             end do
@@ -790,8 +791,8 @@ program unittest
                                 
                                 num_dydx(xx) = num_dydx(xx) / (2.0d0*dw)
 
-                                if (scalar_equal(num_dydx(xx),dydx(xx,atm),dble(1e-7),dble(1e-10),&
-                                &.true.)) then
+                                if (scalar_equal(num_dydx(xx),dydx(xx,atm),dble(1e-7),&
+                                &dble(1e-10),.false.)) then
                                     deriv_ok = .true.
                                 end if
                             end do !* end loop finite differences
@@ -1343,8 +1344,8 @@ program unittest
 
 
                                 !* numerical vs. analytical
-                                if (scalar_equal(num_val,anl_forces(dd,atm),dble(1e-9),dble(1e-10),&
-                                &.false.)) then
+                                if (scalar_equal(num_val,anl_forces(dd,atm),dble(1e-5),&
+                                &dble(1e-10),.false.)) then
                                     dd_ok = .true.
                                 end if
                                 
@@ -1355,7 +1356,6 @@ program unittest
 
                             if (dd_ok.neqv..true.) then
                                 !* derivative fails atom
-                                !write(*,*) 'failing for ',atm
                                 atms_ok(atm) = .false.
                             end if
                         end do !* end loop over dimensions dd
@@ -1375,6 +1375,87 @@ program unittest
 
             test_forces = all(set_ok)
         end function test_forces
+
+        logical function test_d2ydx2()
+            implicit none
+
+            !* scratch
+            integer :: set_type,conf,atm,kk,ww,ii
+            real(8) :: x0,xnew,net_output(1:3),num_d2ydx2,dx
+            real(8),allocatable :: anl_d2ydx2(:,:)
+            logical,allocatable :: conf_ok(:,:)
+            logical :: all_confs_ok = .true.
+            
+            do set_type=1,1
+                do conf=1,1
+                    call forward_propagate(set_type,conf)
+                    call backward_propagate(set_type,conf)
+
+                    !* compute analytical d2ydx2
+                    call calculate_d2ydx2(set_type,conf)
+                    
+                    if (allocated(anl_d2ydx2)) then
+                        deallocate(anl_d2ydx2)
+                    end if
+                    allocate(anl_d2ydx2(D,data_sets(set_type)%configs(conf)%n))
+                    if (allocated(conf_ok)) then
+                        deallocate(conf_ok)
+                    end if
+                    allocate(conf_ok(D,data_sets(set_type)%configs(conf)%n))
+                    conf_ok = .false.
+
+                    anl_d2ydx2(:,:) = d2ydx2(:,:)
+                    
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        do kk=1,D
+                            !* coordinate value
+                            x0 = data_sets(set_type)%configs(conf)%x(kk+1,atm)
+
+                            do ww=-5,1
+                                !* loop over a number of finite differences
+                                dx = dble(1.0d0/(5.0d0**ww))
+
+                                do ii=1,3,1
+                                    if (ii.eq.1) then
+                                        xnew = x0 - dx
+                                    else if (ii.eq.2) then
+                                        xnew = x0
+                                    else if (ii.eq.3) then
+                                        xnew = x0 + dx
+                                    end if
+
+                                    data_sets(set_type)%configs(conf)%x(kk+1,atm) = xnew
+
+                                    !* don't need to compute forces fortunately
+                                    call forward_propagate(set_type,conf)
+
+                                    net_output(ii) = &
+                                            &data_sets(set_type)%configs(conf)%current_ei(atm)
+                                end do !* end loop over -dx,0,+dx
+
+                                num_d2ydx2 = (net_output(3) - 2.0d0*net_output(2) + &
+                                        &net_output(1))/(dx**2)
+                                
+                                if (scalar_equal(num_d2ydx2,anl_d2ydx2(kk,atm),&
+                                &dble(1e-7),dble(1e-25),.false.)) then
+                                    !* correct answer
+                                    conf_ok(kk,atm) = .true.
+                                end if
+                            end do !* end loop over ww
+                            
+                            !* restore original coordinate value
+                            data_sets(set_type)%configs(conf)%x(kk+1,atm) = x0
+                        end do !* end loop over feature coordinates
+                    end do !* end loop over atoms
+
+                    if (.not.all(conf_ok)) then
+                        all_confs_ok = .false.
+                    end if
+                end do !* end loop over confs
+            end do !* loop over sets
+    
+            test_d2ydx2 = all_confs_ok
+        end function test_d2ydx2
 
         subroutine unittest_error(routine,message)
             implicit none
