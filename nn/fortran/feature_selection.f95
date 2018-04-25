@@ -938,7 +938,7 @@ end if
 
             !* args
             integer,intent(in) :: set_type,conf
-            real(8),intent(in) :: norm_consts(1:data_sets(set_type)%configs(conf)%n,1:3)
+            real(8),intent(in) :: norm_consts(1:3,1:data_sets(set_type)%configs(conf)%n)
             type(feature_info),intent(in) :: dxdparam(1:data_sets(set_type)%configs(conf)%n)
             type(feature_info),intent(in) :: d2xdrdparam(1:data_sets(set_type)%configs(conf)%n,&
                                                         &1:data_sets(set_type)%configs(conf)%n,1:3)
@@ -949,32 +949,32 @@ end if
             real(8) :: const
 
 ! DEBUG
-const = 0.0d0
-do jj=1,data_sets(set_type)%configs(conf)%n
-    do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(1,jj)%n
-        if (data_sets(set_type)%configs(conf)%x_deriv(1,jj)%idx(neigh_idx).ne.1) then
-            cycle
-        end if
-
-        const = const - d2ydx2(1,jj)*dxdparam(jj)%info(1)%eta*&
-                &data_sets(set_type)%configs(conf)%x_deriv(1,jj)%vec(1,neigh_idx) -&
-                &dydx(1,jj)*d2xdrdparam(1,jj,1)%info(1)%eta
-    end do
-end do
-write(*,*) 'df1x / deta = ',const
-const = 0.0d0
-do jj=1,data_sets(set_type)%configs(conf)%n
-    do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(1,jj)%n
-        if (data_sets(set_type)%configs(conf)%x_deriv(1,jj)%idx(neigh_idx).ne.1) then
-            cycle
-        end if
-
-        const = const - d2ydx2(1,jj)*dxdparam(jj)%info(1)%rs*&
-                &data_sets(set_type)%configs(conf)%x_deriv(1,jj)%vec(1,neigh_idx) -&
-                &dydx(1,jj)*d2xdrdparam(1,jj,1)%info(1)%rs
-    end do
-end do
-write(*,*) 'df1x / drs = ',const
+!const = 0.0d0
+!do jj=1,data_sets(set_type)%configs(conf)%n
+!    do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(1,jj)%n
+!        if (data_sets(set_type)%configs(conf)%x_deriv(1,jj)%idx(neigh_idx).ne.1) then
+!            cycle
+!        end if
+!
+!        const = const - d2ydx2(1,jj)*dxdparam(jj)%info(1)%eta*&
+!                &data_sets(set_type)%configs(conf)%x_deriv(1,jj)%vec(1,neigh_idx) -&
+!                &dydx(1,jj)*d2xdrdparam(1,jj,1)%info(1)%eta
+!    end do
+!end do
+!write(*,*) 'df1x / deta = ',const
+!const = 0.0d0
+!do jj=1,data_sets(set_type)%configs(conf)%n
+!    do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(1,jj)%n
+!        if (data_sets(set_type)%configs(conf)%x_deriv(1,jj)%idx(neigh_idx).ne.1) then
+!            cycle
+!        end if
+!
+!        const = const - d2ydx2(1,jj)*dxdparam(jj)%info(1)%rs*&
+!                &data_sets(set_type)%configs(conf)%x_deriv(1,jj)%vec(1,neigh_idx) -&
+!                &dydx(1,jj)*d2xdrdparam(1,jj,1)%info(1)%rs
+!    end do
+!end do
+!write(*,*) 'df1x / drs = ',const
 ! DEBUG
 
             
@@ -988,13 +988,13 @@ write(*,*) 'df1x / drs = ',const
                         ii = data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%idx(neigh_idx)
 
                         do xx=1,3
-                            const = -d2ydx2(ft,jj)*norm_consts(ii,xx)*data_sets(set_type)%&
+                            const = -d2ydx2(ft,jj)*norm_consts(xx,ii)*data_sets(set_type)%&
                                     &configs(conf)%x_deriv(ft,jj)%vec(xx,neigh_idx)
 
                             call add_individual_features(dxdparam(jj)%info(ft),const,&
                                     &force_contribution%info(ft))
 
-                            const = -dydx(ft,jj)*norm_consts(ii,xx)
+                            const = -dydx(ft,jj)*norm_consts(xx,ii)
 
                             call add_individual_features(d2xdrdparam(ii,jj,xx)%info(ft),&
                                     &const,force_contribution%info(ft))
