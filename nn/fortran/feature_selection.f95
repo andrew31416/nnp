@@ -4,7 +4,7 @@ module feature_selection
     use feature_util, only : scale_conf_features
     use tapering, only : taper_1,taper_deriv_1
     use propagate, only : forward_propagate,backward_propagate,calculate_forces
-    use propagate, only : calculate_d2ydx2,d2ydx2
+    use propagate, only : calculate_d2ydx2,d2ydx2,calculate_d2ydxdx,d2ydxdx
     use features, only : calculate_all_features
     use io, only : error
     use init, only : allocate_units
@@ -190,6 +190,7 @@ module feature_selection
             if (forces_included) then
                 call calculate_forces(set_type,conf)
                 call calculate_d2ydx2(set_type,conf)
+                call calculate_d2ydxdx(set_type,conf)
             end if
             
             !* (E_ref - \sum_i E_i)^2
@@ -945,7 +946,7 @@ end if
             type(feature_info),intent(inout) :: force_contribution
 
             !* scratch
-            integer :: ii,jj,xx,neigh_idx,ft
+            integer :: ii,jj,xx,neigh_idx,ft,ft2
             real(8) :: const
 
 ! DEBUG
@@ -976,10 +977,9 @@ end if
 !end do
 !write(*,*) 'df1x / drs = ',const
 ! DEBUG
-
             
             do jj=1,data_sets(set_type)%configs(conf)%n,1
-                do ft=1,feature_params%num_features
+                do ft=1,feature_params%num_features,1
                     if (data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%n.le.0) then
                         cycle
                     end if
@@ -987,13 +987,17 @@ end if
                     do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%n,1
                         ii = data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%idx(neigh_idx)
 
+                        do ft2=1,feature_params%num_features,1
+                            do xx=1,3
+                                const = -d2ydxdx(ft2,ft,jj)*norm_consts(xx,ii)*data_sets(set_type)%&
+                                        &configs(conf)%x_deriv(ft,jj)%vec(xx,neigh_idx)
+
+                                call add_individual_features(dxdparam(jj)%info(ft2),const,&
+                                        &force_contribution%info(ft2))
+                            end do
+                        end do !* end loop over 2nd features
+
                         do xx=1,3
-                            const = -d2ydx2(ft,jj)*norm_consts(xx,ii)*data_sets(set_type)%&
-                                    &configs(conf)%x_deriv(ft,jj)%vec(xx,neigh_idx)
-
-                            call add_individual_features(dxdparam(jj)%info(ft),const,&
-                                    &force_contribution%info(ft))
-
                             const = -dydx(ft,jj)*norm_consts(xx,ii)
 
                             call add_individual_features(d2xdrdparam(ii,jj,xx)%info(ft),&
@@ -1002,6 +1006,32 @@ end if
                     end do !* end loop over neighbours to atm
                 end do !* end loop over features
             end do !* end loop over local atoms
+
+            !* WORKS FOR SINGLE FEATURE 
+            !do jj=1,data_sets(set_type)%configs(conf)%n,1
+            !    do ft=1,feature_params%num_features
+            !        if (data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%n.le.0) then
+            !            cycle
+            !        end if
+            !        
+            !        do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%n,1
+            !            ii = data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%idx(neigh_idx)
+
+            !            do xx=1,3
+            !                const = -d2ydx2(ft,jj)*norm_consts(xx,ii)*data_sets(set_type)%&
+            !                        &configs(conf)%x_deriv(ft,jj)%vec(xx,neigh_idx)
+
+            !                call add_individual_features(dxdparam(jj)%info(ft),const,&
+            !                        &force_contribution%info(ft))
+
+            !                const = -dydx(ft,jj)*norm_consts(xx,ii)
+
+            !                call add_individual_features(d2xdrdparam(ii,jj,xx)%info(ft),&
+            !                        &const,force_contribution%info(ft))
+            !            end do !* end loop over cartesian components
+            !        end do !* end loop over neighbours to atm
+            !    end do !* end loop over features
+            !end do !* end loop over local atoms
         end subroutine calculate_dfdparam
 
 end module feature_selection

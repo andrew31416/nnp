@@ -17,7 +17,7 @@ module propagate
     real(8),public,allocatable,save :: sub_A1(:,:),sub_A2(:,:),sub_A2A1(:,:)
     real(8),public,allocatable,save :: sub_B(:,:),sub_C(:,:),sub_D(:,:),sub_BT(:,:)
     real(8),public,allocatable,save :: hprimeprime_1(:),hprimeprime_2(:),tmp_l1(:)
-    real(8),public,allocatable,save :: d2ydx2(:,:)
+    real(8),public,allocatable,save :: d2ydx2(:,:),d2ydxdx(:,:,:)
 
     !$omp threadprivate(d2ydxdw)
     !$omp threadprivate(sub_A1)
@@ -31,6 +31,7 @@ module propagate
     !$omp threadprivate(hprimeprime_2)
     !$omp threadprivate(tmp_l1)
     !$omp threadprivate(d2ydx2)
+    !$omp threadprivate(d2ydxdx)
 
 
     contains
@@ -47,9 +48,6 @@ module propagate
             !------------------!
             !* hidden layer 1 *!
             !------------------!
-!write(*,*) ''
-!write(*,*) 'x:'
-!write(*,*) data_sets(set_type)%configs(conf)%x(3,:)            
             
             !* a^1_mI = \sum_k=0^K w_mk^1 gamma_kI
             call dgemm('n','n',net_dim%hl1,natm,D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
@@ -64,7 +62,6 @@ module propagate
                     net_units%z%hl1(ii,atm) = activation(net_units%a%hl1(ii,atm))
                 end do
             end do
-!write(*,*) 'first layer output:',net_units%z%hl1(:,1)            
 
             !------------------!
             !* hidden layer 2 *!
@@ -83,7 +80,6 @@ module propagate
                     net_units%z%hl2(ii,atm) = activation(net_units%a%hl2(ii,atm))
                 end do
             end do
-!write(*,*) 'second layer output:',net_units%z%hl1(:,1)            
 
             !-------------------------!
             !* final layer to output *!
@@ -94,7 +90,6 @@ module propagate
                 data_sets(set_type)%configs(conf)%current_ei(atm) = ddot(net_dim%hl2+1,&
                         &net_weights%hl3,1,net_units%z%hl2(:,atm),1)
             end do
-!write(*,*) 'output:',data_sets(set_type)%configs(conf)%current_ei(1)            
         end subroutine
 
         subroutine backward_propagate(set_type,conf)
@@ -127,14 +122,16 @@ module propagate
             
             !* delta_iI^(1) = h'(a_i^(1)) * sum_j w_ji^(2) delta_jI^(2)
             call dgemm('n','n',net_dim%hl1,natm,net_dim%hl2,1.0d0,net_weights_nobiasT%hl2,&
-                    &net_dim%hl1,net_units%delta%hl2,net_dim%hl2,0.0d0,net_units%delta%hl1,net_dim%hl1)
+                    &net_dim%hl1,net_units%delta%hl2,net_dim%hl2,0.0d0,net_units%delta%hl1,&
+                    &net_dim%hl1)
            
             do atm=1,natm,1 
                 do ii=1,net_dim%hl1,1
                     !* activation derivatives
                     net_units%a_deriv%hl1(ii,atm) = activation_deriv(net_units%a%hl1(ii,atm))
 
-                    net_units%delta%hl1(ii,atm) = net_units%a_deriv%hl1(ii,atm)*net_units%delta%hl1(ii,atm)
+                    net_units%delta%hl1(ii,atm) = net_units%a_deriv%hl1(ii,atm)*&
+                            &net_units%delta%hl1(ii,atm)
                 end do
             end do
             
@@ -165,8 +162,8 @@ module propagate
             !----------------!
          
             ! dydw%hl2_lm =  delta%hl2_l  *  z%hl1_m   l=[1,N2] , m=[0,N1]
-            call dgemm('n','n',net_dim%hl2,net_dim%hl1+1,1,1.0d0,net_units%delta%hl2(:,atm),net_dim%hl2,&
-                    &net_units%z%hl1(:,atm),1,0.0d0,dydw%hl2,net_dim%hl2)
+            call dgemm('n','n',net_dim%hl2,net_dim%hl1+1,1,1.0d0,net_units%delta%hl2(:,atm),&
+                    &net_dim%hl2,net_units%z%hl1(:,atm),1,0.0d0,dydw%hl2,net_dim%hl2)
             
             !---------------!
             !* first layer *!
@@ -228,13 +225,13 @@ module propagate
             end do
 
             !* A2A1_ij = \sum_k A2_{ik} A1_{kj} - Have checked
-            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,sub_A2,net_dim%hl2,sub_A1,net_dim%hl1,&
-                    &0.0d0,sub_A2A1,net_dim%hl2)
+            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,sub_A2,net_dim%hl2,sub_A1,&
+                    &net_dim%hl1,0.0d0,sub_A2A1,net_dim%hl2)
 
 
             !* B_ij = \sum_k w^2_ik A^1_kj - Have checked
-            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,net_weights%hl2(:,1:),net_dim%hl2,sub_A1,&
-                    &net_dim%hl1,0.0d0,sub_B,net_dim%hl2)
+            call dgemm('n','n',net_dim%hl2,D,net_dim%hl1,1.0d0,net_weights%hl2(:,1:),&
+                    &net_dim%hl2,sub_A1,net_dim%hl1,0.0d0,sub_B,net_dim%hl2)
             
             
             !* second derivatives of activation
@@ -246,7 +243,8 @@ module propagate
                     !* avoid 1/0
                     tmp_l1(ii) = 0.0d0
                 else
-                    tmp_l1(ii) = hprimeprime_1(ii)/net_units%a_deriv%hl1(ii,atm) * net_units%delta%hl1(ii,atm)
+                    tmp_l1(ii) = hprimeprime_1(ii)/net_units%a_deriv%hl1(ii,atm) * &
+                            &net_units%delta%hl1(ii,atm)
                 end if
             end do
             do ii=1,net_dim%hl2
@@ -270,7 +268,8 @@ module propagate
                 end do
             end do
             !* D_km = sum_l^N2 B^T_kl * C_lm - Have checked
-            call dgemm('n','n',D,net_dim%hl1,net_dim%hl2,1.0d0,sub_BT,D,sub_C,net_dim%hl2,0.0d0,sub_D,D)
+            call dgemm('n','n',D,net_dim%hl1,net_dim%hl2,1.0d0,sub_BT,D,sub_C,net_dim%hl2,&
+                    &0.0d0,sub_D,D)
 
         end subroutine forceloss_weight_derivative_subsidiary1
 
@@ -471,6 +470,80 @@ module propagate
             end do !* end loop over atoms
 
         end subroutine calculate_d2ydx2
+        
+        subroutine calculate_d2ydxdx(set_type,conf)
+            !* for use with feature selection
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf
+
+            !* scratch
+            integer :: ii,atm,ft,ft2,ll,mm
+            real(8) :: hprimeprime_1(1:net_dim%hl1,1:data_sets(set_type)%configs(conf)%n)
+            real(8) :: hprimeprime_2(1:net_dim%hl2,1:data_sets(set_type)%configs(conf)%n)
+            real(8) :: tmp_ll
+            real(8) :: subsidiary_1(1:net_dim%hl2,1:feature_params%num_features,&
+                    &1:data_sets(set_type)%configs(conf)%n)
+            
+            ! d2yx2(ft,atm)
+
+            if (allocated(d2ydxdx)) then
+                deallocate(d2ydxdx)
+            end if
+            allocate(d2ydxdx(feature_params%num_features,feature_params%num_features,&
+                    &data_sets(set_type)%configs(conf)%n))
+            d2ydxdx = 0.0d0
+
+            !* activation second derivatives
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                do ii=1,net_dim%hl1
+                    !* h''(a^(1)))
+                    hprimeprime_1(ii,atm) = activation_derivderiv(net_units%a%hl1(ii,atm)) 
+                end do
+                do ii=1,net_dim%hl2
+                    !* h''(a^(2))
+                    hprimeprime_2(ii,atm) = activation_derivderiv(net_units%a%hl2(ii,atm))
+                end do
+            end do !* end loop over atoms
+
+            subsidiary_1 = 0.0d0
+            !* reduce redundant calculations
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                do ft=1,feature_params%num_features,1
+                    do ll=1,net_dim%hl2,1
+                        do mm=1,net_dim%hl1,1       
+                            subsidiary_1(ll,ft,atm) = subsidiary_1(ll,ft,atm) + &
+                                    &net_weights%hl2(ll,mm)*net_units%a_deriv%hl1(mm,atm)*&
+                                    &net_weights%hl1(mm,ft)
+                        end do !* end loop over 1st layer weights
+                    end do !* end loop over 2nd layer weights
+                end do !* end loop over features
+            end do !* end loop over local atoms
+
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                do ft=1,feature_params%num_features
+                    do ft2=1,feature_params%num_features,1
+                        do ll=1,net_dim%hl2
+                            tmp_ll = 0.0d0
+                            
+                            do mm=1,net_dim%hl1
+                                tmp_ll = tmp_ll + net_weights%hl2(ll,mm)*net_weights%hl1(mm,ft)*&
+                                        &net_weights%hl1(mm,ft2)*hprimeprime_1(mm,atm)
+                            end do !* end loop over layer 1 weights
+
+                            d2ydxdx(ft2,ft,atm) = d2ydxdx(ft2,ft,atm) + net_weights%hl3(ll)*&
+                                    &hprimeprime_2(ll,atm)*subsidiary_1(ll,ft,atm)*&
+                                    &subsidiary_1(ll,ft2,atm)
+
+                            d2ydxdx(ft2,ft,atm) = d2ydxdx(ft2,ft,atm) + net_weights%hl3(ll)*&
+                                    &net_units%a_deriv%hl2(ll,atm)*tmp_ll
+                        end do !* end loop over layer 2 weights
+                    end do !* end loop over second feature
+                end do !* end loop over first feature
+            end do !* end loop over local atoms
+
+        end subroutine calculate_d2ydxdx
 
         real(8) function activation(ain)
             implicit none
