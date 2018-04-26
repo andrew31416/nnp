@@ -1391,8 +1391,8 @@ program unittest
                     call forward_propagate(set_type,conf)
                     call backward_propagate(set_type,conf)
 
-                    !* compute analytical d2ydx2
-                    call calculate_d2ydx2(set_type,conf)
+                    !* compute full hessian
+                    call calculate_d2ydxdx(set_type,conf)
                     
                     if (allocated(anl_d2ydx2)) then
                         deallocate(anl_d2ydx2)
@@ -1404,7 +1404,12 @@ program unittest
                     allocate(conf_ok(D,data_sets(set_type)%configs(conf)%n))
                     conf_ok = .false.
 
-                    anl_d2ydx2(:,:) = d2ydx2(:,:)
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        do kk=1,feature_params%num_features,1
+                            !* d^2 y / dx^2 are diagonal elements of hessian
+                            anl_d2ydx2(kk,atm) = d2ydxdx(kk,kk,atm)
+                        end do
+                    end do
                     
                     do atm=1,data_sets(set_type)%configs(conf)%n,1
                         do kk=1,D

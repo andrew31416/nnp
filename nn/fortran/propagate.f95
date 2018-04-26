@@ -418,7 +418,7 @@ module propagate
 !        end subroutine backprop_all_forces
 
         subroutine calculate_d2ydx2(set_type,conf)
-            !* for use with feature selection
+            !* Now the full hessian is implemented, this function is redundant
             implicit none
 
             !* args
