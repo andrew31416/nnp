@@ -522,8 +522,11 @@ module propagate
             end do !* end loop over local atoms
 
             do atm=1,data_sets(set_type)%configs(conf)%n,1
+                !* Since second derivatives of energy are always continuous, Hessian is
+                !* symmetric (see Schwarz's theorem)
+
                 do ft=1,feature_params%num_features
-                    do ft2=1,feature_params%num_features,1
+                    do ft2=ft,feature_params%num_features,1
                         do ll=1,net_dim%hl2
                             tmp_ll = 0.0d0
                             
@@ -539,6 +542,11 @@ module propagate
                             d2ydxdx(ft2,ft,atm) = d2ydxdx(ft2,ft,atm) + net_weights%hl3(ll)*&
                                     &net_units%a_deriv%hl2(ll,atm)*tmp_ll
                         end do !* end loop over layer 2 weights
+
+                        if (ft.ne.ft2) then
+                            !* Hessian is symmetric
+                            d2ydxdx(ft,ft2,atm) = d2ydxdx(ft2,ft,atm)
+                        end if
                     end do !* end loop over second feature
                 end do !* end loop over first feature
             end do !* end loop over local atoms
