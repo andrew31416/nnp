@@ -234,11 +234,11 @@ class CMA():
                     if individual[ii] > bound_constraints[ii][1]:
                         displacement[ii] = individual[ii] - bound_constraints[ii][1] - dx
             return displacement
-        def distance(individual):
+        def distance(closest_feasible_ind,individual):
             """
             return distance of individual to closest valid point
             """
-            return np.linalg.norm(displacement(individual))
+            return np.linalg.norm(closest_feasible_ind-individual)
         def ClosestIndividual(individual):
             """
             return closest feasible individual
