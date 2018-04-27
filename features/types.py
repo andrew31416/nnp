@@ -467,8 +467,9 @@ class features():
         xmax = np.max(feature_list,axis=1)
         xmin = np.min(feature_list,axis=1)
 
-        if np.isclose(xmax,xmin,rtol=1e-20,atol=1e-20).any():
-            raise FeaturesError("Feature found with possibly no support in training set")
+        if np.isclose(xmax,xmin,rtol=1e-128,atol=1e-128).any():
+            raise FeaturesError("Feature found with possibly no support in training set: {} {}".\
+                    format(xmin,xmax))
 
         for _feature in range(len(self.features)):
             self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-xmin[_feature])
@@ -835,7 +836,7 @@ class features():
         
         return np.asarray(all_features,order='C')
         
-    def fit(self,X,feature_save_interval=0):
+    def fit(self,X,feature_save_interval=0,only_energy=False,maxiter=None,search_scope="local"):
         """
         Fine tune basis function parameters using PES 
         
@@ -847,47 +848,68 @@ class features():
         """ 
         import nnp.nn.mlpp
 
+        # set new training data
+        self.data["train"] = X
+
         # interval between writing features to disk during optimization
         self.feature_save_interval = feature_save_interval
-               
+
+        # whether or not to include forces in loss
+        self.update_only_energy = only_energy
+
+        if maxiter is None:
+            # max number of bfgs iterations
+            self.local_maxiter = 20000
+        else:
+            self.local_maxiter = maxiter
+        
+        if search_scope == "global":
+            # do initial coarse search over features
+            self._fit_global_search()
+            print('global search complete')
+        # do local optimization of NN and current basis func params 
+        self._fit_local_search()
+
+    def _fit_local_search(self):
+        """
+        Perform local gradient descent of NN weights and basis params
+        """
+        
         # write configs to disk
-        self.set_configuration(gip=X,set_type="train")
+        self.set_configuration(gip=self.data["train"],set_type="train")
 
         # instance of neural net class
-        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[5,5])
-        
-        # only consider energy term
-        for _key,_value in {"energy":1.0,"forces":0.0,"regularization":0.0}.items():
-            self.mlpp.set_hyperparams(key=_key,value=_value)
+        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10])
+        if self.update_only_energy:
+            # only consider energy term
+            for _key,_value in {"energy":1.0,"forces":0.0,"regularization":0.0}.items():
+                self.mlpp.set_hyperparams(key=_key,value=_value)
+        else:
+            # include forces too
+            for _key,_value in {"energy":1.0,"forces":1.0,"regularization":0.0}.items():
+                self.mlpp.set_hyperparams(key=_key,value=_value)
         
         # for forward prop to initialise weights
         self.mlpp.set_features(features=self)
-      
+        
         # compute pre conditioning and initialise net
-        self.mlpp._prepare_data_structures(X=X,set_type="train",derivatives=False,\
-                updating_features=True)
-   
+        self.mlpp._prepare_data_structures(X=self.data["train"],set_type="train",\
+                derivatives=False,updating_features=True)
+      
         # compute initial weights and concacenate weights with feature params 
         x0 = self._init_concacenation()
-      
+       
+        #if not only_energy:
+        #    # use automatic scaling of energy and force noise precision
+        #    self.mlpp._update_precision()
         
-        # check parsing to be safe
-        self._parse_param_array_to_class(parameters=x0)
-        x1 = self._concacenate_parameters()
-        try:
-            np.testing.assert_array_almost_equal(x0,x1)
-        except AssertionError:
-            raise FeaturesError("Implementation error in feature parameter parsing")
-        del x1 
-
-
         # log for loss with optimization
         self._loss_log = []
-        
+
         # do optimization 
         self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
                 jac=self._feature_loss_jacobian,x0=x0,\
-                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":20000},\
+                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":self.local_maxiter},\
                 bounds=self.concacenated_bounds,callback=self._feature_opt_callback)
    
         # write final parameters to feature class instances 
@@ -895,6 +917,26 @@ class features():
 
         # recompute scaling constants for preconditioning
         self.calculate_precondition()
+
+    def _fit_global_search(self):
+        """
+        Perform coarse global optimization of features. For each feature set,
+        do a coarse minimization of NN weights, returning minimum loss as 
+        objective function
+        """
+        # necessary for parameter concacenation
+        self.mlpp = toy_mlpp_class()
+     
+        # get initial basis parameters
+        x0 = self._concacenate_parameters()
+
+        # summary
+        opt_res = nnp.optimizers.stochastic.minimize(\
+                fun=self._objective_function_coarse_search,jac=None,\
+                x0=x0,solver="cma",**{"max_iter":10,"bounds":self.concacenated_bounds})
+
+        # store best indivual as current basis params
+        self._parse_param_array_to_class(opt_res["x"])
 
     def _feature_loss(self,parameters):
         """
@@ -930,7 +972,7 @@ class features():
 
         # keep loss during optimization
         self._loss_log.append(loss)
-        #print(parameters,loss)
+        
         return loss
 
     def _feature_loss_jacobian(self,parameters):
@@ -958,8 +1000,6 @@ class features():
                 if _hyperparam == 'regularization':
                     raise FeaturesError("Basis function parameter optimization only supported for \
                             energy squared error, not forces or regularization")
-                else:
-                    print('WARNING - basis func. opt. using forces is buggy')
    
         net_weights = parameters[:self.mlpp.num_weights]
         
@@ -976,9 +1016,6 @@ class features():
                 set_type=self._set_map["train"],parallel=self.parallel,\
                 scale_features=self.scale_features,jacobian=basis_func_jac) 
        
-        print('<weight jac> = {} <param jac> = {}'.format(np.average(nn_weight_jac),\
-                np.average(basis_func_jac)))
-        
         if np.isnan(basis_func_jac).any() or np.isinf(basis_func_jac).any():
             raise FeaturesError("Nan or Inf raised in loss jacobian wrt. basis func. params")
         
@@ -1123,6 +1160,30 @@ class features():
         else:
             # we pass in an array slice
             return value[0]
+    
+    def _objective_function_coarse_search(self,basis_params,args=()):
+        """
+        For a given set of basis function parameters, do a quick optimization 
+        of neural net weights and return the minimum loss
+
+        Parameters
+        ----------
+        basis_params : np.ndarray
+            A concacenated array of basis function parameters
+        """
+        # parse new params to feature instances
+        self._parse_param_array_to_class(basis_params)
+        
+        mlpp = nnp.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10],\
+                activation='sigmoid',precision_update_interval=10)
+        mlpp.set_features(self)
+        for _key,_value in {"energy":1.0,"forces":1.0,"regularization":0.0}.items():
+            mlpp.set_hyperparams(_key,_value)
+        t1 = time.time()
+        loss,_ = mlpp.fit(self.data["train"])
+        t2 = time.time()
+        print('{} steps in {}s with L={}'.format(len(mlpp._loss_log),t2-t1,loss))
+        return loss
 
     def save(self,sysname=None):
         """
@@ -1200,6 +1261,13 @@ class features():
                         format(sysname+'.features'))
         f.close()
 
+class toy_mlpp_class():
+    """
+    Necessary to trick parameter concacenation into thinking this is an instance
+    of mlpp.MultiLayerPerceptronPotential()
+    """
+    def __init__(self):
+        self.weights = np.zeros(0)
 
 class FeatureError(Exception):
     pass

@@ -526,8 +526,6 @@ class MultiLayerPerceptronPotential():
     
     def _update_precision(self):
         """
-        Called after each optimizer iteration with weights as arg
-        
         Set precision_update_interval to 0 if you never want loss hyper params
         to be updated.
 

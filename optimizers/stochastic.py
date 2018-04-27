@@ -177,7 +177,7 @@ class CMA():
         Objective function to minimise
     """
 
-    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=100000):        
+    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=100000,bounds=None):        
         self.fun = fun
         self.args = args
         self.x0 = x0
@@ -186,6 +186,9 @@ class CMA():
 
         self.sigma = sigma
         self.max_iter = max_iter
+
+        # bounds constraints
+        self.bounds = bounds
 
         # assume length of input corresponds to num params 
         if isinstance(x0,(np.ndarray,tuple,list)):
@@ -200,6 +203,60 @@ class CMA():
         self._function = wrapped_function
 
     def minimize(self):
+        # for bounds constraints
+        def IsFeasible(individual):
+            """
+            True if individual is OK, False if out of bounds
+            """
+            violation = False
+            for ii in range(len(individual)):
+                if bound_constraints[ii][0] is not None:
+                    if individual[ii] < bound_constraints[ii][0]:
+                        violation = True
+                if bound_constraints[ii][1] is not None:
+                    if individual[ii] > bound_constraints[ii][1]:
+                        violation = True
+            return not violation
+        def displacement(individual):
+            """
+            return distance of individual to closest valid point
+            """
+            # displacement to closest valid individual
+            displacement = np.zeros(len(individual))
+
+            # increment individual from exact boundary to just within limits
+            dx = 1e-10
+            for ii in range(len(individual)):
+                if bound_constraints[ii][0] is not None:
+                    if individual[ii] < bound_constraints[ii][0]:
+                        displacement[ii] = individual[ii] - bound_constraints[ii][0] - dx
+                if bound_constraints[ii][1] is not None:
+                    if individual[ii] > bound_constraints[ii][1]:
+                        displacement[ii] = individual[ii] - bound_constraints[ii][1] - dx
+            return displacement
+        def distance(individual):
+            """
+            return distance of individual to closest valid point
+            """
+            return np.linalg.norm(displacement(individual))
+        def ClosestIndividual(individual):
+            """
+            return closest feasible individual
+            """
+            new_individual = individual - displacement(individual)
+
+            if not IsFeasible(new_individual):
+                raise StochasticOptimizersError("Implementation error generating closest valid Ind.")
+            return new_individual
+        def ConstraintsPresent(bounds):
+            constraints_present = False
+            if bounds is not None:
+                for ii in range(len(bounds)):
+                    for jj in range(2):
+                        if bounds[ii][jj] is not None:
+                            constraints_present = True
+            return constraints_present
+
 
         sigma = self.sigma
         lambda_ = int(4+3*np.log(self.Nparam))
@@ -210,6 +267,10 @@ class CMA():
         toolbox = base.Toolbox()
         toolbox.register("map",map)
         toolbox.register("evaluate",self._function)
+        if ConstraintsPresent(self.bounds):
+            toolbox.decorate("evaluate",tools.ClosestValidPenalty(IsFeasible,ClosestIndividual,1e3,\
+                    distance))
+            bound_constraints = self.bounds
 
         strategy = cma.Strategy(centroid=self.x0,sigma=sigma)
         toolbox.register("generate", strategy.generate, creator.Individual)
