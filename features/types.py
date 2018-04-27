@@ -867,6 +867,7 @@ class features():
             # do initial coarse search over features
             self._fit_global_search()
             print('global search complete')
+            self.save('best_feat_from_global_search.pckl')
         # do local optimization of NN and current basis func params 
         self._fit_local_search()
 
@@ -933,7 +934,7 @@ class features():
         # summary
         opt_res = nnp.optimizers.stochastic.minimize(\
                 fun=self._objective_function_coarse_search,jac=None,\
-                x0=x0,solver="cma",**{"max_iter":10,"bounds":self.concacenated_bounds})
+                x0=x0,solver="cma",**{"max_iter":500,"bounds":self.concacenated_bounds})
 
         # store best indivual as current basis params
         self._parse_param_array_to_class(opt_res["x"])
@@ -1175,7 +1176,7 @@ class features():
         self._parse_param_array_to_class(basis_params)
         
         mlpp = nnp.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10],\
-                activation='sigmoid',precision_update_interval=10)
+                activation='sigmoid',precision_update_interval=100)
         mlpp.set_features(self)
         for _key,_value in {"energy":1.0,"forces":1.0,"regularization":0.0}.items():
             mlpp.set_hyperparams(_key,_value)
