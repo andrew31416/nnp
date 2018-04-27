@@ -177,7 +177,7 @@ class CMA():
         Objective function to minimise
     """
 
-    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=100000,bounds=None):        
+    def __init__(self,fun,x0,args=(),sigma=1e-3,max_iter=100000,bounds=None,verbose=False): 
         self.fun = fun
         self.args = args
         self.x0 = x0
@@ -189,6 +189,9 @@ class CMA():
 
         # bounds constraints
         self.bounds = bounds
+
+        # output verbosity
+        self.verbose = verbose
 
         # assume length of input corresponds to num params 
         if isinstance(x0,(np.ndarray,tuple,list)):
@@ -268,8 +271,8 @@ class CMA():
         toolbox.register("map",map)
         toolbox.register("evaluate",self._function)
         if ConstraintsPresent(self.bounds):
-            toolbox.decorate("evaluate",tools.ClosestValidPenalty(IsFeasible,ClosestIndividual,1e3,\
-                    distance))
+            toolbox.decorate("evaluate",tools.ClosestValidPenalty(IsFeasible,\
+                    ClosestIndividual,1e3,distance))
             bound_constraints = self.bounds
 
         strategy = cma.Strategy(centroid=self.x0,sigma=sigma)
@@ -323,6 +326,9 @@ class CMA():
             opt_res["nfev"] += len(population)
 
             toolbox.update(population)
+
+            if self.verbose:
+                print(logbook.stream)
 
             # book keeping 
             t += 1

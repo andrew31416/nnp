@@ -681,8 +681,8 @@ class features():
 
         if automatic_selection:
             # minimize bic measure wrt. n_components - Bayesian GMM doesn't converge 
-            opt_result = optimize.minimize_scalar(fun=_bic_fun_wrapper,bounds=[1,num_components],\
-                    method='bounded',options={'xatol':1.0})
+            opt_result = optimize.minimize_scalar(fun=_bic_fun_wrapper,\
+                    bounds=[1,num_components],method='bounded',options={'xatol':1.0})
 
             if opt_result.success!=True:
                 raise FeaturesError("Optimize of n_components for classical (EM) gmm \
@@ -836,7 +836,8 @@ class features():
         
         return np.asarray(all_features,order='C')
         
-    def fit(self,X,feature_save_interval=0,only_energy=False,maxiter=None,search_scope="local"):
+    def fit(self,X,feature_save_interval=0,only_energy=False,maxiter=None,search_scope="local",\
+            verbose=False,global_maxiter=500):
         """
         Fine tune basis function parameters using PES 
         
@@ -856,6 +857,12 @@ class features():
 
         # whether or not to include forces in loss
         self.update_only_energy = only_energy
+
+        # output verbosity
+        self.fit_verbosity = verbose
+
+        # number of iterations of CMA (global search)
+        self.global_maxiter = global_maxiter
 
         if maxiter is None:
             # max number of bfgs iterations
@@ -934,7 +941,9 @@ class features():
         # summary
         opt_res = nnp.optimizers.stochastic.minimize(\
                 fun=self._objective_function_coarse_search,jac=None,\
-                x0=x0,solver="cma",**{"max_iter":500,"bounds":self.concacenated_bounds})
+                x0=x0,solver="cma",**{"max_iter":self.global_maxiter,\
+                "bounds":self.concacenated_bounds,\
+                "sigma":1.0,"verbose":self.fit_verbosity})
 
         # store best indivual as current basis params
         self._parse_param_array_to_class(opt_res["x"])
@@ -1183,7 +1192,7 @@ class features():
         t1 = time.time()
         loss,_ = mlpp.fit(self.data["train"])
         t2 = time.time()
-        print('{} steps in {}s with L={}'.format(len(mlpp._loss_log),t2-t1,loss))
+        #print('{} steps in {}s with L={}'.format(len(mlpp._loss_log),t2-t1,loss))
         return loss
 
     def save(self,sysname=None):
