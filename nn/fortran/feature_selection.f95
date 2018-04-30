@@ -764,7 +764,7 @@ module feature_selection
             !* scratch
             real(8) :: rcut,tmp1,scl_cnst,za,zb,tmpz,tmp_taper,tmp_taper_deriv
             real(8) :: tmp_cnst,rs,eta,tmp2,tmp3,tmp4,tmp5,dr_vec(1:3)
-            real(8) :: dr,fs,zatm,zngh
+            real(8) :: dr,fs,zatm,zngh,mu,lambda
             integer :: ii,ftype,neigh_idx,lim1,lim2,deriv_idx,xx
 
             if (neigh.eq.0) then
@@ -865,6 +865,32 @@ end if
                                 &tmp_cnst*tmp5*dr_vec(xx)
                     end do
 
+                else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                    !* params
+                    mu = feature_params%info(ft_idx)%mean(1)
+                    lambda = feature_params%info(ft_idx)%prec(1,1)
+
+                    tmp1 = dr - mu
+                    tmp2 = exp(-0.5d0*(dr-mu)**2 * lambda)
+
+                    !* d x / d rij
+                    tmp3 = tmp2*(tmp_taper_deriv - tmp1*lambda*tmp_taper)
+                    
+                    !* d^2 / d precision
+                    tmp4 = -tmp1*(0.5d0*tmp1*tmp3 + tmp2*tmp_taper)
+                    
+                    !* d^2 / d mean
+                    tmp5 = lambda*(tmp1*tmp3 + tmp2*tmp_taper)
+                    
+                    do xx=1,3
+                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) = &
+                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) + &
+                                &tmp_cnst*tmp4*dr_vec(xx)
+                        
+                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) = &
+                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) + &
+                                &tmp_cnst*tmp5*dr_vec(xx)
+                    end do
                 else
                     call error("feature_TwoBody_param_forces_deriv","Implementation error")
                 end if

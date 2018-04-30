@@ -13,6 +13,7 @@ from os import listdir
 from sklearn import mixture
 from scipy import optimize
 import parsers
+import warnings
 import time
 
 class feature():
@@ -468,8 +469,8 @@ class features():
         xmin = np.min(feature_list,axis=1)
 
         if np.isclose(xmax,xmin,rtol=1e-128,atol=1e-128).any():
-            raise FeaturesError("Feature found with possibly no support in training set: {} {}".\
-                    format(xmin,xmax))
+            warnings.warn("Feature found with possibly no support in training set: {} {}".\
+                    format(xmin,xmax),Warning)
 
         for _feature in range(len(self.features)):
             self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-xmin[_feature])

@@ -2,6 +2,7 @@ import numpy as np
 import warnings
 from scipy.optimize import OptimizeResult
 from deap import base,creator,tools,cma
+import time
 
 def minimize(fun,jac,x0,args=(),solver='adam',tol=1e-8,**solver_kwargs):
     """
@@ -259,7 +260,8 @@ class CMA():
                         if bounds[ii][jj] is not None:
                             constraints_present = True
             return constraints_present
-
+        def RunTime(Ind):
+            return time.time() - t0
 
         sigma = self.sigma
         lambda_ = int(4+3*np.log(self.Nparam))
@@ -290,9 +292,10 @@ class CMA():
         stats.register("std",np.std)
         stats.register("min",np.min)
         stats.register("max",np.max)
+        stats.register("time (s)",RunTime)
 
         logbook = tools.Logbook()
-        logbook.header = "gen","evals","avg","std","min","max"
+        logbook.header = "gen","time (s)","evals","avg","std","min","max"
 
         conditions = {"MaxIter" : False, "TolHistFun" : False, "EqualFunVals" : False,
                       "TolX" : False, "TolUpSigma" : False, "Stagnation" : False,
@@ -305,6 +308,9 @@ class CMA():
         opt_res = OptimizeResult()
         opt_res["success"] = False
         opt_res["nfev"] = 0
+
+        # initial runtime
+        t0 = time.time()
 
         t = 0
         while not any(conditions.values()):
