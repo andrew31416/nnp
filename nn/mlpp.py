@@ -4,6 +4,7 @@ import numpy as np
 import nnp.features
 from scipy import optimize
 import time
+import warnings
 
 class MultiLayerPerceptronPotential():
     """Fully connected feed forward multi layer perceptron for empirical 
@@ -222,7 +223,7 @@ class MultiLayerPerceptronPotential():
             bad_feature = np.isinf(1.0/np.average(self.computed_features**2,axis=1))
 
             if np.any(bad_feature):
-                raise MlppError("Features {} are 0! Please remove.".\
+                warnings.warn("Features {} are 0! Please remove. Will give bad initial weights".\
                         format(np.nonzero(bad_feature)[0]))
                 
 
@@ -230,6 +231,9 @@ class MultiLayerPerceptronPotential():
             #w1_variance = self.activation_variance / np.sum(data_vari + data_mean**2)
             w1_variance = self.activation_variance / (self.D*\
                     np.average(self.computed_features**2,axis=1))
+          
+            inf_idx = np.where(np.isinf(w1_variance))[0]
+            w1_variance[inf_idx] = 1.0 # this will give bad initial energies but won't crash
            
             self.weights = np.zeros(self.hidden_layer_sizes[0]*(self.D+1),\
                     order='F',dtype=np.float64)
