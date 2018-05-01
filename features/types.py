@@ -471,11 +471,23 @@ class features():
         if np.isclose(xmax,xmin,rtol=1e-128,atol=1e-128).any():
             warnings.warn("Feature found with possibly no support in training set: {} {}".\
                     format(xmin,xmax),Warning)
+            # descriptors without support
+            all_zero = np.where(np.logical_and(np.isclose(xmin,0.0,rtol=1e-256,atol=1e-256) , \
+                    np.isclose(xmax,0.0,rtol=1e-256,atol=1e-256)))[0]
+
+        else:
+            all_zero = np.asarray([])
+            
 
         for _feature in range(len(self.features)):
-            self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-xmin[_feature])
-            self.features[_feature].precondition["add"] = 1.0 -2.0*xmax[_feature]/\
-                    (xmax[_feature]-xmin[_feature])
+            if _feature in all_zero:
+                self.features[_feature].precondition["times"] = 1.0
+                self.features[_feature].precondition["add"] = 0.0
+            else:
+                self.features[_feature].precondition["times"] = 2.0/(xmax[_feature]-\
+                        xmin[_feature])
+                self.features[_feature].precondition["add"] = 1.0 -2.0*xmax[_feature]/\
+                        (xmax[_feature]-xmin[_feature])
         self.precondition_computed = True
         del feature_list                    
 
@@ -918,7 +930,7 @@ class features():
         # do optimization 
         self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
                 jac=self._feature_loss_jacobian,x0=x0,\
-                method='l-bfgs-b',options={"gtol":1e-12,"maxiter":self.local_maxiter},\
+                method='l-bfgs-b',options={"gtol":1e-8,"maxiter":self.local_maxiter},\
                 bounds=self.concacenated_bounds,callback=self._feature_opt_callback)
    
         # write final parameters to feature class instances 
