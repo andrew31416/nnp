@@ -961,11 +961,16 @@ end if
             !* 1= deriv wrt. jj, 2= deriv wrt. kk, 3= deriv wrt. ii
             do zz=1,3,1
                 !* map atom id to portion of mem for derivative
+                !if (zz.lt.3) then
+                !    deriv_idx = data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(zz,&
+                !            &bond_idx)
+                !else
+                !    deriv_idx = 1
+                !end if
                 if (zz.lt.3) then
-                    deriv_idx = data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(zz,&
-                            &bond_idx)
+                    deriv_idx = set_neigh_info(conf)%threebody(atm)%idx(zz,bond_idx) 
                 else
-                    deriv_idx = 1
+                    deriv_idx = atm
                 end if
 
                 !* angle derivative wrt zz
@@ -986,7 +991,7 @@ end if
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
 
-                if (ftype.eq.featureID_StringToInt("acsf_behler_g4")) then
+                if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
                     !* feature specific params
                     eta    = feature_params%info(ft_idx)%eta 
                     lambda = feature_params%info(ft_idx)%lambda 
@@ -1005,12 +1010,17 @@ end if
                     const(4) = const(3)**xi
 
                     const(5) = tap_ij*tap_ik*tap_jk*lambda*product(const(1:2))*&
-                            &const(3)**(xi-2.0d0) * (1.0d0 + xi**2 + (1.0d0-xi)*xi*const(3)*0.5d0)
+                            !&const(3)**(xi-2.0d0) * (1.0d0 + xi**2 + (1.0d0-xi)*xi*const(3)*0.5d0)
+                            &const(3)**(xi-2.0d0) * (xi*(xi-1.0d0) + const(3)*(xi*(1.0d0-xi)*0.5d0+&
+                            &1.0d0))
+                            
 
                     !* (1-xi)*(2^xi)* (1+lambda*cos(theta))^xi  + 
                     !* 2^(1-xi) * xi *(1+lambda*cos(theta))^(xi-1) * exp(-eta ... ) * xi
-                    const(6) = ( (1.0d0-xi)*const(2)*0.5d0*const(4) + &
-                            &const(2)*xi*const(3)**(xi-1.0d0) ) * const(1) * xi
+                    !const(6) = ( (1.0d0-xi)*const(2)*0.5d0*const(4) + &
+                    !        &const(2)*xi*const(3)**(xi-1.0d0) ) * const(1) * xi
+                    const(6) = const(1)*const(2)*(const(3)**(xi-1.0d0)) *&
+                            &(xi + 0.5d0*(1.0d0-xi)*const(3))
 
                     do xx=1,3,1
                         d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi = &
@@ -1022,14 +1032,14 @@ end if
                                 &const(6)  ) * tmp_z
 
                         d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = & 
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + ( (tap_ij*tap_ik*&
+                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta - ( (tap_ij*tap_ik*&
                                 &tap_jk*lambda*xi*(const(3)**(xi-1.0d0))*dcosdrz(xx) +&
                                 &(tap_ik*tap_jk*(tap_ij_deriv-2.0d0*eta*tap_ij*drij)*drijdrz(xx) +&
                                 & tap_ij*tap_jk*(tap_ik_deriv-2.0d0*eta*tap_ik*drik)*drikdrz(xx) +& 
                                 & tap_ij*tap_ik*(tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*drjkdrz(xx))*&
-                                &const(4) )*const(2)*const(1) * (-drij**2-drik**2-drjk**2) - &
+                                &const(4) )*const(2)*const(1) * (drij**2+drik**2+drjk**2) + &
                                 &2.0d0*const(2)+const(4)*const(1)*tap_ij*tap_ik*tap_jk*(&
-                                &drijdrz(xx) + drikdrz(xx) + drjkdrz(xx))   )*tmp_z
+                                &drij*drijdrz(xx) + drik*drikdrz(xx) + drjk*drjkdrz(xx))   )*tmp_z
                     end do
 
                     !do xx=1,3
