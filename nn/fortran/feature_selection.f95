@@ -260,13 +260,11 @@ module feature_selection
                             cycle
                         else if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
                             cycle
-                        else if (.not.feature_IsTwoBody(ftype)) then
-                            cycle
+                        else if (feature_IsTwoBody(ftype)) then
+                            !* d x_ft,atm / d r_atm
+                            call feature_TwoBody_param_forces_deriv(conf,atm,0,ft,&
+                                    &d2xdrdparam)
                         end if
-                        
-                        !* d x_ft,atm / d r_atm
-                        call feature_TwoBody_param_forces_deriv(conf,atm,0,ft,&
-                                &d2xdrdparam)
                     end do !* end loop over features
                 end if 
 
@@ -292,6 +290,11 @@ module feature_selection
                                     &set_neigh_info(conf)%threebody(atm)%cos_ang(bond),&
                                     zatm,set_neigh_info(conf)%threebody(atm)%z(1:2,bond),ft,&
                                     &dxdparam(atm)%info(ft))
+
+                            if (forces_included) then
+                                call feature_ThreeBody_param_forces_deriv(set_type,conf,atm,&
+                                        &neigh,ft,d2xdrdparam)
+                            end if 
                         end do !* end loop over features
                     end do !* end loop over threebody bonds to atm
                 end if !* end if three body interactions
@@ -898,6 +901,147 @@ end if
             end do !* end loop over ii (neighbours to take derivative wrt)
 
         end subroutine feature_TwoBody_param_forces_deriv
+        
+        
+        subroutine feature_ThreeBody_param_forces_deriv(set_type,conf,atm,bond_idx,ft_idx,&
+        &d2xdrdparam)
+            implicit none
+            
+            !* args
+            integer,intent(in) :: set_type,conf,atm,bond_idx,ft_idx
+            type(feature_info),intent(inout) :: d2xdrdparam(:,:,:)
+
+            !* scratch
+            real(8) :: rcut,fs,za,zb,lambda,eta,xi,scl
+            real(8) :: drij,drik,drjk,tap_ij,tap_ik,tap_jk
+            real(8) :: tap_ij_deriv,tap_ik_deriv,tap_jk_deriv
+            real(8) :: tmp_z,drijdrz(1:3),drikdrz(1:3),drjkdrz(1:3)
+            real(8) :: const(1:6),cos_angle,dcosdrz(1:3)
+            integer :: deriv_idx,ftype,zz,xx
+
+            rcut   = feature_params%info(ft_idx)%rcut
+            fs     = feature_params%info(ft_idx)%fs
+            za     = feature_params%info(ft_idx)%za
+            zb     = feature_params%info(ft_idx)%zb
+            ftype  = feature_params%info(ft_idx)%ftype
+            scl    = feature_params%info(ft_idx)%scl_cnst
+
+            drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
+            drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
+            drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond_idx)
+
+            if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
+                return
+            end if
+
+            cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
+
+            !* tapering
+            if (speedup_applies("threebody_rcut")) then
+                tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond_idx)
+                tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond_idx)
+                tap_jk = set_neigh_info(conf)%threebody(atm)%dr_taper(3,bond_idx)
+                tap_ij_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(1,bond_idx)
+                tap_ik_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(2,bond_idx)
+                tap_jk_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(3,bond_idx)
+            else
+                tap_ij = taper_1(drij,rcut,fs)
+                tap_ik = taper_1(drik,rcut,fs)
+                tap_jk = taper_1(drjk,rcut,fs) 
+                tap_ij_deriv = taper_deriv_1(drij,rcut,fs)
+                tap_ik_deriv = taper_deriv_1(drik,rcut,fs)
+                tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
+            end if
+   
+            !* atomic contribution and unit rescaling
+            tmp_z = ( ((set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
+                    &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0))**zb *&
+                    &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za ) * scl
+
+            !* 1= deriv wrt. jj, 2= deriv wrt. kk, 3= deriv wrt. ii
+            do zz=1,3,1
+                !* map atom id to portion of mem for derivative
+                if (zz.lt.3) then
+                    deriv_idx = data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(zz,&
+                            &bond_idx)
+                else
+                    deriv_idx = 1
+                end if
+
+                !* angle derivative wrt zz
+                dcosdrz =  set_neigh_info(conf)%threebody(atm)%dcos_dr(:,zz,bond_idx)
+
+                !* distance derivative wrt zz
+                if (zz.eq.1) then
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,4,bond_idx)
+                    drjkdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
+                else if (zz.eq.2) then
+                    drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,2,bond_idx)
+                    drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
+                else if (zz.eq.3) then
+                    drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
+                    drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
+                    drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
+                end if
+
+                if (ftype.eq.featureID_StringToInt("acsf_behler_g4")) then
+                    !* feature specific params
+                    eta    = feature_params%info(ft_idx)%eta 
+                    lambda = feature_params%info(ft_idx)%lambda 
+                    xi     = feature_params%info(ft_idx)%xi  
+                    
+                    !* exp(-eta*(drij^2 + drik^2 + drjk^2))
+                    const(1) = exp(-eta*(drij**2 + drik**2 + drjk**2))
+
+                    !* 2 ^(1-xi)
+                    const(2) = 2.0d0**(1.0d0-xi)
+
+                    !* ( 1 + lambda*cos(theta) )
+                    const(3) = (1.0d0 + lambda*cos_angle)
+
+                    !* ( 1 + lambda*cos(theta) )^xi
+                    const(4) = const(3)**xi
+
+                    const(5) = tap_ij*tap_ik*tap_jk*lambda*product(const(1:2))*&
+                            &const(3)**(xi-2.0d0) * (1.0d0 + xi**2 + (1.0d0-xi)*xi*const(3)*0.5d0)
+
+                    !* (1-xi)*(2^xi)* (1+lambda*cos(theta))^xi  + 
+                    !* 2^(1-xi) * xi *(1+lambda*cos(theta))^(xi-1) * exp(-eta ... ) * xi
+                    const(6) = ( (1.0d0-xi)*const(2)*0.5d0*const(4) + &
+                            &const(2)*xi*const(3)**(xi-1.0d0) ) * const(1) * xi
+
+                    do xx=1,3,1
+                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi = &
+                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi + &
+                                &(  const(5)*dcosdrz(xx) + &
+                                &(tap_ik*tap_jk*(tap_ij_deriv-2.0d0*eta*tap_ij*drij)*drijdrz(xx)+&
+                                & tap_ij*tap_jk*(tap_ik_deriv-2.0d0*eta*tap_ik*drik)*drikdrz(xx)+&
+                                & tap_ij*tap_ik*(tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*drjkdrz(xx))*&
+                                &const(6)  ) * tmp_z
+
+                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = & 
+                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + ( (tap_ij*tap_ik*&
+                                &tap_jk*lambda*xi*(const(3)**(xi-1.0d0))*dcosdrz(xx) +&
+                                &(tap_ik*tap_jk*(tap_ij_deriv-2.0d0*eta*tap_ij*drij)*drijdrz(xx) +&
+                                & tap_ij*tap_jk*(tap_ik_deriv-2.0d0*eta*tap_ik*drik)*drikdrz(xx) +& 
+                                & tap_ij*tap_ik*(tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*drjkdrz(xx))*&
+                                &const(4) )*const(2)*const(1) * (-drij**2-drik**2-drjk**2) - &
+                                &2.0d0*const(2)+const(4)*const(1)*tap_ij*tap_ik*tap_jk*(&
+                                &drijdrz(xx) + drikdrz(xx) + drjkdrz(xx))   )*tmp_z
+                    end do
+
+                    !do xx=1,3
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = &
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + &
+                    !            &tmp_cnst*tmp4*dr_vec(xx)
+                    !end do
+                else
+                    call error("feature_ThreeBody_param_deriv","Implementation error")
+                end if
+            end do
+        end subroutine feature_ThreeBody_param_forces_deriv
       
         subroutine calculate_dfdparam(set_type,conf,norm_consts,dxdparam,d2xdrdparam,&
         &force_contribution)

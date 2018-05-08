@@ -707,7 +707,7 @@ class MultiLayerPerceptronPotential():
         """
         # write configurations to fortran data structures
         self.features.set_configuration(gip=X,set_type=set_type)
-   
+        
         if set_type == "train" and self.scale_features:
             # need to compute pre conditioning coefficients
             self.features.calculate_precondition(updating_features=updating_features)

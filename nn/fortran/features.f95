@@ -69,7 +69,6 @@ real(8) :: t1,t2,t3,t4,t5,t6
                 !* if no info is kept, always need to recompute
                 call init_set_neigh_info(set_type)
             end if
-
 ! DEBUG
 !!write(*,*) 'derivs = ',calc_feature_derivatives
 ! DEBUG           
@@ -112,10 +111,10 @@ real(8) :: t1,t2,t3,t4,t5,t6
                             call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
                         end if
                    end if 
-
+                    
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
-
+                    
                     ! deprecated v
                     if (allocated(ultra_z)) then
                         deallocate(ultra_z)
@@ -139,7 +138,6 @@ real(8) :: t1,t2,t3,t4,t5,t6
                 !$omp end parallel
             else
                 do conf=1,data_sets(set_type)%nconf
-
                     if (.not.allocated(set_neigh_info(conf)%twobody)) then
 ! DEBUG
 call cpu_time(t1)
@@ -164,8 +162,7 @@ call cpu_time(t3)
 call cpu_time(t4)
 ! DEBUG
                     end if
-                                  
-
+                    
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
 ! DEBUG
@@ -174,7 +171,6 @@ call cpu_time(t5)
 !write(*,*) 'get_ultracell     twobody_info    threebody_info    calc all features'
 !write(*,*) t2-t1,t3-t2,t4-t3,t5-t4
 ! DEBUG
-
                     ! deprecated v
                     if (allocated(ultra_z)) then
                         deallocate(ultra_z)
@@ -619,7 +615,6 @@ call cpu_time(t2)
 ! this section is slow vv CAN FACTORISE THIS IF ALL 2body and 3body features 
 ! share same cut off radii
 ! DEBUG            
-!write(*,*) 'update atoms info:',atom_neigh_info_needs_updating            
             if (atom_neigh_info_needs_updating) then
                 !* re compute this when chaning rcut of data set
                 
@@ -736,7 +731,6 @@ call cpu_time(t3)
                     end if
                 end if
             end do !* end loop ii over three body terms
-            
             deallocate(bond_contributes)
 
             if (updating_net_weights_only) then

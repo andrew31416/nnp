@@ -535,17 +535,17 @@ class features():
 
         # parse features to fortran data structures
         self._parse_features_to_fortran()
-
+        
         # initialise feature vector mem. and derivatives wrt. atoms
         getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=self._set_map[set_type])
-       
+        
         t2 = time.time()
         
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=self._set_map[set_type],\
                 derivatives=derivatives,scale_features=scale,parallel=self.parallel,\
                 updating_features=updating_features)
-
+        
         t3 = time.time()
         #print('feature comp. time : {}s parallel = {}'.format(t3-t2,self.parallel))
 
@@ -886,7 +886,7 @@ class features():
         if search_scope == "global":
             # do initial coarse search over features
             self._fit_global_search()
-            print('global search complete')
+            
             self.save('best_feat_from_global_search.pckl')
         # do local optimization of NN and current basis func params 
         self._fit_local_search()
@@ -900,14 +900,15 @@ class features():
         self.set_configuration(gip=self.data["train"],set_type="train")
 
         # instance of neural net class
-        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10])
+        self.mlpp = nnp.nn.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10],\
+                max_precision_update_number=0)
         if self.update_only_energy:
             # only consider energy term
             for _key,_value in {"energy":1.0,"forces":0.0,"regularization":0.0}.items():
                 self.mlpp.set_hyperparams(key=_key,value=_value)
         else:
             # include forces too
-            for _key,_value in {"energy":1.0,"forces":1.0,"regularization":0.0}.items():
+            for _key,_value in {"energy":1.0,"forces":1e-3,"regularization":0.0}.items():
                 self.mlpp.set_hyperparams(key=_key,value=_value)
         
         # for forward prop to initialise weights
@@ -1198,7 +1199,8 @@ class features():
         self._parse_param_array_to_class(basis_params)
         
         mlpp = nnp.mlpp.MultiLayerPerceptronPotential(hidden_layer_sizes=[10,10],\
-                activation='sigmoid',precision_update_interval=100)
+                activation='sigmoid',precision_update_interval=100,\
+                max_precision_update_number=0)
         mlpp.set_features(self)
         for _key,_value in {"energy":1.0,"forces":1.0,"regularization":0.0}.items():
             mlpp.set_hyperparams(_key,_value)

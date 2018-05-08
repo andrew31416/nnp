@@ -371,19 +371,26 @@ module init
 
             do set_type = set_lim1,set_lim2,1
                 do conf=1,data_sets(set_type)%nconf,1
-                    !* check if arrays need deallocating
-                    if (allocated(data_sets(set_type)%configs(conf)%x)) then
-                        deallocate(data_sets(set_type)%configs(conf)%x)
+                    if (.not.speedup_applies("keep_all_neigh_info")) then
+                        if (allocated(data_sets(set_type)%configs(conf)%x)) then
+                            deallocate(data_sets(set_type)%configs(conf)%x)
+                        end if
+                        if (allocated(data_sets(set_type)%configs(conf)%x_deriv)) then
+                            deallocate(data_sets(set_type)%configs(conf)%x_deriv)
+                        end if
+                   
+                    end if 
+                   
+                    if (.not.allocated(data_sets(set_type)%configs(conf)%x)) then 
+                        !* feature vector
+                        allocate(data_sets(set_type)%configs(conf)%x(D+1,&
+                                &data_sets(set_type)%configs(conf)%n))
                     end if
-                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv)) then
-                        deallocate(data_sets(set_type)%configs(conf)%x_deriv)
+                    if (.not.allocated(data_sets(set_type)%configs(conf)%x_deriv)) then
+                        !* feature derivative type
+                        allocate(data_sets(set_type)%configs(conf)%x_deriv(D,&
+                                &data_sets(set_type)%configs(conf)%n))
                     end if
-                    
-                    !* feature vector
-                    allocate(data_sets(set_type)%configs(conf)%x(D+1,data_sets(set_type)%configs(conf)%n))
-                    
-                    !* feature derivative type
-                    allocate(data_sets(set_type)%configs(conf)%x_deriv(D,data_sets(set_type)%configs(conf)%n))
                 end do !* end loop over confs
             end do !* end loop over data sets
 
