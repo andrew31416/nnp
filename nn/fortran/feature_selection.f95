@@ -342,7 +342,7 @@ module feature_selection
             type(feature_),intent(inout) :: feature_deriv
 
             !* scratch 
-            integer :: ftype
+            integer :: ftype,kk
             real(8) :: mu,prec,scl_cnst,fs,rcut
             real(8) :: tmp1,tmp2,tmpz,za,zb,tmp_taper,tmp_cnst
 
@@ -392,6 +392,14 @@ module feature_selection
                 feature_deriv%prec(1,1) = feature_deriv%prec(1,1) + tmp_cnst*tmp2*&
                         &exp(prec*tmp2)
 
+            else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                !* 2 pi r/rcut
+                tmp1 = dr*6.28318530718d0 / rcut
+
+                do kk=1,size(feature_params%info(ft_idx)%linear_w),1
+                    feature_deriv%linear_w(kk) = feature_deriv%linear_w(kk) + &
+                            &sin(dble(kk)*tmp1)*tmp_taper
+                end do
             else
                 call error("feature_TwoBody_param_deriv","Implementation error")
             end if
@@ -461,9 +469,6 @@ module feature_selection
                 lcl_feat_deriv%xi = lcl_feat_deriv%xi + (log(1.0d0+lambda*cos_ang) - log(2.0d0))*&
                         &tmp_1*tmp_2*tmp_3
 
-                !lcl_feat_deriv%lambda = lcl_feat_deriv%lambda + (2.0d0**(1.0d0-xi))*&
-                !        &*(1.0d0+lambda*cos_ang)**(xi-1.0d0) * xi*cos_ang*tmp_2*tmp_3
-
                 lcl_feat_deriv%eta = lcl_feat_deriv%eta - tmp_1*tmp_2*tmp_3*tmp_4
             
             else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
@@ -524,7 +529,7 @@ module feature_selection
             type(feature_info),intent(inout) :: lcl_feat_derivs
 
             !* scratch
-            integer :: ft,ftype
+            integer :: ft,ftype,num_weights
 
             if (allocated(lcl_feat_derivs%info)) then
                 deallocate(lcl_feat_derivs%info)
@@ -549,6 +554,11 @@ module feature_selection
                     
                     lcl_feat_derivs%info(ft)%mean(:) = 0.0d0
                     lcl_feat_derivs%info(ft)%prec(:,:) = 0.0d0
+                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    num_weights = size(feature_params%info(ft)%linear_w)
+                    allocate(lcl_feat_derivs%info(ft)%linear_w(num_weights))
+
+                    lcl_feat_derivs%info(ft)%linear_w(:) = 0.0d0
                 end if
                 
                 lcl_feat_derivs%info(ft)%rs = 0.0d0
@@ -574,6 +584,9 @@ module feature_selection
                     !* normal feat. type
                     feature_info_inst%info(ft)%mean = 0.0d0
                     feature_info_inst%info(ft)%prec = 0.0d0
+                end if
+                if (allocated(feature_info_inst%info(ft)%linear_w)) then
+                    feature_info_inst%info(ft)%linear_w = 0.0d0
                 end if
             end do
         end subroutine zero_feature_info
@@ -604,6 +617,8 @@ module feature_selection
             &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
                 feat_out%mean = feat_out%mean + feat_in%mean*const
                 feat_out%prec = feat_out%prec + feat_in%prec*const
+            else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                feat_out%linear_w = feat_out%linear_w + feat_in%linear_w*const
             end if
         end subroutine add_individual_features
 
@@ -620,7 +635,8 @@ module feature_selection
             integer :: ft
 
             do ft=1,feature_params%num_features,1
-                call add_individual_features(lcl_feat_derivs%info(ft),const,gbl_feat_derivs%info(ft))
+                call add_individual_features(lcl_feat_derivs%info(ft),const,&
+                        &gbl_feat_derivs%info(ft))
             end do !* end loop over features
         end subroutine
                 
@@ -663,6 +679,9 @@ module feature_selection
                     lcl_feat_derivs%info(ft)%prec = lcl_feat_derivs%info(ft)%prec + &
                             &tmp_feat_derivs%info(ft)%prec*tmpE * dydx(ft,atm)
                 
+                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    lcl_feat_derivs%info(ft)%linear_w = lcl_feat_derivs%info(ft)%linear_w + &
+                            &tmp_feat_derivs%info(ft)%linear_w*tmpE * dydx(ft,atm)
                 end if
             end do
         end subroutine append_atom_contribution
@@ -715,6 +734,11 @@ module feature_selection
                     call update_array_idx(cntr,1,size(jac_array))
                     jac_array(cntr:cntr+2) = gbl_feat_derivs%info(ft)%mean(1:3)
                     call update_array_idx(cntr,2,size(jac_array))
+                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    do ii=1,size(gbl_feat_derivs%info(ft)%linear_w),1
+                        call update_array_idx(cntr,1,size(jac_array))
+                        jac_array(cntr) = gbl_feat_derivs%info(ft)%linear_w(ii)
+                    end do !* end loop over fourier weights
                 end if
             end do !* end loop over feature types
         end subroutine parse_feature_format_to_array_jac
@@ -752,6 +776,8 @@ module feature_selection
                     cntr = cntr + 2
                 else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                     cntr = cntr + 9
+                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    cntr = cntr + size(feature_params%info(ft)%linear_w)
                 end if
             end do
             num_optimizable_params = cntr
@@ -767,8 +793,8 @@ module feature_selection
             !* scratch
             real(8) :: rcut,tmp1,scl_cnst,za,zb,tmpz,tmp_taper,tmp_taper_deriv
             real(8) :: tmp_cnst,rs,eta,tmp2,tmp3,tmp4,tmp5,dr_vec(1:3)
-            real(8) :: dr,fs,zatm,zngh,mu,lambda
-            integer :: ii,ftype,neigh_idx,lim1,lim2,deriv_idx,xx
+            real(8) :: dr,fs,zatm,zngh,mu,lambda,kk_dble
+            integer :: ii,kk,ftype,neigh_idx,lim1,lim2,deriv_idx,xx
 
             if (neigh.eq.0) then
                 !* take derivative wrt central atom (atm)
@@ -893,6 +919,22 @@ end if
                         d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) = &
                                 &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) + &
                                 &tmp_cnst*tmp5*dr_vec(xx)
+                    end do
+                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    !* 2 pi / rcut
+                    tmp1 = 6.28318530718d0/rcut
+
+                    !* 2 pi r / rcut
+                    tmp2 = tmp1*dr
+
+                    do xx=1,3
+                        do kk=1,size(feature_params%info(ft_idx)%linear_w),1
+                            d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk) = &
+                                    &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk) +&
+                                    &( tmp_taper_deriv*sin(tmp2*kk_dble) + tmp_taper*tmp1*kk_dble*&
+                                    &cos(kk_dble*tmp2) )*dr_vec(xx)
+
+                        end do
                     end do
                 else
                     call error("feature_TwoBody_param_forces_deriv","Implementation error")

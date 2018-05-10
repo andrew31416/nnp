@@ -61,6 +61,7 @@ module feature_config
         real(8) :: scl_cnst = 1.0d0         ! scale all instances of this feature upon computation
         real(8) :: add_cnst = 0.0d0         ! additive constant for this feature upon computation
         real(8), allocatable :: devel(:)    ! for developing functions
+        real(8), allocatable :: linear_w(:)
     end type feature_
 
     type,public :: feature_info
@@ -128,8 +129,10 @@ module feature_config
                 idx = 5
             else if (feature_descriptor.eq."acsf_normal-b3") then
                 idx = 6
-            else if (feature_descriptor.eq."devel_iso") then
+            else if (feature_descriptor.eq."acsf_fourier-b2") then
                 idx = 7
+            else if (feature_descriptor.eq."devel_iso") then
+                idx = 8
             else
                 write(*,*) ""
                 write(*,*) '*********************************************' 
@@ -153,6 +156,7 @@ module feature_config
             if ( (ftype.eq.featureID_StringToInt("acsf_behler-g1")).or.&
                 &(ftype.eq.featureID_StringToInt("acsf_behler-g2")).or.&
                 &(ftype.eq.featureID_StringToInt("acsf_normal-b2")).or.&
+                &(ftype.eq.featureID_StringToInt("acsf_fourier-b2")).or.&
                 &(ftype.eq.featureID_StringToInt("devel_iso")) ) then
                 tmp = .true.
             else

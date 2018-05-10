@@ -49,7 +49,7 @@ program unittest
             nlf_type = 1
             
             !* features
-            fD = 7
+            fD = 8
             natm = 5
             nconf = 2
 
@@ -243,6 +243,13 @@ program unittest
             feature_params%info(7)%mean(2) = 2.1d0
             feature_params%info(7)%mean(3) = 0.3d0
             feature_params%info(7)%sqrt_det = sqrt(matrix_determinant(feature_params%info(7)%prec))
+
+            !* feature 8 : 2body fourier linear model
+            feature_params%info(8)%ftype = featureID_StringToInt("acsf_fourier-b2")
+            feature_params%info(8)%rcut = 5.6d0
+            feature_params%info(8)%fs = 0.1d0
+            allocate(feature_params%info(8)%linear_w(10))
+            call random_number(feature_params%info(8)%linear_w)
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -462,11 +469,11 @@ program unittest
             implicit none
 
             !* scratch
-            integer :: ii,conf,atm,set_type,ft,ftype,cntr
+            integer :: ii,conf,atm,set_type,ft,ftype,cntr,num_weights
             real(8) :: dloss
             real(8),dimension(:),allocatable :: anl_jac,original_weights
             logical,allocatable :: anl_jac_ok(:) 
-            integer :: loss_norm_type,num_params,num_attributes(0:7)
+            integer :: loss_norm_type,num_params,num_attributes(0:8)
             logical :: scale_feats = .false.
 
             allocate(original_weights(nwght))
@@ -504,15 +511,19 @@ program unittest
 
             call loss_feature_jacobian(original_weights,set_type,scale_feats,.false.,anl_jac)
             
+            !* number of fourier weights
+            num_weights = size(feature_params%info(8)%linear_w)
+
             !* number of optimizable attributes for each feature
-            num_attributes(featureID_StringToInt("atomic_number"))  = 0
-            num_attributes(featureID_StringToInt("acsf_behler-g1")) = 0
-            num_attributes(featureID_StringToInt("acsf_behler-g2")) = 2
-            num_attributes(featureID_StringToInt("acsf_behler-g4")) = 2
-            num_attributes(featureID_StringToInt("acsf_behler-g5")) = 2
-            num_attributes(featureID_StringToInt("acsf_normal-b2")) = 2
-            num_attributes(featureID_StringToInt("acsf_normal-b3")) = 9
-            num_attributes(featureID_StringToInt("devel_iso"))      = 0
+            num_attributes(featureID_StringToInt("atomic_number"))   = 0
+            num_attributes(featureID_StringToInt("acsf_behler-g1"))  = 0
+            num_attributes(featureID_StringToInt("acsf_behler-g2"))  = 2
+            num_attributes(featureID_StringToInt("acsf_behler-g4"))  = 2
+            num_attributes(featureID_StringToInt("acsf_behler-g5"))  = 2
+            num_attributes(featureID_StringToInt("acsf_normal-b2"))  = 2
+            num_attributes(featureID_StringToInt("acsf_normal-b3"))  = 9
+            num_attributes(featureID_StringToInt("acsf_fourier-b2")) = num_weights
+            num_attributes(featureID_StringToInt("devel_iso"))       = 0
 
             cntr = 1
             do ft=1,feature_params%num_features,1
@@ -598,6 +609,8 @@ program unittest
                     call unittest_error("feature_selection_subsidiary_1",&
                             &"Implementation error")
                 end if
+            else if (ftype.eq.FeatureID_StringToInt("acsf_fourier-b2")) then
+                x0 = feature_params%info(ft)%linear_w(attribute) 
             else
                 call unittest_error("feature_selection_subsidiary_1",&
                         &"attempting to optimize wrong feature")
@@ -716,6 +729,8 @@ program unittest
                     call unittest_error("feature_selection_subsidiary_2",&
                             &"Implementation error")
                 end if
+            else if (ftype.eq.FeatureID_StringToInt("acsf_fourier-b2")) then
+                feature_params%info(ft)%linear_w(attribute) = newvalue
             else
                 call unittest_error("feature_selection_subsidiary_2",&
                         &"attempting to optimize wrong feature")

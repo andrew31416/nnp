@@ -519,6 +519,15 @@ call cpu_time(t2)
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &vec(1:3,idx_to_contrib(ii)))
                         end if
+                    else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                        call feature_fourier_b2(conf,atm,ii,ft_idx,&
+                                &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
+
+                        if (calc_feature_derivatives) then
+                            call feature_fourier_b2_deriv(conf,atm,ii,ft_idx,&
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                    &vec(1:3,idx_to_contrib(ii)))
+                        end if
                     else if (ftype.eq.featureID_StringToInt("devel_iso")) then
                         call feature_iso_devel(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
@@ -542,6 +551,9 @@ call cpu_time(t2)
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                     call feature_normal_iso_deriv(conf,atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    call feature_fourier_b2_deriv(conf,atm,0,ft_idx,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
                 else if (ftype.eq.featureID_StringToInt("devel_iso")) then
                     call feature_iso_devel_deriv(conf,atm,0,ft_idx,&
@@ -1795,5 +1807,131 @@ call cpu_time(t4)
             end do
             
         end subroutine feature_normal_threebody_deriv
+        
+        subroutine feature_fourier_b2(conf,atm,neigh_idx,ft_idx,current_val)
+            implicit none
+
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: current_val
+
+            !* scratch
+            real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,fs
+            real(8) :: phi(1:size(feature_params%info(ft_idx)%linear_w))
+            integer :: kk,num_weights
+           
+            !* atom-neigh_idx distance 
+            dr = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
+
+            !* symmetry function params
+            za   = feature_params%info(ft_idx)%za
+            zb   = feature_params%info(ft_idx)%zb
+            rcut = feature_params%info(ft_idx)%rcut
+            fs   = feature_params%info(ft_idx)%fs
+
+            !* number of weights
+            num_weights = size(feature_params%info(ft_idx)%linear_w)
+
+            !* 2 pi / rcut
+            tmp1 = dr * 6.28318530718 / rcut
+
+            !* tapering
+            if (speedup_applies("twobody_rcut")) then
+                !tmp2 = feature_isotropic(atm)%dr_taper(neigh_idx)
+                tmp2 = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh_idx)
+            else
+                tmp2 = taper_1(dr,rcut,fs)
+            end if
+            
+            !* atomic number contribution
+            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                    &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
+       
+            ! we don't care about constant offset, discard 0th contribution
+            do kk=1,num_weights,1
+                !* design matrix elements = cos(k 2pi dr / rcut)
+                phi(kk) = sin(dble(kk)*tmp1)
+            end do !*end loop over linear model weights
+        
+            current_val = current_val + &
+                    &ddot(num_weights,feature_params%info(ft_idx)%linear_w,1,phi,1)*tmp2*tmp3
+
+        end subroutine feature_fourier_b2
+        
+        subroutine feature_fourier_b2_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
+            implicit none
+
+            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            real(8),intent(inout) :: deriv_vec(1:3)
+
+            !* scratch
+            real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
+            real(8) :: fs,rcut,tmpz,tmp3
+            real(8) :: za,zb,kk_dble,phi(1:size(feature_params%info(ft_idx)%linear_w))
+            integer :: ii,kk,lim1,lim2,num_weights
+
+            !* symmetry function params
+            za   = feature_params%info(ft_idx)%za
+            zb   = feature_params%info(ft_idx)%zb
+            fs   = feature_params%info(ft_idx)%fs
+            rcut = feature_params%info(ft_idx)%rcut
+
+            !* number of functions in linear model (no bias)
+            num_weights = size(feature_params%info(ft_idx)%linear_w)
+
+            !* 2 pi / rcut
+            tmp1 = 6.28318530718d0 / rcut
+
+            if (neigh_idx.eq.0) then
+                lim1 = 1
+                !lim2 = feature_isotropic(atm)%n
+                lim2 = set_neigh_info(conf)%twobody(atm)%n
+                tmp2 = -1.0d0       !* sign for drij/d r_central
+            else
+                lim1 = neigh_idx
+                lim2 = neigh_idx    
+                tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+            end if
+
+
+            !* derivative wrt. central atom itself
+            do ii=lim1,lim2,1
+                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
+                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+                    cycle
+                end if
+                
+                !* atom-atom distance
+                dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
+
+                !* (r_neighbour - r_centralatom)/dr_scl
+                dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
+                
+                !* tapering
+                if (speedup_applies("twobody_rcut")) then
+                    tap = set_neigh_info(conf)%twobody(atm)%dr_taper(ii)
+                    tap_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(ii)
+                else
+                    tap = taper_1(dr_scl,rcut,fs)
+                    tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
+                end if
+
+                !* atomic numbers
+                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za *&
+                        & (set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
+
+                do kk=1,num_weights,1
+                    kk_dble = dble(kk)
+                   
+                    phi(kk) = tap_deriv*sin(kk_dble * tmp1 * dr_scl) + &
+                            &tap*tmp1*kk_dble*cos(kk_dble * tmp1 * dr_scl)
+                end do !* end loop over linear model weights
+
+                !* Gamma' \sum_k w_k cos(2 pi k dr/rcut)  + 
+                !* Gamma \sum_k w_k 2*pi*k/rcut*sin(2 pi k dr/rcut)
+                tmp3 = ddot(num_weights,feature_params%info(ft_idx)%linear_w,1,phi,1) 
+
+                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp3*tmp2*tmpz
+            end do
+        end subroutine feature_fourier_b2_deriv
 
 end module
