@@ -46,6 +46,7 @@ class feature():
                            'acsf_behler-g5',
                            'acsf_normal-b2',
                            'acsf_normal-b3',
+                           'acsf_fourier-b2',
                            'devel_iso']
         
         self.type = feature_type
@@ -85,6 +86,8 @@ class feature():
             _keys = ['rcut','fs','prec','mean','za','zb']
         elif self.type in ['devel_iso']:
             _keys = ['rcut','fs','mean','const','std']
+        elif self.type in ['acsf_fourier-b2']:
+            _keys = ['rcut','fs','weights','za','zb']
 
         if key not in _keys:
             raise FeatureError("Parameter {} not supported".format(key))
@@ -93,7 +96,7 @@ class feature():
         _atype = (list,np.ndarray,int,float,np.float32,np.float64)
         _types = {'rcut':_ftype,'fs':_ftype,'eta':_ftype,'za':_ftype,\
                 'zb':_ftype,'xi':_ftype,'lambda':_ftype,'prec':_atype,\
-                'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype}
+                'mean':_atype,'rs':_ftype,'const':_atype,'std':_atype,'weights':_atype}
         # constraints on bound parameters
         _constraints_ok = {"xi":lambda x: x>=1,\
                            "rcut":lambda x: x>0,\
@@ -127,6 +130,9 @@ class feature():
                 except AssertionError:
                     raise FeatureError("Supplied precision matrix for 3-body gaussian is not \
                             symmetric")
+        elif self.type in ["acsf_fourier-b2"]:
+            if key == "weights":
+                value = np.asarray(value,dtype=np.float64)
         try:
             self.params[key] = deepcopy(value)
         except KeyError:
@@ -157,6 +163,9 @@ class feature():
         elif self.type in ['acsf_normal-b2','acsf_normal-b3']:
             _keys = ['rcut','fs','prec','mean','za','zb']
             _update_me = ['prec','mean']
+        elif self.type in ['acsf_fourier-b2']:
+            _keys = ['rcut','fs','weights','za','zb']
+            _update_me = ['weights']
         elif self.type in ['devel_iso']:
             _keys = ['rcut','fs','mean','const','std']
         # list of parameters that optimized
@@ -201,6 +210,8 @@ class feature():
                 value = [[0,None]]
             elif self.type == "acsf_normal-b3":
                 value = [[None,None] for ii in range(6)]
+        elif key == 'weights':
+            value = [[None,None] for ii in range(self.params['weights'].shape[0])]
         else:
             raise FeatureError("Need to write get_bounds for key {}".format(key))
         return value 
@@ -254,6 +265,11 @@ class feature():
         elif self.type == 'devel_iso':
             file_object.write('{} {} {:<20} {:<20}\n'.format(self.type,' '.join(['{:<20}'.format(\
                     self.params[_a]) for _a in ['rcut','fs','mean','const','std']]),\
+                    self.precondition["times"],self.precondition["add"] ))
+        elif self.type == 'acsf_fourier-b2':
+            file_object.write('{} {} {} {} {} {}\n'.format(self.type,len(self.params["weights"]),\
+                    ' '.join(['{:<20}'.format(self.params[_a]) for _a in ['rcut','fs','za','zb']]),\
+                    ' '.join(['{:<20}'.format(_w) for _w in self.params['weights']]),\
                     self.precondition["times"],self.precondition["add"] ))
 
         else: raise FeatureError("Implementation error")
@@ -388,7 +404,7 @@ class features():
         # update maxrcut
         if feature.type in ['atomic_number']:
             pass
-        elif feature.type in ['acsf_behler-g1','acsf_behler-g2','acsf_normal-b2']:
+        elif feature.type in ['acsf_behler-g1','acsf_behler-g2','acsf_normal-b2','acsf_fourier-b2']:
             # two body feature
             if feature.params["rcut"] > self.maxrcut["twobody"]:
                 self.set_rcut({"twobody":feature.params["rcut"]})
@@ -1078,7 +1094,8 @@ class features():
                 # location of attribute in parameters np.ndarray
                 (id_start,id_end) = self._parse_idx_map[(_ft_idx,_key)]
 
-                attribute_value = self._parse_attributes_from_array(_key,parameters[id_start:id_end])
+                attribute_value = self._parse_attributes_from_array(_key,\
+                        parameters[id_start:id_end])
 
                 # format used to write to fortran
                 self.features[_ft_idx].set_param(_key,attribute_value)
@@ -1109,7 +1126,8 @@ class features():
             for _key in self.features[_ft_idx].update_keys:
                 # iterate over attributes that are updatable
                 
-                if _key not in ['mean','prec'] or _ftype != "acsf_normal-b3":
+                #if _key not in ['mean','prec','weights'] or _ftype != "acsf_normal-b3":
+                if _ftype not in ["acsf_normal-b3","acsf_fourier-b2"]:
                     length_of_param = 1
                     _value = [self.features[_ft_idx].params[_key]]
                 elif _key == "mean":
@@ -1120,13 +1138,18 @@ class features():
                     
                     idx = np.triu_indices(3,0)
                     _value = self.features[_ft_idx].params[_key][idx] 
-              
+                elif _key == "weights":
+                    length_of_param = self.features[_ft_idx].params[_key].shape[0]
+                    _value = self.features[_ft_idx].params[_key]
+                else:
+                    raise FeaturesError("Implementation error for {}".format(_ftype))
+
                 # fetch bounds for basis func param type 
                 self.concacenated_bounds += self.features[_ft_idx].get_bounds(_key)
                 
                 # append params to list
                 x0 += list(_value)
-
+                
                 # store location of feature attribute in params list
                 self._parse_idx_map.update({(_ft_idx,_key):(offset,offset+length_of_param)})
 
@@ -1134,7 +1157,8 @@ class features():
                 offset = len(x0)
 
         if len(self.concacenated_bounds)!=len(x0):
-            raise FeaturesError("shape mismatch between concatenated parameters and bounds")
+            raise FeaturesError("shape mismatch between concatenated parameters and bounds {}!= {}"\
+                    .format(len(self.concacenated_bounds),len(x0)))
         
         return np.asarray(x0)
 
@@ -1180,6 +1204,8 @@ class features():
             
             return symmetric_matrix
         elif key in ['prec','mean'] and len(value)!=1:
+            return np.asarray(value)
+        elif key in ["weights"]:
             return np.asarray(value)
         else:
             # we pass in an array slice

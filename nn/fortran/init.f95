@@ -3,7 +3,7 @@ module init
     use util
     use feature_config
     use io, only : read_natm, read_config, read_nfeatures, read_features, info_features, error
-    use feature_util, only : threebody_features_present
+    use feature_util, only : twobody_features_present,threebody_features_present
 
     implicit none
     
@@ -309,8 +309,10 @@ module init
             call read_features(filepath)
 
             !* check if any performance criteria apply
-            if (performance_option_Nbody_rcut_applies(2)) then
-                call activate_performance_option("twobody_rcut")
+            if (twobody_features_present()) then                
+                if (performance_option_Nbody_rcut_applies(2)) then
+                    call activate_performance_option("twobody_rcut")
+                end if
             end if
             if (threebody_features_present()) then
                 if (performance_option_Nbody_rcut_applies(3)) then

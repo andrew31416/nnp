@@ -37,7 +37,7 @@ module features
             real(8),allocatable :: ultra_z(:)
             integer,allocatable :: ultra_idx(:)
             real(8) :: mxrcut
-            logical :: calc_threebody
+            logical :: calc_twobody,calc_threebody
             integer :: conf
 
             !* openMP variables
@@ -54,6 +54,9 @@ real(8) :: t1,t2,t3,t4,t5,t6
             !* max cut off of all interactions
             mxrcut = maxrcut(0)
             
+            !* whether twobody interactions are present
+            calc_twobody = twobody_features_present()
+
             !* whether threebody interactions are present
             calc_threebody = threebody_features_present()
             
@@ -1067,9 +1070,6 @@ call cpu_time(t4)
             zb     = feature_params%info(ft_idx)%zb
 
             !* atom-atom distances
-            !drij = feature_threebody_info(atm)%dr(1,bond_idx)
-            !drik = feature_threebody_info(atm)%dr(2,bond_idx)
-            !drjk = feature_threebody_info(atm)%dr(3,bond_idx)
             drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond_idx)
             drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond_idx)
             drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond_idx)
@@ -1078,18 +1078,11 @@ call cpu_time(t4)
                 return
             end if
 
-            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
             cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* tapering
             if (speedup_applies("threebody_rcut")) then
                 !* same rcut,rs for all threebody features
-                !tap_ij = feature_threebody_info(atm)%dr_taper(1,bond_idx)
-                !tap_ik = feature_threebody_info(atm)%dr_taper(2,bond_idx)
-                !tap_jk = feature_threebody_info(atm)%dr_taper(3,bond_idx)
-                !tap_ij_deriv = feature_threebody_info(atm)%dr_taper_deriv(1,bond_idx)
-                !tap_ik_deriv = feature_threebody_info(atm)%dr_taper_deriv(2,bond_idx)
-                !tap_jk_deriv = feature_threebody_info(atm)%dr_taper_deriv(3,bond_idx)
                 tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond_idx)
                 tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond_idx)
                 tap_jk = set_neigh_info(conf)%threebody(atm)%dr_taper(3,bond_idx)
@@ -1106,9 +1099,6 @@ call cpu_time(t4)
             end if
 
             !* atomic numbers
-            !tmp_z = ( (feature_threebody_info(atm)%z(1,bond_idx)+1.0d0)*&
-            !         &(feature_threebody_info(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-            !         &(feature_threebody_info(atm)%z_atom+1.0d0)**za
             tmp_z = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
                      &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
                      &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
@@ -1126,30 +1116,20 @@ call cpu_time(t4)
                 end if
                 
                 !* derivatives wrt r_zz
-                !dcosdrz =  feature_threebody_info(atm)%dcos_dr(:,zz,bond_idx)
                 dcosdrz =  set_neigh_info(conf)%threebody(atm)%dcos_dr(:,zz,bond_idx)
                 
                 if (zz.eq.1) then
                     ! zz=jj
-                    !drijdrz =  feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    !drikdrz =  feature_threebody_info(atm)%drdri(:,4,bond_idx)
-                    !drjkdrz = -feature_threebody_info(atm)%drdri(:,5,bond_idx)
                     drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
                     drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,4,bond_idx)
                     drjkdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.2) then
                     ! zz=kk
-                    !drijdrz =  feature_threebody_info(atm)%drdri(:,2,bond_idx)
-                    !drikdrz =  feature_threebody_info(atm)%drdri(:,3,bond_idx)
-                    !drjkdrz =  feature_threebody_info(atm)%drdri(:,5,bond_idx)
                     drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,2,bond_idx)
                     drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond_idx)
                 else if (zz.eq.3) then
                     ! zz=ii
-                    !drijdrz = -feature_threebody_info(atm)%drdri(:,1,bond_idx)
-                    !drikdrz = -feature_threebody_info(atm)%drdri(:,3,bond_idx)
-                    !drjkdrz =  feature_threebody_info(atm)%drdri(:,6,bond_idx)
                     drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
                     drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)

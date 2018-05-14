@@ -310,6 +310,18 @@ module feature_util
             maxrcut = tmpr
         end function maxrcut
 
+        logical function twobody_features_present()
+            implicit none
+
+            logical :: istwobody(1:feature_params%num_features)
+            integer :: ft
+
+            do ft=1,feature_params%num_features,1
+                istwobody(ft) = feature_IsTwoBody(ft)
+            end do
+            twobody_features_present = any(istwobody)
+        end function twobody_features_present
+
         logical function threebody_features_present()
             !===============================================================!
             ! check if any three body features are present                  ! 
