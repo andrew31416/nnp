@@ -95,6 +95,9 @@ module feature_config
     !* whether or not to use low mem (slow performance) or high mem (high performance)
     logical :: performance_options(1:3) = .false. 
 
+    !* which physical properties should we calculate
+    logical :: computation_options(1:2) = .false.
+
     !* openMP pragma necessary for globally scoped variables
     !$omp threadprivate(feature_isotropic)
     !$omp threadprivate(feature_threebody_info)
@@ -244,4 +247,74 @@ module feature_config
             performance_options(SpeedUpID_StringToIdx(speedup)) = .true.
         end subroutine activate_performance_option
 
+        logical function calculate_property(property)
+            implicit none
+
+            character(len=*),intent(in) :: property
+
+            calculate_property = computation_options(ComputationID_StringToIdx(property))
+        end function calculate_property
+
+        integer function ComputationID_StringToIdx(property)
+            implicit none
+
+            !* args
+            character(len=*),intent(in) :: property
+
+            !* scratch
+            integer :: idx=-1
+
+            if (property.eq."stress") then
+                idx = 1
+            else if (property.eq."forces") then
+                idx = 2
+            else
+                write(*,*) ""
+                write(*,*) "***************************************************"
+                write(*,*) "error raised in routine : ComputationID_StringToIdx" 
+                write(*,*) "***************************************************"
+                write(*,*) ""
+                write(*,*) "Error : unrecognised property",property
+                write(*,*) ""
+                call exit(0)
+            end if
+    
+            if ((idx.lt.1).or.(idx.gt.size(computation_options))) then
+                write(*,*) ""
+                write(*,*) "***************************************************"
+                write(*,*) "error raised in routine : ComputationID_StringToIdx" 
+                write(*,*) "***************************************************"
+                write(*,*) ""
+                write(*,*) "Error : computation_options array is wrong shape"
+                write(*,*) ""
+                call exit(0)
+            end if
+            ComputationID_StringToIdx = idx
+        end function ComputationID_StringToIdx
+
+        subroutine switch_property(property,state)
+            implicit none
+
+            character(len=*),intent(in) :: property,state
+
+            logical :: logical_value
+
+            if (state.eq."on") then
+                logical_value = .true.
+            else if (state.eq."off") then
+                logical_value = .false.
+            else
+                write(*,*) ""
+                write(*,*) "*****************************************"
+                write(*,*) "error raised in routine : switch_property" 
+                write(*,*) "*****************************************"
+                write(*,*) ""
+                write(*,*) "Error : state",state,"is not recognised"
+                write(*,*) ""
+                call exit(0)
+            end if
+
+            !* turn on or off property
+            computation_options(ComputationID_StringToIdx(property)) = logical_value
+        end subroutine switch_property
 end module feature_config

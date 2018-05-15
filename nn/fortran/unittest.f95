@@ -866,7 +866,7 @@ program unittest
                     call deallocate_feature_deriv_info()
 
                     !* make sure feature derivative calculation is turned on
-                    calc_feature_derivatives = .true.
+                    call switch_property("forces","on")
                     
                     !* calculate analytical derivatives
                     call calculate_features(scale_features,parallel,updating_features)
@@ -888,7 +888,7 @@ program unittest
                     end do
                     
                     !* feat. derivs. are expensive for numerical differential
-                    calc_feature_derivatives = .false.
+                    call switch_property("forces","off")
 
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         do dd=1,3,1
@@ -1300,7 +1300,7 @@ program unittest
                     call allocate_units(set_type,conf)
                     
                     !* make sure we'are calculating derivatives
-                    calc_feature_derivatives = .true.
+                    call switch_property("forces","on")
 
                     call deallocate_feature_deriv_info()
                     call calculate_features(scale_features,parallel,updating_features)
@@ -1317,7 +1317,7 @@ program unittest
                     anl_forces(:,:) = data_sets(set_type)%configs(conf)%current_fi(:,:)
                     
                     !* don't need feature derivatives for numerical force
-                    calc_feature_derivatives = .false.
+                    call switch_property("forces","off")
                     
                     
                     allocate(atms_ok(data_sets(set_type)%configs(conf)%n))

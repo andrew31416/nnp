@@ -563,7 +563,6 @@ write(*,*) 'comparing strings [',string1,'] and [',string2,']'
             
             integer :: iostat,line,num_weights
             character(len=1024) :: string
-            character(len=32768) :: string_long
             real(8) :: rcut,fs,za,zb,mean,prec,xi,eta,lambda,rs
             real(8) :: mean_3(1:3),prec_33(1:3,1:3),scale_times,scale_add
             real(8) :: devel_params(1:3)

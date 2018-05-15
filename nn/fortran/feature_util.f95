@@ -412,25 +412,6 @@ module feature_util
                     end if
                 end do
 
-
-                ! redundant v
-                !* allocate neighbour mem
-                !allocate(feature_isotropic(ii)%dr(cntr))
-                !allocate(feature_isotropic(ii)%idx(cntr))
-                !allocate(feature_isotropic(ii)%z(cntr))
-                !allocate(feature_isotropic(ii)%drdri(3,cntr))
-                !if (speedup_applies("twobody_rcut")) then
-                !    !* all two body feature share same rcut,fs
-                !    allocate(feature_isotropic(ii)%dr_taper(cntr))
-                !    allocate(feature_isotropic(ii)%dr_taper_deriv(cntr))
-                !end if
-                !!* number of neighbours 
-                !feature_isotropic(ii)%n = cntr
-                !
-                !!* atomic number of central atom in interaction
-                !feature_isotropic(ii)%z_atom = data_sets(set_type)%configs(conf)%z(ii)
-                ! redundant ^
-
                 allocate(set_neigh_info(conf)%twobody(ii)%dr(cntr))
                 allocate(set_neigh_info(conf)%twobody(ii)%idx(cntr))
                 allocate(set_neigh_info(conf)%twobody(ii)%z(cntr))
@@ -454,15 +435,9 @@ module feature_util
                         cycle
                     else 
                         !* atom-atom distance
-                        !feature_isotropic(ii)%dr(cntr) = sqrt(dr2) ! DEPRECATED
                         set_neigh_info(conf)%twobody(ii)%dr(cntr) = sqrt(dr2)
 
                         if (speedup_applies("twobody_rcut")) then
-                            !feature_isotropic(ii)%dr_taper(cntr) = taper_1(&             ! DEP. 
-                            !        &feature_isotropic(ii)%dr(cntr),rcut,fs)             ! DEP.
-                            !feature_isotropic(ii)%dr_taper_deriv(cntr) = taper_deriv_1(& ! DEP.
-                            !        &feature_isotropic(ii)%dr(cntr),rcut,fs)             ! DEP.
-                            
                             set_neigh_info(conf)%twobody(ii)%dr_taper(cntr) = taper_1(&
                                     &set_neigh_info(conf)%twobody(ii)%dr(cntr),rcut,fs)
                             set_neigh_info(conf)%twobody(ii)%dr_taper_deriv(cntr) = taper_deriv_1(&
@@ -470,18 +445,13 @@ module feature_util
                         end if
 
                         !* local cell identifier of neighbour cntr
-                        !feature_isotropic(ii)%idx(cntr) = ultraidx(jj) ! DEP.
                         set_neigh_info(conf)%twobody(ii)%idx(cntr) = ultraidx(jj)
 
                         !* d rij / drj 
-                        !feature_isotropic(ii)%drdri(:,cntr) = (drjj(:) - drii(:)) / & ! DEP.
-                        !        &feature_isotropic(ii)%dr(cntr)                       ! DEP.
-                        
                         set_neigh_info(conf)%twobody(ii)%drdri(:,cntr) = (drjj(:) - drii(:)) / &
                                 &set_neigh_info(conf)%twobody(ii)%dr(cntr)
                         
                         !* Z of neighbour cntr
-                        !feature_isotropic(ii)%z(cntr) = ultraz(jj) ! DEP. 
                         set_neigh_info(conf)%twobody(ii)%z(cntr) = ultraz(jj) 
                         
                         cntr = cntr + 1    
@@ -500,8 +470,6 @@ module feature_util
 
             res = .false.
 
-            !if (feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_behler-g5").or.&
-            !&(feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
             if (feature_params%info(ft_idx)%ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
                 res = .true.
             end if
@@ -1011,25 +979,23 @@ module feature_util
             end do
         end subroutine computeall_feature_scaling_constants
 
-        subroutine scale_set_features(set_type,scale_derivatives)
+        subroutine scale_set_features(set_type)
             implicit none
 
             integer,intent(in) :: set_type
-            logical,intent(in) :: scale_derivatives
 
             !* scratch
             integer :: conf
                 
             do conf=1,data_sets(set_type)%nconf,1
-                call scale_conf_features(set_type,conf,scale_derivatives)
+                call scale_conf_features(set_type,conf)
             end do !* end loop over configurations
         end subroutine
         
-        subroutine scale_conf_features(set_type,conf,scale_derivatives)
+        subroutine scale_conf_features(set_type,conf)
             implicit none
 
             integer,intent(in) :: set_type,conf
-            logical,intent(in) :: scale_derivatives
 
             !* scratch
             integer :: ii,atm,jj
@@ -1046,7 +1012,7 @@ module feature_util
                 data_sets(set_type)%configs(conf)%x(ii+1,:) = &
                         &data_sets(set_type)%configs(conf)%x(ii+1,:)*cnst + cnst_add
 
-                if (scale_derivatives) then
+                if (calculate_property("forces")) then
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
                             cycle

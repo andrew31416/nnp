@@ -34,6 +34,7 @@ module config
         integer,allocatable :: idx(:)
         integer :: n
         real(8),allocatable :: vec(:,:)
+        real(8),allocatable :: stress(:,:,:)    ! stress contributions of non-local neighbours
         integer,allocatable :: idx_map(:,:) !* BUG IN gcc 5.4.0 means this must appear here
     end type feature_derivatives
 
@@ -95,9 +96,6 @@ module config
     real(8),public :: loss_const_energy
     real(8),public :: loss_const_forces
     real(8),public :: loss_const_reglrn
-
-    !* (forward and back)-prop behaviour
-    logical,public :: calc_feature_derivatives = .true.
 
     !* performance related keys
     logical,public,save :: atom_neigh_info_needs_updating = .true.

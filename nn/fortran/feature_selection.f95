@@ -31,7 +31,7 @@ module feature_selection
             !* scratch
             integer :: conf
             type(feature_info) :: gbl_derivs,lcl_derivs
-            logical :: original_calc_status,forces_included
+            logical :: original_calc_status
             
             !* openMP variables
             integer :: thread_idx,num_threads,bounds(1:2)
@@ -41,14 +41,13 @@ module feature_selection
                         &"Mismatch between length of Py and F95 jacobian")
             end if 
 
-            original_calc_status = calc_feature_derivatives
+            original_calc_status = calculate_property("forces")
             if (scalar_equal(loss_const_forces,0.0d0,dble(1e-15),dble(1e-10)**2,.false.)) then
                 !* check if forces are included
-                forces_included = .false.
+                call switch_property("forces","off")
             else
-                forces_included = .true.
+                call switch_property("forces","on")
             end if
-            calc_feature_derivatives = forces_included
             
             
             !* need to read in net weights
@@ -82,8 +81,7 @@ module feature_selection
                 call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
 
                 do conf=bounds(1),bounds(2),1
-                    call single_conf_feat_jac(set_type,conf,scale_features,forces_included,&
-                            &lcl_derivs)
+                    call single_conf_feat_jac(set_type,conf,scale_features,lcl_derivs)
                 end do
                 
                 !$omp critical
@@ -95,12 +93,15 @@ module feature_selection
             else
 
                 do conf=1,data_sets(set_type)%nconf,1
-                    call single_conf_feat_jac(set_type,conf,scale_features,forces_included,&
-                            &gbl_derivs)
+                    call single_conf_feat_jac(set_type,conf,scale_features,gbl_derivs)
                 end do !* end loop over confs
             end if
 
-            calc_feature_derivatives = original_calc_status
+            if (original_calc_status) then
+                call switch_property("forces","on")
+            else
+                call switch_property("forces","off")
+            end if
             
             !* performance flag
             atom_neigh_info_needs_updating = .false.
@@ -108,12 +109,12 @@ module feature_selection
             call parse_feature_format_to_array_jac(gbl_derivs,jacobian)
         end subroutine loss_feature_jacobian
 
-        subroutine single_conf_feat_jac(set_type,conf,scale_features,forces_included,lcl_feat_derivs)
+        subroutine single_conf_feat_jac(set_type,conf,scale_features,lcl_feat_derivs)
             implicit none
 
             integer,intent(in) :: set_type,conf
             type(feature_info),intent(inout) :: lcl_feat_derivs
-            logical,intent(in) :: scale_features,forces_included
+            logical,intent(in) :: scale_features
 
             !* scratch
             real(8) :: mxrcut,dr,zatm,zngh,tmpE,invN
@@ -138,7 +139,7 @@ module feature_selection
                 call zero_feature_info(dxdparam(atm))
             end do
 
-            if (forces_included) then
+            if (calculate_property("forces")) then
                 call init_feature_array(force_contribution)
                 call zero_feature_info(force_contribution)
 
@@ -174,7 +175,7 @@ module feature_selection
             call calculate_all_features(set_type,conf,.true.)
             if (scale_features) then
                 !* don't touch feature derivatives wrt atoms if not using forces
-                call scale_conf_features(set_type,conf,forces_included)
+                call scale_conf_features(set_type,conf)
             end if
 
             !* allocate mem. for dydx,a,z,a',delta
@@ -187,7 +188,7 @@ module feature_selection
             !* need dy_atm/dx for all atoms and features
             call backward_propagate(set_type,conf)
 
-            if (forces_included) then
+            if (calculate_property("forces")) then
                 call calculate_forces(set_type,conf)
                 call calculate_d2ydxdx(set_type,conf)
             end if
@@ -243,7 +244,7 @@ module feature_selection
                         call feature_TwoBody_param_deriv(dr,zatm,zngh,ft,&
                                 &dxdparam(atm)%info(ft))
 
-                        if (forces_included) then
+                        if (calculate_property("forces")) then
                             !* d f_atm / d ft_param += - d y_neigh / d ft_neigh * 
                             !* d^2 ft_neigh /  d r_atom d ft_param
                             call feature_TwoBody_param_forces_deriv(conf,atm,neigh,ft,&
@@ -252,7 +253,7 @@ module feature_selection
                     end do !* end loop over features
                 end do !* end loop over two body neighbours to atm
                     
-                if (forces_included) then
+                if (calculate_property("forces")) then
                     do ft=1,feature_params%num_features,1
                         ftype = feature_params%info(ft)%ftype
                         
@@ -291,7 +292,7 @@ module feature_selection
                                     zatm,set_neigh_info(conf)%threebody(atm)%z(1:2,bond),ft,&
                                     &dxdparam(atm)%info(ft))
 
-                            if (forces_included) then
+                            if (calculate_property("forces")) then
                                 call feature_ThreeBody_param_forces_deriv(set_type,conf,atm,&
                                         &neigh,ft,d2xdrdparam)
                             end if 
@@ -305,7 +306,7 @@ module feature_selection
             end do !* end loop over atoms
 
       
-            if (forces_included) then
+            if (calculate_property("forces")) then
                 !* norm between model and ref forces
                 do atm=1,data_sets(set_type)%configs(conf)%n
                     do xx=1,3,1
