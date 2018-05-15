@@ -69,6 +69,7 @@ real(8) :: t1,t2,t3,t4,t5,t6
                 call switch_property("forces","off")
             end if
             if (need_stress) then
+                call switch_property("forces","on")
                 call switch_property("stress","on")
             else
                 call switch_property("stress","off")
@@ -1024,11 +1025,12 @@ call cpu_time(t4)
             
             !* scratch
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
-            real(8) :: drij,drik,drjk,cos_angle,tmp_z
+            real(8) :: drij,drik,drjk,cos_angle,tmp_z,dxdr(1:3)
             integer :: zz,deriv_idx
             real(8) :: tmp_feature1,tmp_feature2,tap_ij,tap_jk,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv,tap_jk_deriv
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),drjkdrz(1:3)
+            real(8) :: r_nl(1:3)
 
             !* feature parameters
             rcut   = feature_params%info(ft_idx)%rcut
@@ -1076,6 +1078,7 @@ call cpu_time(t4)
             tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * tmp_z
             tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
             
+
             ! 1=jj , 2=kk, 3=ii
             do zz=1,3,1
                 ! map atom id to portion of mem for derivative
@@ -1104,15 +1107,23 @@ call cpu_time(t4)
                     drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%threebody(atm)%r_nl(:,zz,bond_idx)    
+                end if
 
-                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
-                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                    &tap_ij*tap_ik*tap_jk*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
+                dxdr = tap_ij*tap_ik*tap_jk*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
                     &dcosdrz*tmp_feature1 +&
                     &(tap_ik*tap_jk*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
                     &tap_ij*tap_jk*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz +&
                     &tap_ij*tap_ik*(tap_jk_deriv - 2.0d0*eta*tap_jk*drjk)*drjkdrz  )*tmp_feature2
+
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
+                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + dxdr
                 
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dxdr,r_nl,&
+                            &set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
             
         end subroutine feature_behler_g4_deriv
