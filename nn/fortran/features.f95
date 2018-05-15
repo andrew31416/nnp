@@ -896,7 +896,7 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: rs,fs,rcut,tmpz
-            real(8) :: za,zb,eta
+            real(8) :: za,zb,eta,r_lc(1:3),r_nl(1:3)
             integer :: ii,lim1,lim2
 
             !* symmetry function params
@@ -907,14 +907,25 @@ call cpu_time(t4)
             eta  = feature_params%info(ft_idx)%eta
             rcut = feature_params%info(ft_idx)%rcut
 
+            if (calculate_property("stress")) then
+                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            end if
+
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
+                if (calculate_property("stress")) then
+                    r_nl = r_lc
+                end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                end if
             end if
 
 
@@ -950,6 +961,11 @@ call cpu_time(t4)
 
                 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
+                
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dr_vec*tmp1*tmp2*tmpz,r_nl,&
+                            &set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
         end subroutine feature_behler_g2_deriv
        
@@ -1296,7 +1312,7 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz,prec,mean,sqrt_det
-            real(8) :: za,zb,invsqrt2pi,prec_const
+            real(8) :: za,zb,invsqrt2pi,prec_const,r_lc(1:3),r_nl(1:3)
             integer :: ii,lim1,lim2
             
             invsqrt2pi = 0.3989422804014327d0
@@ -1311,15 +1327,26 @@ call cpu_time(t4)
             sqrt_det = feature_params%info(ft_idx)%sqrt_det
 
             prec_const = invsqrt2pi*sqrt_det
+            
+            if (calculate_property("stress")) then
+                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            end if
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
+                if (calculate_property("stress")) then
+                    r_nl = r_lc   
+                end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                end if
             end if
 
 
@@ -1357,6 +1384,11 @@ call cpu_time(t4)
                         &prec*(dr_scl-mean)*tap) 
                 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
+                
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dr_vec*tmp1*tmp2*tmpz,r_nl,&
+                            &set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
         end subroutine feature_normal_iso_deriv
         
@@ -1424,7 +1456,7 @@ call cpu_time(t4)
             real(8) :: tmp2,dr_scl,dr_vec(1:3)
             real(8) :: rcuts(1:2),mean,const,r_taper,std
             real(8) :: xtilde,sig,sig_prime,fs
-            real(8) :: tap,tap_deriv
+            real(8) :: tap,tap_deriv,r_lc(1:3),r_nl(1:3)
 
             mean = feature_params%info(ft_idx)%devel(1)
             const = feature_params%info(ft_idx)%devel(2)
@@ -1438,14 +1470,25 @@ call cpu_time(t4)
 
             r_taper = minval(rcuts)
             
+            if (calculate_property("stress")) then
+                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            end if
+            
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
+                if (calculate_property("stress")) then
+                    r_nl = r_lc
+                end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                end if
             end if
 
 
@@ -1475,6 +1518,11 @@ call cpu_time(t4)
 
 
                 deriv_vec(:) = deriv_vec(:) + (sig*tap_deriv + sig_prime*tap)*dr_vec(:)*tmp2
+                
+                if (calculate_property("stress")) then
+                    call append_stress_contribution((sig*tap_deriv+sig_prime*tap)*tmp2*dr_vec,&
+                            &r_nl,set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
         end subroutine feature_iso_devel_deriv
 
@@ -1721,7 +1769,7 @@ call cpu_time(t4)
 
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
-            real(8) :: fs,rcut,tmpz,tmp3
+            real(8) :: fs,rcut,tmpz,tmp3,r_lc(1:3),r_nl(1:3)
             real(8) :: za,zb,kk_dble,phi(1:size(feature_params%info(ft_idx)%linear_w))
             integer :: ii,kk,lim1,lim2,num_weights
 
@@ -1736,15 +1784,26 @@ call cpu_time(t4)
 
             !* 2 pi / rcut
             tmp1 = 6.28318530718d0 / rcut
+            
+            if (calculate_property("stress")) then
+                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            end if
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
+                if (calculate_property("stress")) then
+                    r_nl = r_lc
+                end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                end if
             end if
 
 
@@ -1786,6 +1845,11 @@ call cpu_time(t4)
                 tmp3 = ddot(num_weights,feature_params%info(ft_idx)%linear_w,1,phi,1) 
 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp3*tmp2*tmpz
+                
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dr_vec*tmp3*tmp2*tmpz,&
+                            &r_nl,set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
         end subroutine feature_fourier_b2_deriv
                     
