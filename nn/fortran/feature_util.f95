@@ -1020,7 +1020,14 @@ module feature_util
 
                         do jj=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
                             data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) = cnst*&
-                                    &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj)  
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,jj) 
+                                    
+                            if (calculate_property("stress")) then
+                                data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%stress(:,:,jj) = &
+                                        &cnst*&
+                                        &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%&
+                                        &stress(:,:,jj) 
+                            end if 
                         end do !* end loop over neighbours to atm
                     end do !* end loop over atoms
                 end if 
