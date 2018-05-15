@@ -60,6 +60,7 @@ fwrap_functions+=" get_num_nodes"
 fwrap_functions+=" get_node_distribution"
 fwrap_functions+=" get_ref_energies"
 fwrap_functions+=" loss_feature_jacobian"
+fwrap_functions+=" stress_calculation_performed"
 
 # clear previous build
 rm $f1"o" $f1"mod"

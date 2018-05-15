@@ -478,7 +478,8 @@ class features():
         Compute a and b : x-> a*x + b and x \in [-1,1] and set these values for
         all features in self.features
         """
-        feature_list = self.calculate(set_type="train",derivatives=False,scale=False,safe=True,\
+        feature_list = self.calculate(set_type="train",calculate_forces=False,\
+                calculate_stress=False,scale=False,safe=True,\
                 updating_features=updating_features)
    
         xmax = np.max(feature_list,axis=1)
@@ -507,8 +508,8 @@ class features():
         self.precondition_computed = True
         del feature_list                    
 
-    def calculate(self,set_type="train",derivatives=False,scale=False,safe=True,\
-    updating_features=False):
+    def calculate(self,set_type="train",calculate_forces=False,scale=False,safe=True,\
+    updating_features=False,calculate_stress=False):
         """
         Compute the value of all features for the given set type
         
@@ -559,7 +560,8 @@ class features():
         
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=self._set_map[set_type],\
-                derivatives=derivatives,scale_features=scale,parallel=self.parallel,\
+                need_forces=calculate_forces,need_stress=calculate_stress,\
+                scale_features=scale,parallel=self.parallel,\
                 updating_features=updating_features)
         
         t3 = time.time()
@@ -568,7 +570,7 @@ class features():
         if safe:
             # abort if Nan found in features or their derivatives
             getattr(f95_api,"f90wrap_check_features")(set_type=self._set_map[set_type])
-            if derivatives:
+            if calculate_forces:
                 getattr(f95_api,"f90wrap_check_feature_derivatives")(\
                         set_type=self._set_map[set_type])
 

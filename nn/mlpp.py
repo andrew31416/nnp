@@ -693,7 +693,8 @@ class MultiLayerPerceptronPotential():
 
         return tmp_jac
     
-    def _prepare_data_structures(self,X,set_type,derivatives=True,updating_features=False):
+    def _prepare_data_structures(self,X,set_type,calculate_forces=True,\
+    calculate_stress=False,updating_features=False):
         """
         Initialise all fortran data structures for given set
 
@@ -714,7 +715,8 @@ class MultiLayerPerceptronPotential():
         
         # initialise feature mem and compute for set_type
         self.computed_features = self.features.calculate(set_type=set_type,\
-                derivatives=derivatives,scale=self.scale_features,\
+                calculate_forces=calculate_forces,calculate_stress=calculate_stress,\
+                scale=self.scale_features,\
                 updating_features=updating_features)
     
         # initialise neural net data structures
@@ -786,7 +788,7 @@ class MultiLayerPerceptronPotential():
         # return loss
         return self.OptimizeResult.get("fun"),predicted_gip
 
-    def predict(self,X):
+    def predict(self,X,forces=True,stress=True):
         """
         Calculate the total energy and atomic forces
 
@@ -824,7 +826,8 @@ class MultiLayerPerceptronPotential():
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
        
-        self._prepare_data_structures(X=X,set_type="test")
+        self._prepare_data_structures(X=X,set_type="test",calculate_forces=forces,\
+                calculate_stress=stress)
 
         # forward and backward propagate to calc. all forces
         loss = self._loss(weights=self.weights,set_type="test")

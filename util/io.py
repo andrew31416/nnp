@@ -155,15 +155,17 @@ def _parse_configs_from_fortran(set_type):
         postns = np.zeros((3,natm),dtype=np.float64,order='F')
         atmnum = np.zeros(natm,dtype=np.float64,order='F')
         cellvc = np.zeros((3,3),dtype=np.float64,order='F')
+        stress = np.zeros((3,3),dtype=np.float64,order='F')
 
         # parse config from fortran
         toteng = getattr(f95_api,"f90wrap_get_config")(set_type=_set_map[set_type],conf=_conf,\
-                cell=cellvc,atomic_number=atmnum,positions=postns,forces=forces)
+                cell=cellvc,atomic_number=atmnum,positions=postns,forces=forces,stress=stress)
 
         _s = parsers.structure_class.supercell()
         _s["cell"] = np.asarray(cellvc.T,order='C')
         _s["forces"] = np.asarray(forces.T,order='C')
-        _s["positions"] = np.asarray(np.dot(np.linalg.inv(cellvc),postns).T,dtype=np.float64,order='C')
+        _s["positions"] = np.asarray(np.dot(np.linalg.inv(cellvc),postns).T,\
+                dtype=np.float64,order='C')
         _s["atomic_number"] = np.asarray(atmnum,dtype=np.int16,order='C')
         species = [None for ii in range(_s["atomic_number"].shape[0])]
         for ii,_z in enumerate(_s["atomic_number"]):
@@ -174,6 +176,8 @@ def _parse_configs_from_fortran(set_type):
                 raise IoError("atomic number {} unknown".format(_z))
         _s["species"] = species
         _s["energy"] = toteng
+        if getattr(f95_api,"f90wrap_stress_calculation_performed")():
+            _s["stress"] = stress
     
         for _attr in ["cell","forces","positions","atomic_number","species","energy"]:
             if _s[_attr] is None:

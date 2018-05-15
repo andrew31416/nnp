@@ -19,19 +19,21 @@ module features
             integer :: set_type
 
             do set_type=1,2
-                call calculate_features_singleset(set_type,.true.,scale_features,parallel,&
+                !* calculate forces and stress tensor
+                call calculate_features_singleset(set_type,.true.,.true.,scale_features,parallel,&
                         &updating_features)
             end do
         end subroutine calculate_features
         
-        subroutine calculate_features_singleset(set_type,need_forces,scale_features,parallel,&
-        &updating_features)
+        subroutine calculate_features_singleset(set_type,need_forces,need_stress,&
+        &scale_features,parallel,updating_features)
             use omp_lib
             
             implicit none
 
             integer,intent(in) :: set_type
-            logical,intent(in) :: need_forces,scale_features,parallel,updating_features
+            logical,intent(in) :: need_forces,need_stress
+            logical,intent(in) :: scale_features,parallel,updating_features
             
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
@@ -65,6 +67,11 @@ real(8) :: t1,t2,t3,t4,t5,t6
                 call switch_property("forces","on")
             else
                 call switch_property("forces","off")
+            end if
+            if (need_stress) then
+                call switch_property("stress","on")
+            else
+                call switch_property("stress","off")
             end if
 
             if (speedup_applies("keep_all_neigh_info")) then
@@ -117,11 +124,6 @@ real(8) :: t1,t2,t3,t4,t5,t6
                         deallocate(ultra_idx)
                         deallocate(ultra_cart)
                     end if
-                    !deallocate(feature_isotropic)
-                    !if (calc_threebody) then
-                    !    deallocate(feature_threebody_info)
-                    !end if
-                    ! deprecated ^
 
                     if (.not.speedup_applies("keep_all_neigh_info")) then
                         deallocate(set_neigh_info(conf)%twobody)
@@ -152,7 +154,8 @@ call cpu_time(t3)
                 
                         if (calc_threebody) then
                             !* calc. threebody info
-                            call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
+                            call calculate_threebody_info(set_type,conf,&
+                                    &ultra_cart,ultra_z,ultra_idx)
                         end if
 ! DEBUG
 call cpu_time(t4)
@@ -276,9 +279,7 @@ call cpu_time(t5)
                     call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
                 
                     do atm=1,data_sets(set_type)%configs(conf)%n
-                        !if (feature_threebody_info(atm)%n.gt.0) then
                         if (set_neigh_info(conf)%threebody(atm)%n.gt.0) then
-                            !do bond=1,feature_threebody_info(atm)%n,1
                             do bond=1,set_neigh_info(conf)%threebody(atm)%n,1
                                 if ((abs(sample_rate(2)-1.0d0).lt.1e-10).or.&
                                 &(rand().lt.sample_rate(2))) then
@@ -290,12 +291,8 @@ call cpu_time(t5)
                                             &"three-body buffer too small, increase or decrease sample rate.")
                                     end if
 
-                                    !threebody_dist(1:2,num_three) = feature_threebody_info(atm)%&
-                                    !&dr(1:2,bond)
                                     threebody_dist(1:2,num_three) = set_neigh_info(conf)%&
                                             &threebody(atm)%dr(1:2,bond)
-                                    !threebody_dist(3,num_three) = feature_threebody_info(atm)%&
-                                    !&cos_ang(bond)
                                     threebody_dist(3,num_three) = set_neigh_info(conf)%&
                                             &threebody(atm)%cos_ang(bond)
                                 end if
@@ -310,11 +307,6 @@ call cpu_time(t5)
                     deallocate(ultra_idx)
                     deallocate(ultra_cart)
                 end if
-                !deallocate(feature_isotropic) ! DEP.
-                
-                !if (calc_threebody) then
-                !    deallocate(feature_threebody_info) ! DEP.
-                !end if
 
                 if (speedup_applies("keep_all_neigh_info").neqv..true.) then
                     deallocate(set_neigh_info(conf)%twobody)
@@ -500,45 +492,45 @@ call cpu_time(t2)
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calculate_property("forces")) then
-                            call feature_behler_g1_deriv(conf,atm,ii,ft_idx,&
+                            call feature_behler_g1_deriv(set_type,conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                &vec(1:3,idx_to_contrib(ii)))
+                                &vec(1:3,idx_to_contrib(ii)),idx_to_contrib(ii))
                         end if
                     else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
                         call feature_behler_g2(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calculate_property("forces")) then
-                            call feature_behler_g2_deriv(conf,atm,ii,ft_idx,&
+                            call feature_behler_g2_deriv(set_type,conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                &vec(1:3,idx_to_contrib(ii)))
+                                &vec(1:3,idx_to_contrib(ii)),idx_to_contrib(ii))
                         end if
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                         call feature_normal_iso(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calculate_property("forces")) then
-                            call feature_normal_iso_deriv(conf,atm,ii,ft_idx,&
+                            call feature_normal_iso_deriv(set_type,conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                    &vec(1:3,idx_to_contrib(ii)))
+                                    &vec(1:3,idx_to_contrib(ii)),idx_to_contrib(ii))
                         end if
                     else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
                         call feature_fourier_b2(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
                         if (calculate_property("forces")) then
-                            call feature_fourier_b2_deriv(conf,atm,ii,ft_idx,&
+                            call feature_fourier_b2_deriv(set_type,conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                    &vec(1:3,idx_to_contrib(ii)))
+                                    &vec(1:3,idx_to_contrib(ii)),idx_to_contrib(ii))
                         end if
                     else if (ftype.eq.featureID_StringToInt("devel_iso")) then
                         call feature_iso_devel(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
                         
                         if (calculate_property("forces")) then
-                            call feature_iso_devel_deriv(conf,atm,ii,ft_idx,&
+                            call feature_iso_devel_deriv(set_type,conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                    &vec(1:3,idx_to_contrib(ii)))
+                                    &vec(1:3,idx_to_contrib(ii)),idx_to_contrib(ii))
                         end if
                     end if
                 end if
@@ -547,20 +539,20 @@ call cpu_time(t2)
             !* derivative wrt. central atm
             if (calculate_property("forces")) then
                 if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
-                    call feature_behler_g1_deriv(conf,atm,0,ft_idx,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                    call feature_behler_g1_deriv(set_type,conf,atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                    call feature_behler_g2_deriv(conf,atm,0,ft_idx,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                    call feature_behler_g2_deriv(set_type,conf,atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                    call feature_normal_iso_deriv(conf,atm,0,ft_idx,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                    call feature_normal_iso_deriv(set_type,conf,atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
-                    call feature_fourier_b2_deriv(conf,atm,0,ft_idx,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                    call feature_fourier_b2_deriv(set_type,conf,atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 else if (ftype.eq.featureID_StringToInt("devel_iso")) then
-                    call feature_iso_devel_deriv(conf,atm,0,ft_idx,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1))
+                    call feature_iso_devel_deriv(set_type,conf,atm,0,ft_idx,&
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 end if
             end if
         end subroutine feature_twobody
@@ -775,16 +767,16 @@ call cpu_time(t4)
             current_val = current_val + tmp2*tmp3
         end subroutine feature_behler_g1
         
-        subroutine feature_behler_g1_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_behler_g1_deriv(set_type,conf,atm,neigh_idx,ft_idx,deriv_vec,deriv_idx)
             implicit none
 
-            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            integer,intent(in) :: set_type,conf,atm,neigh_idx,ft_idx,deriv_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz
-            real(8) :: za,zb
+            real(8) :: za,zb,r_atm(1:3),deriv_nl_r(1:3)
             integer :: ii,lim1,lim2
 
             !* symmetry function params
@@ -792,16 +784,26 @@ call cpu_time(t4)
             zb   = feature_params%info(ft_idx)%zb
             fs   = feature_params%info(ft_idx)%fs
             rcut = feature_params%info(ft_idx)%rcut
-            
+           
+            if (calculate_property("stress")) then
+                r_atm = data_sets(set_type)%configs(conf)%r(:,atm)
+            end if 
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
+                if (calculate_property("stress")) then
+                    deriv_nl_r = r_atm
+                end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
+                if (calculate_property("stress")) then 
+                    deriv_nl_r = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_atm
+                end if
             end if
 
 
@@ -836,8 +838,14 @@ call cpu_time(t4)
                         &(set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
 
                 tmp1 = tap_deriv
-                
+               
+                !* cumulative atom derivative for given feature 
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp1*tmp2*tmpz
+
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dr_vec*tmp1*tmp2*tmpz,deriv_nl_r,&
+                            &set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
         end subroutine feature_behler_g1_deriv
         
@@ -879,10 +887,10 @@ call cpu_time(t4)
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_behler_g2
       
-        subroutine feature_behler_g2_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_behler_g2_deriv(set_type,conf,atm,neigh_idx,ft_idx,deriv_vec,deriv_idx)
             implicit none
 
-            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            integer,intent(in) :: set_type,conf,atm,neigh_idx,ft_idx,deriv_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -1279,10 +1287,10 @@ call cpu_time(t4)
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_normal_iso
         
-        subroutine feature_normal_iso_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_normal_iso_deriv(set_type,conf,atm,neigh_idx,ft_idx,deriv_vec,deriv_idx)
             implicit none
 
-            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            integer,intent(in) :: set_type,conf,atm,neigh_idx,ft_idx,deriv_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -1404,12 +1412,12 @@ call cpu_time(t4)
             current_val = current_val + logistic(xtilde)*tmp_taper
         end subroutine feature_iso_devel
         
-        subroutine feature_iso_devel_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_iso_devel_deriv(set_type,conf,atm,neigh_idx,ft_idx,deriv_vec,deriv_idx)
             use propagate, only : logistic,logistic_deriv
             
             implicit none
 
-            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            integer,intent(in) :: set_type,conf,atm,neigh_idx,ft_idx,deriv_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             integer :: lim1,lim2,ii
@@ -1705,10 +1713,10 @@ call cpu_time(t4)
 
         end subroutine feature_fourier_b2
         
-        subroutine feature_fourier_b2_deriv(conf,atm,neigh_idx,ft_idx,deriv_vec)
+        subroutine feature_fourier_b2_deriv(set_type,conf,atm,neigh_idx,ft_idx,deriv_vec,deriv_idx)
             implicit none
 
-            integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            integer,intent(in) :: set_type,conf,atm,neigh_idx,ft_idx,deriv_idx
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
@@ -1780,5 +1788,26 @@ call cpu_time(t4)
                 deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp3*tmp2*tmpz
             end do
         end subroutine feature_fourier_b2_deriv
+                    
+                    
+        subroutine append_stress_contribution(dxdr_cont,r_nl,&
+        &set_type,conf,atm,ft,deriv_idx)
+            implicit none
+
+            real(8),intent(in) :: dxdr_cont(1:3),r_nl(1:3)
+            integer,intent(in) :: set_type,conf,atm,ft,deriv_idx
+
+            !* scratch
+            integer :: xx,yy
+
+            do xx=1,3
+                do yy=1,3
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)=&
+                    &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)+&
+                            &dxdr_cont(xx)*r_nl(yy)
+                end do
+            end do
+
+        end subroutine append_stress_contribution
 
 end module

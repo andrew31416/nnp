@@ -346,6 +346,7 @@ module propagate
             natm = data_sets(set_type)%configs(conf)%n
 
             data_sets(set_type)%configs(conf)%current_fi = 0.0d0
+            data_sets(set_type)%configs(conf)%current_stress = 0.0d0
     
             do atm=1,natm,1
                 do ii=1,D,1
@@ -360,8 +361,16 @@ module propagate
                         
                         !* -= d E_atm / d feature_{ii,atm} * d feature_{ii,atm} / d r_jj
                         data_sets(set_type)%configs(conf)%current_fi(:,jj) = &
-                                &data_sets(set_type)%configs(conf)%current_fi(:,jj) - dydx(ii,atm) * &
+                                &data_sets(set_type)%configs(conf)%current_fi(:,jj) - dydx(ii,atm)*&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%vec(:,deriv_idx)
+
+                        if (calculate_property("stress")) then
+                            data_sets(set_type)%configs(conf)%current_stress = & 
+                                    &data_sets(set_type)%configs(conf)%current_stress - &
+                                    &dydx(ii,atm)*&
+                                    &data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%stress(:,:,&
+                                    &deriv_idx)
+                        end if                                
                     end do !* end loop over atoms jj contributing to feature (ii,atm)
                 
                 end do !* end loop over features ii

@@ -240,18 +240,23 @@ module util
             end do 
         end subroutine
 
-        real(8) function get_config(set_type,conf,cell,atomic_number,positions,forces)
+        real(8) function get_config(set_type,conf,cell,atomic_number,positions,forces,stress)
             implicit none
 
             integer,intent(in) :: set_type,conf
             real(8),intent(inout) :: cell(1:3,1:3),positions(:,:)
             real(8),intent(inout) :: atomic_number(:),forces(:,:)
+            real(8),intent(inout) :: stress(1:3,1:3)
 
             !* scratch
             integer :: atm
 
+            !* cell vectors
             cell(1:3,1:3) = data_sets(set_type)%configs(conf)%cell(1:3,1:3)
             
+            !* stress tensor
+            stress(1:3,1:3) = data_sets(set_type)%configs(conf)%current_stress(1:3,1:3)
+
             do atm=1,data_sets(set_type)%configs(conf)%n,1
                 forces(:,atm) = data_sets(set_type)%configs(conf)%current_fi(:,atm)
                 positions(:,atm) = data_sets(set_type)%configs(conf)%r(:,atm)
@@ -453,4 +458,12 @@ module util
             write(*,*) ''
             call exit(0)
         end subroutine error_util
+
+        logical function stress_calculation_performed()
+            use feature_config, only : calculate_property
+            
+            implicit none
+
+            stress_calculation_performed = calculate_property("stress")
+        end function stress_calculation_performed
 end module util

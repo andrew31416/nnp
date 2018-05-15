@@ -636,7 +636,8 @@ program unittest
                     call feature_selection_subsidiary_2(ft,attribute,newvalue)
                
                     !* need to calc. features for all confs
-                    call calculate_features_singleset(set_type,.false.,.true.,.false.,.true.)
+                    call calculate_features_singleset(set_type,.false.,.false.,&
+                            &.true.,.false.,.true.)
                 
                     if (plusminus.eq.1) then
                         num_jac(cntr) = loss(original_weights,set_type,.false.,se)
