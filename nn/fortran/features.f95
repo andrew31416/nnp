@@ -482,7 +482,9 @@ call cpu_time(t2)
             !* zero features
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
-            data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(:,:,:) = 0.0d0
+            if (calculate_property("stress")) then
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(:,:,:) = 0.0d0
+            end if
             
             !do ii=1,feature_isotropic(atm)%n
             do ii=1,set_neigh_info(conf)%twobody(atm)%n
@@ -673,8 +675,6 @@ call cpu_time(t2)
                 if (calculate_property("stress")) then
                     allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(3,3,cntr))
                 end if
-                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
-                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(:,:,:) = 0.0d0
                 
                 !* number of atoms in local cell contributing to feature (including central atom)
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%n = cntr
@@ -690,6 +690,9 @@ call cpu_time(t3)
             !* zero features
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
+            if (calculate_property("stress")) then
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(:,:,:) = 0.0d0
+            end if
 
             !do ii=1,feature_threebody_info(atm)%n,1
             do ii=1,set_neigh_info(conf)%threebody(atm)%n,1

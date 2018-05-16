@@ -8,7 +8,7 @@ f_suffix="f95"
 o_suffix="o"
 
 FFLAGS="-O2 -llapack -lblas -lgomp"
-DEBUG="-fcheck=all -W -Wall -pedantic"
+DEBUG="-fcheck=all -W -Wall -pedantic -fcheck=all"
 
 f1="tapering."
 f2="config."
