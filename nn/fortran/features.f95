@@ -482,6 +482,7 @@ call cpu_time(t2)
             !* zero features
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
             data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
+            data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(:,:,:) = 0.0d0
             
             !do ii=1,feature_isotropic(atm)%n
             do ii=1,set_neigh_info(conf)%twobody(atm)%n
@@ -672,6 +673,8 @@ call cpu_time(t2)
                 if (calculate_property("stress")) then
                     allocate(data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(3,3,cntr))
                 end if
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,:) = 0.0d0
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%stress(:,:,:) = 0.0d0
                 
                 !* number of atoms in local cell contributing to feature (including central atom)
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%n = cntr
@@ -1121,8 +1124,7 @@ call cpu_time(t4)
                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + dxdr
                 
                 if (calculate_property("stress")) then
-                    call append_stress_contribution(dxdr,r_nl,&
-                            &set_type,conf,atm,ft_idx,deriv_idx)
+                    call append_stress_contribution(dxdr,r_nl,set_type,conf,atm,ft_idx,deriv_idx)
                 end if
             end do
             
@@ -1189,7 +1191,7 @@ call cpu_time(t4)
             real(8) :: drij,drik,cos_angle,tmp_z
             integer :: zz,deriv_idx
             real(8) :: tmp_feature1,tmp_feature2,tap_ij,tap_ik
-            real(8) :: tap_ij_deriv,tap_ik_deriv
+            real(8) :: tap_ij_deriv,tap_ik_deriv,r_nl(1:3),dxdr(1:3)
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3)
 
             !* feature parameters
@@ -1257,14 +1259,21 @@ call cpu_time(t4)
                     drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond_idx)
                     drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                 end if
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%threebody(atm)%r_nl(:,zz,bond_idx)    
+                end if
 
-                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
-                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                    &tmp_feature1*tap_ij*tap_ik*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
+                dxdr = tmp_feature1*tap_ij*tap_ik*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
                     &dcosdrz +&
                     &(tap_ik*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
                     &tap_ij*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz )*tmp_feature2
+
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
+                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + dxdr 
                 
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dxdr,r_nl,set_type,conf,atm,ft_idx,deriv_idx)
+                end if
             end do
             
         end subroutine feature_behler_g5_deriv
@@ -1609,7 +1618,7 @@ call cpu_time(t4)
             real(8) :: drij,drik,drjk,cos_angle
             real(8) :: tmp_feat(1:2),tmp_vec(1:3,1:2)
             real(8) :: tmp_deriv1(1:3),tmp_deriv2(1:3)
-            real(8) :: dxdr1(1:3,1:3),dxdr2(1:3,1:3)
+            real(8) :: dxdr1(1:3,1:3),dxdr2(1:3,1:3),r_nl(1:3),dxdr(1:3)
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),tap_ij,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv,tmpz,tap_jk,tap_jk_deriv
             integer :: deriv_idx,zz
@@ -1700,6 +1709,9 @@ call cpu_time(t4)
                     drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
+                if (calculate_property("stress")) then
+                    r_nl = set_neigh_info(conf)%threebody(atm)%r_nl(:,zz,bond_idx)    
+                end if
 
                 !* dx_{ijk} / dr_z |_ab = d x_{ijk}|_b / d r_z|_a
                 dxdr1(:,1) = drijdrz
@@ -1712,13 +1724,19 @@ call cpu_time(t4)
                 !* tmp_deriv = dxdr * tmp_vec
                 call dgemv('n',3,3,1.0d0,dxdr1,3,tmp_vec(:,1),1,0.0d0,tmp_deriv1,1)
                 call dgemv('n',3,3,1.0d0,dxdr2,3,tmp_vec(:,2),1,0.0d0,tmp_deriv2,1)
-
-                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
-                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
-                        &sum(tmp_feat)*(tap_ij*tap_jk*tap_ik_deriv*drikdrz + &
+                        
+                dxdr = sum(tmp_feat)*(tap_ij*tap_jk*tap_ik_deriv*drikdrz + &
                         &tap_ik*tap_jk*tap_ij_deriv*drijdrz)*tmpz - &
                         &tap_ij*tap_ik*tap_jk*(tmp_feat(1)*tmp_deriv1+tmp_feat(2)*tmp_deriv2)*tmpz &
                         + tap_ij*tap_ik*tmpz*sum(tmp_feat)*tap_jk_deriv*drjkdrz !* this line is new
+
+                data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
+                        &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + & 
+                        &dxdr
+                
+                if (calculate_property("stress")) then
+                    call append_stress_contribution(dxdr,r_nl,set_type,conf,atm,ft_idx,deriv_idx)
+                end if
                  
             end do
             
@@ -1878,7 +1896,7 @@ call cpu_time(t4)
             do xx=1,3
                 do yy=1,3
                     data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)=&
-                    &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)+&
+                    &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)-&
                             &dxdr_cont(xx)*r_nl(yy)
                 end do
             end do
