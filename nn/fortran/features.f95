@@ -1896,13 +1896,45 @@ call cpu_time(t4)
             !* scratch
             integer :: xx,yy
 
-            do xx=1,3
-                do yy=1,3
-                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)=&
-                    &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)-&
-                            &dxdr_cont(xx)*r_nl(yy)
+            if (running_unittest) then
+                !* dont symmetrize stress matrix, can check diagonals as test
+                do xx=1,3
+                    do yy=1,3
+                        data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)=&
+                        &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,yy,deriv_idx)-&
+                                &dxdr_cont(xx)*r_nl(yy)
+                    end do
                 end do
-            end do
+            else
+                do xx=1,3
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,xx,deriv_idx)=&
+                    &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(xx,xx,deriv_idx)-&
+                            &dxdr_cont(xx)*r_nl(xx)
+                end do
+                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(2,1,deriv_idx)=&
+                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(2,1,deriv_idx)-&
+                        &0.5d0*(dxdr_cont(1)*r_nl(2) + dxdr_cont(2)*r_nl(1))
+                
+                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(3,1,deriv_idx)=&
+                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(3,1,deriv_idx)-&
+                        &0.5d0*(dxdr_cont(1)*r_nl(3) + dxdr_cont(3)*r_nl(1))
+                
+                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(1,2,deriv_idx)=&
+                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(1,2,deriv_idx)-&
+                        &0.5d0*(dxdr_cont(2)*r_nl(1) + dxdr_cont(1)*r_nl(2))
+                
+                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(3,2,deriv_idx)=&
+                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(3,2,deriv_idx)-&
+                        &0.5d0*(dxdr_cont(2)*r_nl(3) + dxdr_cont(3)*r_nl(2))
+                
+                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(1,3,deriv_idx)=&
+                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(1,3,deriv_idx)-&
+                        &0.5d0*(dxdr_cont(1)*r_nl(3) + dxdr_cont(3)*r_nl(1))
+                
+                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(2,3,deriv_idx)=&
+                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress(2,3,deriv_idx)-&
+                        &0.5d0*(dxdr_cont(2)*r_nl(3) + dxdr_cont(3)*r_nl(2))
+            end if
 
         end subroutine append_stress_contribution
 

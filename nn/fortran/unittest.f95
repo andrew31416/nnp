@@ -18,7 +18,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:11)
+            logical :: tests(1:12)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -29,6 +29,7 @@ program unittest
 
             !* scratch
             integer :: ii
+            character(len=24),dimension(12) :: test_string
 
             integer :: num_tests
 
@@ -84,9 +85,23 @@ program unittest
             tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
             tests(10) = test_feature_selection_loss_jac() ! dloss / d(feature)param
             tests(11) = test_d2ydx2()                     ! d^2 y / dx^2 
+            tests(12) = test_stress()                     ! stress tensor
+           
+            test_string(1)  = "dydw"
+            test_string(2)  = "jac. loss (energy)"
+            test_string(3)  = "jac. loss (forces)"
+            test_string(4)  = "jac. loss (reg.)"
+            test_string(5)  = "jac. loss (all)"
+            test_string(6)  = "dydx"
+            test_string(7)  = "dcos/dr"
+            test_string(8)  = "dxdr"
+            test_string(9)  = "forces"
+            test_string(10) = "jac. loss (features)"
+            test_string(11) = "d^2y/dxdx"
+            test_string(12) = "stress"
             
             do ii=1,num_tests
-                call unittest_test(ii,tests(ii))    
+                call unittest_test(ii,test_string(ii),tests(ii))    
             end do
 
             call unittest_summary(tests)
@@ -1477,6 +1492,45 @@ program unittest
     
             test_d2ydx2 = all_confs_ok
         end function test_d2ydx2
+
+        logical function test_stress()
+            implicit none
+
+            integer :: set_type,conf,indices(1:2,1:3)
+            real(8) :: stress(1:3,1:3),val1,val2
+            integer :: ii
+            logical :: ok = .true.
+
+            !* diagonal index pairs to compare - stress should be symmetric
+            indices(1,1) = 1
+            indices(2,1) = 2
+            indices(1,2) = 1
+            indices(2,2) = 3
+            indices(1,3) = 2
+            indices(2,3) = 3
+
+            !* check unittest flag to prevent forced symmetrisation of stress matrix
+            running_unittest = .true.
+
+            set_type = 1
+
+            !* perform stress calculation for all confs
+            call calculate_features_singleset(set_type,.true.,.true.,.false.,.false.,.false.)
+
+            do conf=1,data_sets(set_type)%nconf,1
+                stress = data_sets(set_type)%configs(conf)%current_stress
+                
+                do ii=1,3
+                    val1 = stress(indices(1,ii),indices(2,ii))
+                    val2 = stress(indices(2,ii),indices(1,ii))
+
+                    if (.not.scalar_equal(val1,val2,dble(1e-10),dble(1e-10),.false.)) then
+                        ok = .false.
+                    end if
+                end do !* end loop over stress matrix diagonals
+            end do
+            test_stress = ok
+        end function test_stress
 
         subroutine unittest_error(routine,message)
             implicit none

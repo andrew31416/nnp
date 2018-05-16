@@ -102,6 +102,9 @@ module config
     logical,public,save :: atom_neigh_info_needs_updating = .true.
     logical,public,save :: updating_net_weights_only = .true.
 
+    !* do not symmetrise stress matrix for unit test
+    logical,public,save :: running_unittest = .false.
+    
     !* openmp directives for private globally scoped variables
     !$omp threadprivate(dydx)
     !$omp threadprivate(dydw)

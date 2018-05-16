@@ -59,16 +59,17 @@ module io
             end if
         end subroutine
 
-        subroutine unittest_test(num,success)
+        subroutine unittest_test(num,string,success)
             implicit none
 
             integer,intent(in) :: num
             logical,intent(in) :: success
+            character(len=24),intent(in) :: string
 
             if (success) then
-                write(*,*) 'test     ',num,'    OK'
+                write(*,*) string,num,'    OK'
             else    
-                write(*,*) 'test     ',num,'    FAILED'
+                write(*,*) string,num,'    FAILED'
             end if
         end subroutine unittest_test
 
