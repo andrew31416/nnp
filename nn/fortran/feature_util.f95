@@ -544,6 +544,9 @@ module feature_util
                 allocate(aniso_info%dr_taper(3,maxbuffer))
                 allocate(aniso_info%dr_taper_deriv(3,maxbuffer))
             end if
+            if (calculate_property("stress")) then
+                allocate(aniso_info%r_nl(3,3,maxbuffer))
+            end if
 
             any_rjk = .false.
             do ii=1,D
@@ -613,6 +616,13 @@ module feature_util
                         aniso_info%dr(1,cntr) = drij    ! central vs. jj
                         aniso_info%dr(2,cntr) = drik    ! central vs. kk
                         aniso_info%dr(3,cntr) = drjk    ! jj vs. kk
+         
+                        !* non-local position of atoms
+                        if (calculate_property("stress")) then
+                            aniso_info%r_nl(:,1,cntr) = rjj
+                            aniso_info%r_nl(:,2,cntr) = rkk
+                            aniso_info%r_nl(:,3,cntr) = rii
+                        end if
           
                         !* tapering
                         if (speedup_applies("threebody_rcut")) then
@@ -770,7 +780,10 @@ module feature_util
                     allocate(set_neigh_info(conf)%threebody(ii)%dr_taper(3,cntr))
                     allocate(set_neigh_info(conf)%threebody(ii)%dr_taper_deriv(3,cntr))
                 end if
-               
+                if (calculate_property("stress")) then
+                    allocate(set_neigh_info(conf)%threebody(ii)%r_nl(3,3,cntr))
+                end if
+
                 !* number of three-body terms centered on ii
                 !feature_threebody_info(ii)%n = cntr ! DEP.
                 set_neigh_info(conf)%threebody(ii)%n = cntr
@@ -804,8 +817,9 @@ module feature_util
                     set_neigh_info(conf)%threebody(ii)%dr_taper_deriv(:,:) = aniso_info%&
                             &dr_taper_deriv(:,1:cntr)
                 end if
-
-                
+                if (calculate_property("stress")) then
+                    set_neigh_info(conf)%threebody(ii)%r_nl(:,:,:) = aniso_info%r_nl(:,:,1:cntr)
+                end if 
             end do !* end loop ii over local cell atoms
             
             deallocate(aniso_info%cos_ang)
@@ -817,6 +831,9 @@ module feature_util
             if (speedup_applies("threebody_rcut")) then
                 deallocate(aniso_info%dr_taper)
                 deallocate(aniso_info%dr_taper_deriv)
+            end if
+            if (calculate_property("stress")) then
+                deallocate(aniso_info%r_nl)
             end if
         end subroutine calculate_threebody_info
 

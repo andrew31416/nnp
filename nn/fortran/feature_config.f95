@@ -32,6 +32,7 @@ module feature_config
         real(8) :: z_atom                       ! atomic number of central atom
         real(8),allocatable :: dcos_dr(:,:,:)   ! derivative of cos(angle) wrt atoms
         real(8),allocatable :: drdri(:,:,:)     ! derivative of atom-atom displacements
+        real(8),allocatable :: r_nl(:,:,:)      ! non-local position of atoms in bond
     end type feature_info_threebody
 
     !------------------------------!
