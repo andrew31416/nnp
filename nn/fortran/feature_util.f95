@@ -416,6 +416,7 @@ module feature_util
                 allocate(set_neigh_info(conf)%twobody(ii)%idx(cntr))
                 allocate(set_neigh_info(conf)%twobody(ii)%z(cntr))
                 allocate(set_neigh_info(conf)%twobody(ii)%drdri(3,cntr))
+                allocate(set_neigh_info(conf)%twobody(ii)%r_nl_neigh(3,cntr))
                 if (speedup_applies("twobody_rcut")) then
                     !* all two body feature share same rcut,fs
                     allocate(set_neigh_info(conf)%twobody(ii)%dr_taper(cntr))
@@ -453,7 +454,13 @@ module feature_util
                         
                         !* Z of neighbour cntr
                         set_neigh_info(conf)%twobody(ii)%z(cntr) = ultraz(jj) 
-                        
+                       
+                        !* non-local coordinate of neighbour
+                        set_neigh_info(conf)%twobody(ii)%r_nl_neigh(:,cntr) = drjj(:)
+
+                        !* (non)local coordinate of central atom
+                        set_neigh_info(conf)%twobody(ii)%r_nl_atom(:) = drii(:)
+
                         cntr = cntr + 1    
                     end if
                 end do

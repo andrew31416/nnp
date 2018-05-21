@@ -462,4 +462,57 @@ module init
             allocate(set_neigh_info(data_sets(set_type)%nconf))
         end subroutine init_set_neigh_info
 
+        subroutine write_net_to_disk(filepath)
+            implicit none
+
+            character(len=1024),intent(in) :: filepath
+
+            integer :: funit=5
+            real(8),allocatable :: weights_array(:)
+
+            open(unit=funit,file=filepath,action='write')
+
+            !* nodes_layer1 nodes_layer2 activation_function number_features
+            write(unit=funit,fmt=*) net_dim%hl1,net_dim%hl2,nlf,feature_params%num_features
+
+            !* concacenate weights into 1d array
+            allocate(weights_array(total_num_weights()))
+
+            call parse_structure_to_array(net_weights,weights_array)
+            write(unit=funit,fmt=*) weights_array
+    
+            close(unit=funit)
+        end subroutine write_net_to_disk
+
+        subroutine init_net_from_disk(filepath)
+            implicit none
+
+            character(len=1024),intent(in) :: filepath
+
+            integer :: funit=5,iostat
+            real(8),allocatable :: flat_weights(:)
+
+            open(unit=funit,file=filepath,action='write',iostat=iostat)
+            if (iostat.ne.0) then
+                write(*,*) 'file :',filepath,'could not be found'
+                call exit(0)
+            end if
+
+            read(unit=funit,fmt=*) net_dim%hl1,net_dim%hl2,nlf,D
+            
+            !* initialise weights mem
+            call allocate_weights(net_weights)
+            
+            allocate(flat_weights(total_num_weights()))
+
+            read(unit=funit,fmt=*) flat_weights
+
+            !* parse into nn weights structure
+            call parse_array_to_structure(flat_weights,net_weights)
+            call allocate_weights_nobiasT(net_weights_nobiasT)
+            call copy_weights_to_nobiasT()
+
+            close(unit=funit)
+        end subroutine init_net_from_disk
+
 end module init

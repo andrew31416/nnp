@@ -783,7 +783,7 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz
-            real(8) :: za,zb,r_atm(1:3),deriv_nl_r(1:3)
+            real(8) :: za,zb,deriv_nl_r(1:3)
             integer :: ii,lim1,lim2
 
             !* symmetry function params
@@ -792,24 +792,25 @@ call cpu_time(t4)
             fs   = feature_params%info(ft_idx)%fs
             rcut = feature_params%info(ft_idx)%rcut
            
-            if (calculate_property("stress")) then
-                r_atm = data_sets(set_type)%configs(conf)%r(:,atm)
-            end if 
+            !if (calculate_property("stress")) then
+            !    r_atm = data_sets(set_type)%configs(conf)%r(:,atm)
+            !end if 
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
-                    deriv_nl_r = r_atm
+                    deriv_nl_r = set_neigh_info(conf)%twobody(atm)%r_nl_atom
                 end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then 
-                    deriv_nl_r = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_atm
+                    deriv_nl_r = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
+                    !deriv_nl_r = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_atm
                 end if
             end if
 
@@ -914,24 +915,26 @@ call cpu_time(t4)
             eta  = feature_params%info(ft_idx)%eta
             rcut = feature_params%info(ft_idx)%rcut
 
-            if (calculate_property("stress")) then
-                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            end if
+            !if (calculate_property("stress")) then
+            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            !end if
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
-                    r_nl = r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
+                    !r_nl = r_lc
                 end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
-                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
+                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
             end if
 
@@ -1351,24 +1354,26 @@ call cpu_time(t4)
 
             prec_const = invsqrt2pi*sqrt_det
             
-            if (calculate_property("stress")) then
-                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            end if
+            !if (calculate_property("stress")) then
+            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            !end if
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
-                    r_nl = r_lc   
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
+                    !r_nl = r_lc   
                 end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
-                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
+                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
             end if
 
@@ -1493,24 +1498,26 @@ call cpu_time(t4)
 
             r_taper = minval(rcuts)
             
-            if (calculate_property("stress")) then
-                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            end if
+            !if (calculate_property("stress")) then
+            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            !end if
             
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
-                    r_nl = r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
+                    !r_nl = r_lc
                 end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
-                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
+                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
             end if
 
@@ -1817,24 +1824,26 @@ call cpu_time(t4)
             !* 2 pi / rcut
             tmp1 = 6.28318530718d0 / rcut
             
-            if (calculate_property("stress")) then
-                r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            end if
+            !if (calculate_property("stress")) then
+            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
+            !end if
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
-                    r_nl = r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
+                    !r_nl = r_lc
                 end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
-                    r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                            &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
+                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
+                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
+                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
             end if
 

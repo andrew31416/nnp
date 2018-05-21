@@ -19,6 +19,8 @@ module feature_config
         real(8),allocatable :: drdri(:,:)   ! derivative of distance wrt atom
         real(8),allocatable :: z(:)         ! atomic number of neighbour
         real(8) :: z_atom                   ! central atomic number
+        real(8) :: r_nl_atom(1:3)           ! local position of central atom
+        real(8),allocatable :: r_nl_neigh(:,:) ! non-local position of neighburs
     end type feature_info_twobody
 
     type,public :: feature_info_threebody

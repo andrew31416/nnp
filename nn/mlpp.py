@@ -2,9 +2,11 @@ from nnp.util.log import NnpOptimizeResult
 import nnp.nn.helper_funcs
 import numpy as np
 import nnp.features
+import nnp.util
 from scipy import optimize
 import time
 import warnings
+import pickle
 
 class MultiLayerPerceptronPotential():
     """Fully connected feed forward multi layer perceptron for empirical 
@@ -837,6 +839,21 @@ class MultiLayerPerceptronPotential():
 
         # return loss
         return loss,predicted_gip
+
+    def save(self,filename="weights"):
+        """
+        Save python and fortran formatted information about neural net weights
+        and activation functions
+        """
+    
+        # python format    
+        with open('{}.pckl','wb') as f:
+            pickle.dump({"activation":self.activation,"weights":self.weights,\
+                    "hidden_layer_sizes":self.hidden_layer_sizes,"D":self.D},f)
+        f.close()
+
+        # fortran format
+        nnp.util.io._write_weights_to_disk('{}.fortran'.format(filename))
 
 class MlppError(Exception):
     pass    
