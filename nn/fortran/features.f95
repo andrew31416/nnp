@@ -2111,8 +2111,8 @@ call cpu_time(t4)
                     za   = feature_params%info(ft)%za
                     zb   = feature_params%info(ft)%zb
                     fs   = feature_params%info(ft)%fs
-                    rs   = feature_params%info(ft)%fs
-                    eta  = feature_params%info(ft)%fs
+                    rs   = feature_params%info(ft)%rs
+                    eta  = feature_params%info(ft)%eta
                     scl  = feature_params%info(ft)%scl_cnst
                     add  = feature_params%info(ft)%add_cnst
                     if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
@@ -2125,7 +2125,7 @@ call cpu_time(t4)
                     if (speedup_applies("twobody_rcut")) then
                         taper = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh)
                         if (calculate_property("forces")) then
-                            taper_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh)
+                            taper_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(neigh)
                         end if
                     else
                         taper = taper_1(dr,rcut_ft,fs)
