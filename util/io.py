@@ -185,6 +185,13 @@ def _parse_configs_from_fortran(set_type):
 
         gip.supercells.append(_s)
     return gip
-    
+
+def _write_weights_to_disk(fname):
+    """
+    write neural net weights, number of nodes, features and type of activation
+    function to disk
+    """
+    getattr(f95_api,"f90wrap_write_net_to_disk")(filepath='{:<1024}'.format(fname))
+
 class IoError(Exception):
     pass            

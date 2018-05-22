@@ -1265,10 +1265,17 @@ class features():
         import pickle
 
         if sysname is None:
-            sysname = datetime.datetime.today().split()[0]
+            sysname = '{}_features'.format(str(datetime.datetime.today()).split()[0])
 
-        with open(sysname+'.features','wb') as f:
+        # python
+        with open(sysname+'.pckl','wb') as f:
             pickle.dump({'features':self.features},f)
+        f.close()
+
+        # fortran
+        with open('{}.fortran'.format(sysname),'w') as f:
+            for _feature in self.features:
+                _feature._write_to_disk(f)
         f.close()
 
     def load(self,sysname=None):
@@ -1299,19 +1306,20 @@ class features():
         if sysname is None:
             files = listdir('.')
 
-            pckl_files = [_file.split('.')[-1]=='features' for _file in files]
+            pckl_files = [_file.split('_')[-1].split('.')[0]=='features' for _file in files]
 
             if np.sum(pckl_files)!=1:
                 raise FeaturesError("Could not automatically load .features file")         
+        
+            sysname = np.nonzero(pckl_files)[0][0].split('.')[0]
+            #sysname = '.'.join(files[np.nonzero(pckl_files)[0][0]].split('.')[:-1])
 
-            sysname = '.'.join(files[np.nonzero(pckl_files)[0][0]].split('.')[:-1])
-
-        with open(sysname+'.features','rb') as f:
+        with open(sysname+'.pckl','rb') as f:
             try:
                 self.features = pickle.load(f)['features']
             except KeyError or TypeError:
                 raise FeaturesError("features pckl file {} appears to be corrupted".\
-                        format(sysname+'.features'))
+                        format(sysname+'.pckl'))
         f.close()
 
 class toy_mlpp_class():
