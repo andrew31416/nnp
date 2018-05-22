@@ -45,7 +45,7 @@ module features
             !* openMP variables
             integer :: thread_idx,num_threads,bounds(1:2)
 ! DEBUG
-real(8) :: t1,t2,t3,t4,t5,t6
+real(8) :: t1,t2,t3,t4,t5
 ! DEBUG
             
             if (updating_features) then
@@ -118,6 +118,7 @@ real(8) :: t1,t2,t3,t4,t5,t6
                     
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
+                    !call experimental_feature_calc(set_type,conf,updating_features)
                     
                     ! deprecated v
                     if (allocated(ultra_z)) then
@@ -165,6 +166,7 @@ call cpu_time(t4)
                     
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
+                    !call experimental_feature_calc(set_type,conf,updating_features)
 ! DEBUG
 call cpu_time(t5)
 !write(*,*) ''
@@ -904,7 +906,7 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: rs,fs,rcut,tmpz
-            real(8) :: za,zb,eta,r_lc(1:3),r_nl(1:3)
+            real(8) :: za,zb,eta,r_nl(1:3)
             integer :: ii,lim1,lim2
 
             !* symmetry function params
@@ -1338,7 +1340,7 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz,prec,mean,sqrt_det
-            real(8) :: za,zb,invsqrt2pi,prec_const,r_lc(1:3),r_nl(1:3)
+            real(8) :: za,zb,invsqrt2pi,prec_const,r_nl(1:3)
             integer :: ii,lim1,lim2
             
             invsqrt2pi = 0.3989422804014327d0
@@ -1484,7 +1486,7 @@ call cpu_time(t4)
             real(8) :: tmp2,dr_scl,dr_vec(1:3)
             real(8) :: rcuts(1:2),mean,const,r_taper,std
             real(8) :: xtilde,sig,sig_prime,fs
-            real(8) :: tap,tap_deriv,r_lc(1:3),r_nl(1:3)
+            real(8) :: tap,tap_deriv,r_nl(1:3)
 
             mean = feature_params%info(ft_idx)%devel(1)
             const = feature_params%info(ft_idx)%devel(2)
@@ -1808,7 +1810,7 @@ call cpu_time(t4)
 
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
-            real(8) :: fs,rcut,tmpz,tmp3,r_lc(1:3),r_nl(1:3)
+            real(8) :: fs,rcut,tmpz,tmp3,r_nl(1:3)
             real(8) :: za,zb,kk_dble,phi(1:size(feature_params%info(ft_idx)%linear_w))
             integer :: ii,kk,lim1,lim2,num_weights
 
@@ -1947,4 +1949,570 @@ call cpu_time(t4)
 
         end subroutine append_stress_contribution
 
+        subroutine experimental_feature_calc(set_type,conf,updating_features)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf
+            logical,intent(in) :: updating_features
+        
+            !* scratch
+            integer :: atm,ft
+            
+            if (updating_features) then
+                updating_net_weights_only = .false.
+            else
+                !* remove redundant neighbour info
+                updating_net_weights_only = .true.
+            end if
+            
+            !* two body contributions
+            if (twobody_features_present()) then
+                do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    call twobody_atom_contribution(set_type,conf,atm)
+                end do !* end loop over central 2body atoms
+            end if
+            !* three body contributions
+            if (threebody_features_present()) then
+                do atm=1,data_sets(set_type)%configs(conf)%n,1
+                    call threebody_atom_contribution(set_type,conf,atm)
+                end do !* end loop over central 3body atoms
+            end if
+            !* atomic number feature
+            do ft=1,feature_params%num_features,1
+                if (feature_params%info(ft)%ftype.eq.featureID_StringToInt("atomic_number")) then
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        call feature_atomicnumber_1(set_type,conf,atm,ft) 
+                    end do !* end loop over atoms 
+                end if
+            end do
+        end subroutine experimental_feature_calc
+
+        subroutine twobody_atom_contribution(set_type,conf,atm)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf,atm
+
+            !* scratch
+            integer :: neigh,ft,ftype,cntr,arg,zz,deriv_idx
+            integer :: num_weights,ww
+            integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
+            integer :: idx_to_contrib(1:set_neigh_info(conf)%twobody(atm)%n)
+            real(8) :: rcut,dr,r_nl(1:3),r_nl_central(1:3),dr_vec(1:3)
+            real(8) :: rcut_ft,taper,taper_deriv,tmpz,feat_val
+            real(8) :: feat_deriv,feat_deriv_vec(1:3),ww_dble
+            real(8) :: eta,rs,prec,mean,phi(1:1000),const,scl,add
+            real(8) :: fs,za,zb
+            logical :: nonzero_derivative
+
+            if (set_neigh_info(conf)%twobody(atm)%n.eq.0) then
+                !* no twobody interactions for this central atom
+                do ft=1,feature_params%num_features
+                    if (.not.feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                        cycle
+                    end if
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n = 0
+                end do
+                return
+            end if
+
+            !* max rcut of any 2body feature
+            rcut = maxrcut(1)
+
+            if (calculate_property("forces")) then
+                !* local coordinate of central atom
+                r_nl_central = set_neigh_info(conf)%twobody(atm)%r_nl_atom
+
+                !* for full periodic boundaries, need to identify same local atoms
+                contrib_atms(1) = atm
+                cntr = 1
+                do neigh=1,set_neigh_info(conf)%twobody(atm)%n,1
+                    if ( int_in_intarray(set_neigh_info(conf)%twobody(atm)%idx(neigh),&
+                    &contrib_atms(1:cntr),arg) ) then
+                        !* Local atom already in list, note corresponding idx in contrib_atms
+                        idx_to_contrib(neigh) = arg
+                        cycle
+                    else if (set_neigh_info(conf)%twobody(atm)%dr(neigh).le.rcut) then
+                        cntr = cntr + 1
+                        !* note this local atom contributes to this feature for atom
+                        contrib_atms(cntr) = set_neigh_info(conf)%twobody(atm)%idx(neigh)
+                        idx_to_contrib(neigh) = cntr
+                    else
+                        !* beyond cut off
+                        idx_to_contrib(neigh) = -1     ! NULL value
+                    end if
+                end do !* end loop over neighbours to atm
+
+                do ft=1,feature_params%num_features,1
+                    if (.not.feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                        cycle
+                    end if
+
+                    !* mem allocation
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)
+                    end if
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)
+                    end if
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress)) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress)
+                    end if
+
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx(1:cntr))
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(1:3,1:cntr))
+                    if (calculate_property("stress")) then
+                        allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                                &stress(1:3,1:3,1:cntr))
+                    end if
+
+                    !* even though some elements may be zero, set num neighours to max possible
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n = cntr
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx(:) = &
+                            &contrib_atms(1:cntr) !* can us LAPACK here
+
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec = 0.0d0
+                    if (calculate_property("stress")) then
+                        data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress = 0.0d0
+                    end if
+
+                end do !* end loop over features
+            end if !* forces
+
+            do ft=1,feature_params%num_features
+                if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                    data_sets(set_type)%configs(conf)%x(ft+1,atm) = 0.0d0
+                end if
+            end do
+
+            do neigh=1,set_neigh_info(conf)%twobody(atm)%n,1
+                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(neigh)) then
+                    nonzero_derivative = .false.
+                else
+                    nonzero_derivative = .true.
+                end if
+
+                !* atm-neigh distance
+                dr = set_neigh_info(conf)%twobody(atm)%dr(neigh)
+                
+                do ft=1,feature_params%num_features
+                    ftype = feature_params%info(ft)%ftype
+                    if (.not.feature_IsTwoBody(ftype)) then
+                        cycle
+                    end if
+
+                    rcut_ft = feature_params%info(ft)%rcut
+                    if (dr.gt.rcut_ft) then
+                        !* feature rcuts can be different
+                        cycle
+                    end if
+                    
+                    za   = feature_params%info(ft)%za
+                    zb   = feature_params%info(ft)%zb
+                    fs   = feature_params%info(ft)%fs
+                    rs   = feature_params%info(ft)%fs
+                    eta  = feature_params%info(ft)%fs
+                    scl  = feature_params%info(ft)%scl_cnst
+                    add  = feature_params%info(ft)%add_cnst
+                    if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                        prec = feature_params%info(ft)%prec(1,1)
+                        mean = feature_params%info(ft)%mean(1)
+                    else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                        num_weights = size(feature_params%info(ft)%linear_w)
+                    end if
+
+                    if (speedup_applies("twobody_rcut")) then
+                        taper = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh)
+                        if (calculate_property("forces")) then
+                            taper_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh)
+                        end if
+                    else
+                        taper = taper_1(dr,rcut_ft,fs)
+                        if (calculate_property("forces")) then
+                            taper_deriv = taper_deriv_1(dr,rcut_ft,fs)
+                        end if
+                    end if
+
+                    !* atomic number weighting
+                    tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
+                            &(set_neigh_info(conf)%twobody(atm)%z(neigh)+1.0d0)**zb
+                   
+                    if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then 
+                        feat_val = taper*tmpz*scl + add
+                    else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                        feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl + add
+                    else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                        feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl + add
+                    else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                        const = dr * 6.28318530718 / rcut_ft
+                        do ww=1,num_weights,1
+                            phi(ww) = sin(dble(ww)*const)
+                        end do
+                        feat_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1)*&
+                                &taper*tmpz*scl + add
+                    else                        
+                        call error("twobody_atom_contribution","Implementation error")
+                    end if
+
+                    !* 0th derivative contribution
+                    data_sets(set_type)%configs(conf)%x(ft+1,atm) = &
+                            &data_sets(set_type)%configs(conf)%x(ft+1,atm) + feat_val
+
+                    if (calculate_property("forces").and.nonzero_derivative) then 
+                        do zz=1,2
+                            !* zz=1, derivative wrt neigh, zz=2 : wrt. central atom
+                            if (zz.eq.1) then
+                                deriv_idx = idx_to_contrib(neigh)
+                                dr_vec = set_neigh_info(conf)%twobody(atm)%drdri(:,neigh)
+                                if (calculate_property("stress")) then
+                                    r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,neigh)
+                                end if
+                            else
+                                deriv_idx = 1
+                                dr_vec = -set_neigh_info(conf)%twobody(atm)%drdri(:,neigh)
+                                if (calculate_property("stress")) then
+                                    r_nl = r_nl_central
+                                end if
+                            end if
+
+                            if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
+                                feat_deriv = taper_deriv*tmpz*scl
+                            else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                                feat_deriv = exp(-eta*(dr-rs)**2)  *  (taper_deriv - &
+                                        &2.0d0*eta*(dr-rs)*taper) * tmpz * scl
+                            else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                                feat_deriv = exp(-0.5d0*prec*(dr-mean)**2)*(taper_deriv - & 
+                                        &prec*(dr-mean)*taper)*tmpz*scl
+                            else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                                const = 6.28318530718 / rcut_ft
+                                do ww=1,num_weights,1
+                                    ww_dble = dble(ww)
+
+                                    phi(ww) = taper_deriv*sin(ww_dble*const*dr) + &
+                                            &taper*const*ww_dble*cos(ww_dble*const*dr)
+                                end do
+                                
+                                feat_deriv = ddot(num_weights,&
+                                        &feature_params%info(ft)%linear_w,1,phi,1)*tmpz*scl
+                            end if
+
+                            !* dx / dr_derividx
+                            feat_deriv_vec = dr_vec*feat_deriv
+
+                            !* force contribution
+                            data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(1:3,&
+                                    &deriv_idx) = data_sets(set_type)%configs(conf)%&
+                                    &x_deriv(ft,atm)%vec(1:3,deriv_idx) + feat_deriv_vec
+
+                            if (calculate_property("stress")) then
+                                !* stress contribution
+                                call append_stress_contribution(feat_deriv_vec,r_nl,set_type,&
+                                        &conf,atm,ft,deriv_idx)
+                            end if
+                        end do !* end loop over zz
+                    end if !* forces
+                end do !* end loop over ft features
+            end do !* end loop over neighbours to central atom
+        end subroutine twobody_atom_contribution
+
+        subroutine threebody_atom_contribution(set_type,conf,atm)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf,atm
+
+            !* scratch
+            integer :: ft,idx_map(1:2,1:set_neigh_info(conf)%threebody(atm)%n)
+            integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
+            integer :: cntr,neigh,ii,bond,zz,ftype,deriv_idx,arg
+            real(8) :: x1(1:3),x2(1:3),prec(1:3,1:3),mean(1:3)
+            real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3)
+            real(8) :: drjkdrz(1:3),tmp1,tmp2,dxdr(1:3),tmp_vec1(1:3),tmp_vec2(1:3)
+            real(8) :: norm_tmp1(1:3,1:3),norm_tmp2(1:3,1:3),tmp_deriv1(1:3),tmp_deriv2(1:3)
+            real(8) :: za,zb,eta,fs,xi,lambda,tap_ij,tap_ik,tap_jk,tap_ij_deriv
+            real(8) :: tap_ik_deriv,tap_jk_deriv,scl,add,tmp_z,drij,drik,drjk
+            real(8) :: r_nl(1:3),feat_val,rcut,cos_angle_val
+
+            if (set_neigh_info(conf)%threebody(atm)%n.eq.0) then
+                !* no 3body interactions for this central atom
+                do ft=1,feature_params%num_features
+                    if (.not.feature_IsThreeBody(feature_params%info(ft)%ftype)) then
+                        cycle
+                    end if
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n = 0
+                end do
+                return
+            end if
+
+            if (calculate_property("forces").and.atom_neigh_info_needs_updating) then
+                !* mem allocation
+                do ft=1,feature_params%num_features,1
+                    if (.not.feature_IsThreeBody(feature_params%info(ft)%ftype)) then
+                        cycle
+                    end if
+
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)
+                    end if
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)
+                    end if
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx_map)) &
+                    &then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx_map)
+                    end if
+                    if (calculate_property("stress")) then
+                        if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                        &stress)) then
+                            deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress)
+                        end if
+                    end if
+                end do !* end loop over features
+
+                contrib_atms(1) = atm
+                idx_map = -1
+                cntr = 1
+
+                do neigh=1,set_neigh_info(conf)%threebody(atm)%n,1
+                    do ii=1,2
+                        if ( int_in_intarray(set_neigh_info(conf)%threebody(atm)%idx(ii,neigh),&
+                        &contrib_atms(1:cntr),arg) ) then
+                            !* Local atom already in list, note corresponding idx in contrib_atms
+                            idx_map(ii,neigh) = arg
+                            cycle
+                        else
+                            cntr = cntr + 1
+                            !* note this local atom contributes to this feature for atom
+                            contrib_atms(cntr) = set_neigh_info(conf)%threebody(atm)%idx(ii,neigh)
+
+                            idx_map(ii,neigh) = cntr
+                        end if
+                    end do !* end loop ii
+                end do !* end loop over neighbours
+                
+                do ft=1,feature_params%num_features,1
+                    if (.not.feature_IsThreeBody(feature_params%info(ft)%ftype)) then
+                        cycle
+                    end if
+
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx_map(1:2,&
+                            &1:set_neigh_info(conf)%threebody(atm)%n))
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx(1:cntr))
+                    allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(1:3,1:cntr))
+                    if (calculate_property("stress")) then
+                        allocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                                &stress(1:3,1:3,1:cntr))
+                    end if
+                    
+                    !* number of atoms in local cell contributing to feature (including central atom
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n = cntr
+
+                    ! CAN LAPACK THIS
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx(:) = &
+                            &contrib_atms(1:cntr)
+
+                    ! CAN LAPACK THIS
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx_map = idx_map
+                end do !* end loop over features
+            end if !* recalculate non-local -> local index map for forces+stress
+            
+            !* zero all features   
+            do ft=1,feature_params%num_features,1
+                if (.not.feature_IsThreeBody(feature_params%info(ft)%ftype)) then
+                    cycle
+                end if
+           
+                if (calculate_property("forces")) then
+                    data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec = 0.0d0
+                    if (calculate_property("stress")) then
+                        data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%stress = 0.0d0
+                    end if
+                end if
+                data_sets(set_type)%configs(conf)%x(ft+1,atm) = 0.0d0
+            end do !* end loop over features
+
+            do bond=1,set_neigh_info(conf)%threebody(atm)%n,1
+                drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond)
+                drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond)
+                drjk = set_neigh_info(conf)%threebody(atm)%dr(3,bond)
+                
+                if ((drij.gt.rcut).or.(drik.gt.rcut)) then
+                    cycle
+                end if
+                
+                cos_angle_val = set_neigh_info(conf)%threebody(atm)%cos_ang(bond)
+                
+                if (speedup_applies("threebody_rcut")) then
+                    tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond)
+                    tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond)
+                    tap_jk = set_neigh_info(conf)%threebody(atm)%dr_taper(3,bond)
+                    tap_ij_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(1,bond)
+                    tap_ik_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(2,bond)
+                    tap_jk_deriv = set_neigh_info(conf)%threebody(atm)%dr_taper_deriv(3,bond)
+                end if
+                
+                do ft=1,feature_params%num_features,1
+                    ftype = feature_params%info(ft)%ftype
+                    if (.not.feature_IsThreeBody(ftype)) then
+                        cycle
+                    end if
+                    
+                    if (.not.feat_doesnt_taper_drjk(ft)) then
+                        !* drjk is tapered
+                        if (drjk.gt.rcut) then
+                            cycle
+                        end if
+                    end if
+
+                    rcut   = feature_params%info(ft)%rcut
+                    fs     = feature_params%info(ft)%fs
+                    eta    = feature_params%info(ft)%eta
+                    xi     = feature_params%info(ft)%xi
+                    lambda = feature_params%info(ft)%lambda
+                    za     = feature_params%info(ft)%za
+                    zb     = feature_params%info(ft)%zb
+                    scl    = feature_params%info(ft)%scl_cnst
+                    add    = feature_params%info(ft)%add_cnst
+                    if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                        prec = feature_params%info(ft)%prec
+                        mean = feature_params%info(ft)%mean
+                    end if
+
+
+                    if (.not.speedup_applies("threebody_rcut")) then
+                        tap_ij = taper_1(drij,rcut,fs)
+                        tap_ik = taper_1(drik,rcut,fs)
+                        tap_jk = taper_1(drjk,rcut,fs)
+                        tap_ij_deriv = taper_deriv_1(drij,rcut,fs)
+                        tap_ik_deriv = taper_deriv_1(drik,rcut,fs)
+                        tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
+                    end if
+                    
+                    tmp_z = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond)+1.0d0)*&
+                            &(set_neigh_info(conf)%threebody(atm)%z(2,bond)+1.0d0) )**zb *&
+                            &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
+
+                    if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
+                        tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * tmp_z * scl
+                        tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
+
+                        feat_val = tmp1 * tmp2 * (tap_ij*tap_ik*tap_jk) + add
+                    else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                        tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2)) * tmp_z * scl
+                        tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
+
+                        feat_val = tmp1 * tmp2 * (tap_ij*tap_ik) + add
+                    else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                        x1(1) = drij
+                        x1(2) = drik
+                        x1(3) = cos_angle_val
+                        x2(1) = drik
+                        x2(1) = drij
+                        x2(3) = cos_angle_val
+        
+                        tmp1 = func_normal(x1,mean,prec)
+                        tmp2 = func_normal(x1,mean,prec)
+
+                        feat_val = (tmp1 + tmp2)*tmp_z*(tap_ij*tap_ik*tap_jk)*scl + add
+                    end if
+
+                    !* 0th derivative contribution
+                    data_sets(set_type)%configs(conf)%x(ft+1,atm) = & 
+                            &data_sets(set_type)%configs(conf)%x(ft+1,atm) + feat_val
+
+                    if (calculate_property("forces")) then
+                        if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                            call dsymv('u',3,1.0d0,prec,3,x1-mean,1,0.0d0,tmp_vec1,1)
+                            call dsymv('u',3,1.0d0,prec,3,x2-mean,1,0.0d0,tmp_vec2,1)
+                        end if
+
+                        do zz=1,3,1
+                            if (zz.lt.3) then
+                                deriv_idx = data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                                        &idx_map(zz,bond)
+                            else
+                                deriv_idx = 1
+                            end if
+
+                            dcosdrz =  set_neigh_info(conf)%threebody(atm)%dcos_dr(:,zz,bond)
+
+                            if (zz.eq.1) then
+                                !* zz=jj
+                                drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond)
+                                drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,4,bond)
+                                drjkdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond)
+                            else if (zz.eq.2) then
+                                !* zz=kk
+                                drijdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,2,bond)
+                                drikdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond)
+                                drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,5,bond)
+                            else if (zz.eq.3) then
+                                !* zz=ii
+                                drijdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,1,bond)
+                                drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond)
+                                drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond)
+                            end if
+
+                            if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
+                                dxdr = tap_ij*tap_ik*tap_jk*lambda*xi*&
+                                    &((1.0d0+lambda*cos_angle_val)**(xi-1.0d0))*dcosdrz*tmp1 +&
+                                    &(tap_ik*tap_jk*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz+&
+                                    & tap_ij*tap_jk*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz+&
+                                    & tap_ij*tap_ik*(tap_jk_deriv - 2.0d0*eta*tap_jk*drjk)*drjkdrz)*&
+                                    &tmp2
+                            else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                                dxdr = tmp1*(tap_ij*tap_ik)*lambda*xi*&
+                                    &((1.0d0+lambda*cos_angle_val)**(xi-1.0d0))*dcosdrz + &
+                                    &(tap_ik*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
+                                    &tap_ij*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz )*tmp2
+                            else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                                norm_tmp1(:,1) = drijdrz
+                                norm_tmp1(:,2) = drikdrz
+                                norm_tmp1(:,3) = dcosdrz
+                                norm_tmp2(:,1) = drikdrz
+                                norm_tmp2(:,2) = drijdrz
+                                norm_tmp2(:,3) = dcosdrz
+
+                                call dgemv('n',3,3,1.0d0,norm_tmp1,3,tmp_vec1,1,0.0d0,tmp_deriv1,1)
+                                call dgemv('n',3,3,1.0d0,norm_tmp2,3,tmp_vec2,1,0.0d0,tmp_deriv2,1)
+                               
+                                dxdr = scl * ( (tmp1+tmp2)*(tap_ij*tap_jk*tap_ik_deriv*drikdrz + & 
+                                &tap_ik*tap_jk*tap_ij_deriv*drijdrz)*tmp_z - &
+                                &tap_ij*tap_ik*tap_jk*(tmp1*tmp_deriv1 + &
+                                &tmp2*tmp_deriv2)*tmp_z   +  &
+                                &tap_ij*tap_ik*tmp_z*(tmp1+tmp2)*tap_jk_deriv*drjkdrz )
+                            end if
+
+                            !* force contribution
+                            data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(:,deriv_idx) = &
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(:,deriv_idx)+&
+                                &dxdr
+
+                            if (calculate_property("stress")) then
+                                !* stress contribution
+                                r_nl = set_neigh_info(conf)%threebody(atm)%r_nl(:,zz,bond)
+
+                                call append_stress_contribution(dxdr,r_nl,set_type,conf,&
+                                        &atm,ft,deriv_idx)
+                            end if
+                        end do !* end loop zz over atom differentials
+                    end if !* forces
+                end do !* end loop over features
+            end do !* end loop over bonds to central atom
+            
+            do ft=1,feature_params%num_features,1
+                if (.not.feature_IsThreeBody(feature_params%info(ft)%ftype)) then
+                    cycle
+                end if
+                
+                if (updating_net_weights_only.and.calculate_property("forces")) then
+                    !* only useful for recomputing loss wrt basis function params
+                    if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx_map)) then
+                        deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx_map)
+                    end if
+                end if
+            end do
+        end subroutine threebody_atom_contribution
 end module
+

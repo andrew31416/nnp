@@ -919,8 +919,14 @@ module feature_util
                     do atm=1,data_sets(set_type)%configs(conf)%n
                         do ft=1,D
                             if (data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%n.ne.0) then
-                                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)
-                                deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)
+                                if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                                &idx)) then
+                                    deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%idx)
+                                end if
+                                if (allocated(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                                &vec)) then
+                                    deallocate(data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec)
+                                end if
                             end if
                         end do
                     end do
