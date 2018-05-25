@@ -747,7 +747,8 @@ call cpu_time(t4)
 
             !* scratch
             real(8) :: dr,tmp2,tmp3,za,zb,rcut,fs
-           
+            real(8) :: zatom,zneigh
+
             !* atom-neigh_idx distance 
             dr = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
 
@@ -769,11 +770,15 @@ call cpu_time(t4)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
-        
-            !* atomic numbers
-            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
-                    &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
+       
+            if (speedup_applies("single_element")) then
+                tmp3 = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                zneigh = set_neigh_info(conf)%twobody(atm)%z(neigh_idx)
 
+                tmp3 = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+            end if
             
             current_val = current_val + tmp2*tmp3
         end subroutine feature_behler_g1
@@ -788,6 +793,7 @@ call cpu_time(t4)
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz
             real(8) :: za,zb,deriv_nl_r(1:3)
+            real(8) :: zatom,zneigh
             integer :: ii,lim1,lim2
 
             !* symmetry function params
@@ -796,10 +802,6 @@ call cpu_time(t4)
             fs   = feature_params%info(ft_idx)%fs
             rcut = feature_params%info(ft_idx)%rcut
            
-            !if (calculate_property("stress")) then
-            !    r_atm = data_sets(set_type)%configs(conf)%r(:,atm)
-            !end if 
-
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
@@ -813,9 +815,11 @@ call cpu_time(t4)
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then 
                     deriv_nl_r = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
-                    !deriv_nl_r = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_atm
                 end if
+            end if
+            
+            if (speedup_applies("single_element")) then
+                tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
             end if
 
 
@@ -845,9 +849,12 @@ call cpu_time(t4)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
-                !* atomic numbers
-                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
-                        &(set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
+                if (.not.speedup_applies("single_element")) then
+                    zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                    zneigh = set_neigh_info(conf)%twobody(atm)%z(ii)
+
+                    tmpz = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+                end if
 
                 tmp1 = tap_deriv
                
@@ -869,6 +876,7 @@ call cpu_time(t4)
 
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,eta,rs,fs
+            real(8) :: zatom,zneigh
            
             !* atom-neigh_idx distance 
             dr = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
@@ -890,11 +898,15 @@ call cpu_time(t4)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
-        
-            !* atomic numbers
-            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
-                    &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
 
+            !* atomic number        
+            if (speedup_applies("single_element")) then
+                tmp3 = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                zneigh = set_neigh_info(conf)%twobody(atm)%z(neigh_idx)
+                tmp3 = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+            end if
 
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_behler_g2
@@ -909,6 +921,7 @@ call cpu_time(t4)
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: rs,fs,rcut,tmpz
             real(8) :: za,zb,eta,r_nl(1:3)
+            real(8) :: zatom,zneigh
             integer :: ii,lim1,lim2
 
             !* symmetry function params
@@ -919,9 +932,6 @@ call cpu_time(t4)
             eta  = feature_params%info(ft_idx)%eta
             rcut = feature_params%info(ft_idx)%rcut
 
-            !if (calculate_property("stress")) then
-            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            !end if
 
             if (neigh_idx.eq.0) then
                 lim1 = 1
@@ -929,7 +939,6 @@ call cpu_time(t4)
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
-                    !r_nl = r_lc
                 end if
             else
                 lim1 = neigh_idx
@@ -937,9 +946,12 @@ call cpu_time(t4)
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
-                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
+            end if
+            
+            !* atomic number        
+            if (speedup_applies("single_element")) then
+                tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
             end if
 
 
@@ -965,9 +977,11 @@ call cpu_time(t4)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
-                !* atomic numbers
-                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za *&
-                        & (set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
+                if (.not.speedup_applies("single_element")) then
+                    zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                    zneigh = set_neigh_info(conf)%twobody(atm)%z(ii)
+                    tmpz = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+                end if
 
                 tmp1 =  exp(-eta*(dr_scl-rs)**2)  *  (tap_deriv - &
                         &2.0d0*eta*(dr_scl-rs)*tap) 
@@ -991,7 +1005,7 @@ call cpu_time(t4)
 
             !* scratch
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
-            real(8) :: tmp_atmz,tmp_taper
+            real(8) :: tmp_atmz,tmp_taper,zatom,zneigh1,zneigh2
             real(8) :: drij,drik,drjk,cos_angle
 
             !* feature parameters
@@ -1020,11 +1034,18 @@ call cpu_time(t4)
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
             end if
 
-            tmp_atmz = (set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za *&
-                    &( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb
+            if (speedup_applies("single_element")) then
+                tmp_atmz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%threebody(atm)%z_atom
+                zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
+                zneigh2 = set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)
+               
+                tmp_atmz = atomic_weighting(zatom,zneigh1,zneigh2,ft_idx) 
+            end if
 
-            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
+            data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
+                    &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
                     &+ 2**(1-xi)*(1.0d0 + lambda*cos_angle)**xi * &
                     &exp(-eta*(drij**2+drik**2+drjk**2))*tmp_taper*tmp_atmz
         end subroutine feature_behler_g4
@@ -1043,7 +1064,7 @@ call cpu_time(t4)
             real(8) :: tmp_feature1,tmp_feature2,tap_ij,tap_jk,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv,tap_jk_deriv
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),drjkdrz(1:3)
-            real(8) :: r_nl(1:3)
+            real(8) :: r_nl(1:3),zatom,zneigh1,zneigh2
 
             !* feature parameters
             rcut   = feature_params%info(ft_idx)%rcut
@@ -1083,10 +1104,15 @@ call cpu_time(t4)
                 tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
             end if
 
-            !* atomic numbers
-            tmp_z = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
-                     &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-                     &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
+            if (speedup_applies("single_element")) then
+                tmp_z = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%threebody(atm)%z_atom
+                zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
+                zneigh2 = set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)
+               
+                tmp_z = atomic_weighting(zatom,zneigh1,zneigh2,ft_idx) 
+            end if
 
             tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * tmp_z
             tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
@@ -1150,6 +1176,7 @@ call cpu_time(t4)
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
             real(8) :: tmp_atmz,tmp_taper
             real(8) :: drij,drik,cos_angle
+            real(8) :: zatom,zneigh1,zneigh2
 
             !* feature parameters
             rcut   = feature_params%info(ft_idx)%rcut
@@ -1168,13 +1195,18 @@ call cpu_time(t4)
                 return
             end if
 
-            !cos_angle = feature_threebody_info(atm)%cos_ang(bond_idx)
             cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
-            !* atomic number term
-            tmp_atmz = (set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za *&
-                    &( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(  set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb
+            !* atomic number
+            if (speedup_applies("single_element")) then
+                tmp_atmz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%threebody(atm)%z_atom
+                zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
+                zneigh2 = set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)
+                
+                tmp_atmz = atomic_weighting(zatom,zneigh1,zneigh2,ft_idx)
+            end if
 
             !* taper term
             if (speedup_applies("threebody_rcut")) then
@@ -1203,6 +1235,7 @@ call cpu_time(t4)
             real(8) :: tmp_feature1,tmp_feature2,tap_ij,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv,r_nl(1:3),dxdr(1:3)
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3)
+            real(8) :: zatom,zneigh1,zneigh2
 
             !* feature parameters
             rcut   = feature_params%info(ft_idx)%rcut
@@ -1236,10 +1269,16 @@ call cpu_time(t4)
                 tap_ik_deriv = taper_deriv_1(drik,rcut,fs)
             end if
 
-            !* atomic numbers
-            tmp_z = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
-                     &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-                     &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
+            !* atomic number
+            if (speedup_applies("single_element")) then
+                tmp_z = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%threebody(atm)%z_atom
+                zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
+                zneigh2 = set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)
+                
+                tmp_z = atomic_weighting(zatom,zneigh1,zneigh2,ft_idx)
+            end if
 
             tmp_feature1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2))*tmp_z 
             tmp_feature2 = tmp_feature1 * (1.0d0+lambda*cos_angle)**xi
@@ -1296,9 +1335,8 @@ call cpu_time(t4)
 
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,fs,prec
-            real(8) :: invsqrt2pi,mean,sqrt_det
-
-            invsqrt2pi = 0.3989422804014327d0
+            real(8) :: mean,sqrt_det
+            real(8) :: zatom,zneigh
 
             !* atom-neigh_idx distance 
             dr  = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
@@ -1325,10 +1363,15 @@ call cpu_time(t4)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
-        
-            !* atomic numbers
-            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
-                  &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
+       
+            if (speedup_applies("single_element")) then
+                tmp3 = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                zneigh = set_neigh_info(conf)%twobody(atm)%z(neigh_idx)
+                
+                tmp3 = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx) 
+            end if
 
             current_val = current_val + tmp1*tmp2*tmp3
         end subroutine feature_normal_iso
@@ -1343,6 +1386,7 @@ call cpu_time(t4)
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz,prec,mean,sqrt_det
             real(8) :: za,zb,invsqrt2pi,prec_const,r_nl(1:3)
+            real(8) :: zatom,zneigh
             integer :: ii,lim1,lim2
             
             invsqrt2pi = 0.3989422804014327d0
@@ -1358,17 +1402,12 @@ call cpu_time(t4)
 
             prec_const = invsqrt2pi*sqrt_det
             
-            !if (calculate_property("stress")) then
-            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            !end if
-
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
-                    !r_nl = r_lc   
                 end if
             else
                 lim1 = neigh_idx
@@ -1376,10 +1415,12 @@ call cpu_time(t4)
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
-                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
             end if
+            
+            if (speedup_applies("single_element")) then
+                tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            end if                
 
 
             !* derivative wrt. central atom itself
@@ -1408,9 +1449,12 @@ call cpu_time(t4)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
-                !* atomic numbers
-                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
-                      &(set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
+                if (.not.speedup_applies("single_element")) then
+                    zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                    zneigh = set_neigh_info(conf)%twobody(atm)%z(ii)
+                                       
+                    tmpz = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx) 
+                end if
 
                 tmp1 =  exp(-0.5d0*prec*(dr_scl-mean)**2)  *  (tap_deriv - &
                         &prec*(dr_scl-mean)*tap) 
@@ -1502,17 +1546,12 @@ call cpu_time(t4)
 
             r_taper = minval(rcuts)
             
-            !if (calculate_property("stress")) then
-            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            !end if
-            
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
-                    !r_nl = r_lc
                 end if
             else
                 lim1 = neigh_idx
@@ -1520,8 +1559,6 @@ call cpu_time(t4)
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
-                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
             end if
 
@@ -1571,6 +1608,7 @@ call cpu_time(t4)
             real(8) :: mean(1:3),fs,rcut,za,zb
             real(8) :: tmp_atmz,tmp_taper,x1(1:3),x2(1:3)
             real(8) :: drij,drik,drjk,cos_angle,sqrt_det
+            real(8) :: zatom,zneigh1,zneigh2
 
             !* feature parameters
             rcut     = feature_params%info(ft_idx)%rcut
@@ -1600,16 +1638,22 @@ call cpu_time(t4)
             x2(2) = drij
             x2(3) = cos_angle
 
-            !* atomic number term
-            tmp_atmz = (set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za *&
-                    &( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(  set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb
 
             !* taper term
             if (speedup_applies("threebody_rcut")) then
                 tmp_taper = product(set_neigh_info(conf)%threebody(atm)%dr_taper(1:3,bond_idx))
             else
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
+            end if
+
+            if (speedup_applies("single_element")) then
+                tmp_atmz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else           
+                zatom = set_neigh_info(conf)%threebody(atm)%z_atom
+                zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
+                zneigh2 = set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)
+            
+                tmp_atmz = atomic_weighting(zatom,zneigh1,zneigh2,ft_idx)
             end if
             
             data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
@@ -1635,6 +1679,7 @@ call cpu_time(t4)
             real(8) :: dxdr1(1:3,1:3),dxdr2(1:3,1:3),r_nl(1:3),dxdr(1:3)
             real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),tap_ij,tap_ik
             real(8) :: tap_ij_deriv,tap_ik_deriv,tmpz,tap_jk,tap_jk_deriv
+            real(8) :: zatom,zneigh1,zneigh2
             integer :: deriv_idx,zz
 
             !* feature parameters
@@ -1681,10 +1726,15 @@ call cpu_time(t4)
                 tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
             end if
 
-            !* atomic numbers
-            tmpz = ( (set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
-                    &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0) )**zb *&
-                    &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
+            if (speedup_applies("single_element")) then
+                tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else           
+                zatom = set_neigh_info(conf)%threebody(atm)%z_atom
+                zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
+                zneigh2 = set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)
+            
+                tmpz = atomic_weighting(zatom,zneigh1,zneigh2,ft_idx)
+            end if
 
             tmp_feat(1) = func_normal(x(:,1),mean,prec)
             tmp_feat(2) = func_normal(x(:,2),mean,prec)
@@ -1765,6 +1815,7 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,fs
             real(8) :: phi(1:size(feature_params%info(ft_idx)%linear_w))
+            real(8) :: zatom,zneigh
             integer :: kk,num_weights
            
             !* atom-neigh_idx distance 
@@ -1788,10 +1839,15 @@ call cpu_time(t4)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
-            
-            !* atomic number contribution
-            tmp3 = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
-                    &(set_neigh_info(conf)%twobody(atm)%z(neigh_idx)+1.0d0)**zb
+           
+            if (speedup_applies("single_element")) then
+                tmp3 = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            else
+                zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                zneigh = set_neigh_info(conf)%twobody(atm)%z(neigh_idx)
+                
+                tmp3 = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+            end if
        
             ! we don't care about constant offset, discard 0th contribution
             do kk=1,num_weights,1
@@ -1814,6 +1870,7 @@ call cpu_time(t4)
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz,tmp3,r_nl(1:3)
             real(8) :: za,zb,kk_dble,phi(1:size(feature_params%info(ft_idx)%linear_w))
+            real(8) :: zatom,zneigh
             integer :: ii,kk,lim1,lim2,num_weights
 
             !* symmetry function params
@@ -1828,17 +1885,12 @@ call cpu_time(t4)
             !* 2 pi / rcut
             tmp1 = 6.28318530718d0 / rcut
             
-            !if (calculate_property("stress")) then
-            !    r_lc = data_sets(set_type)%configs(conf)%r(:,atm)
-            !end if
-
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
-                    !r_nl = r_lc
                 end if
             else
                 lim1 = neigh_idx
@@ -1846,9 +1898,11 @@ call cpu_time(t4)
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
-                    !r_nl = set_neigh_info(conf)%twobody(atm)%drdri(:,lim1) *&
-                    !        &set_neigh_info(conf)%twobody(atm)%dr(lim1) + r_lc
                 end if
+            end if
+            
+            if (speedup_applies("single_element")) then
+                tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
             end if
 
 
@@ -1874,9 +1928,12 @@ call cpu_time(t4)
                     tap_deriv = taper_deriv_1(dr_scl,rcut,fs)
                 end if
 
-                !* atomic numbers
-                tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za *&
-                        & (set_neigh_info(conf)%twobody(atm)%z(ii)+1.0d0)**zb
+                !* atomic number
+                if (.not.speedup_applies("single_element")) then
+                    zatom = set_neigh_info(conf)%twobody(atm)%z_atom
+                    zneigh = set_neigh_info(conf)%twobody(atm)%z(ii)
+                    tmpz = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+                end if
 
                 do kk=1,num_weights,1
                     kk_dble = dble(kk)
@@ -1897,6 +1954,53 @@ call cpu_time(t4)
                 end if
             end do
         end subroutine feature_fourier_b2_deriv
+
+        real(8) function atomic_weighting(zlocal,zneigh1,zneigh2,ft)
+            implicit none
+
+            !* args
+            real(8),intent(in) :: zlocal,zneigh1,zneigh2
+            integer,intent(in) :: ft
+
+            !* scratch
+            real(8) :: za,zb
+            real(8) :: val
+
+            !* if twobody, zneigh2 = -1.0d0
+
+            if (speedup_applies("single_element")) then
+                val = feature_params%info(ft)%z_single_element
+            else
+                za = feature_params%info(ft)%za
+                zb = feature_params%info(ft)%zb
+
+                if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                    val = atomic_weighting_twobody_calc(zlocal,zneigh1,za,zb)
+                else
+                    val = atomic_weighting_threebody_calc(zlocal,zneigh1,zneigh2,za,zb)
+                end if
+            end if
+            atomic_weighting = val
+        end function atomic_weighting
+
+        real(8) function atomic_weighting_twobody_calc(zlocal,zneigh,za,zb)
+            implicit none
+
+            real(8),intent(in) :: zlocal,zneigh,za,zb
+
+            atomic_weighting_twobody_calc = ((zlocal+1.0d0)**za) * ((zneigh+1.0d0)**zb)
+        end function atomic_weighting_twobody_calc
+        
+        real(8) function atomic_weighting_threebody_calc(zlocal,zneigh1,zneigh2,za,zb)
+            implicit none
+
+            real(8),intent(in) :: zlocal,zneigh1,zneigh2,za,zb
+
+            real(8) :: tmp
+
+            tmp = ((zlocal+1.0d0)**za) * ( ((zneigh1+1.0d0)*(zneigh2+1.0d0))**zb )
+            atomic_weighting_threebody_calc = tmp
+        end function atomic_weighting_threebody_calc
                     
                     
         subroutine append_stress_contribution(dxdr_cont,r_nl,&
@@ -2543,5 +2647,61 @@ call cpu_time(t4)
                 end do
             end do
         end subroutine shift_x
+        
+        subroutine check_performance_criteria()
+            use util, only : scalar_equal
+            
+            implicit none
+
+            integer :: set_type,conf,atm,ft,ftype
+            real(8) :: zatom,za,zb
+            logical :: multiple_elements_present
+
+            zatom = -1.0d0
+            multiple_elements_present = .false.
+
+            !* check for single element case
+            do set_type=1,size(data_sets)
+                if (.not.allocated(data_sets(set_type)%configs)) then
+                    cycle
+                end if
+
+                do conf=1,data_sets(set_type)%nconf,1
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        if (scalar_equal(zatom,-1.0d0,dble(1e-15),dble(1e-15),.false.)) then
+                            zatom = data_sets(set_type)%configs(conf)%z(atm)
+                        else if (.not.scalar_equal(zatom,data_sets(set_type)%configs(conf)%z(atm),&
+                        &dble(1e-15),dble(1e-15),.false.)) then
+                            multiple_elements_present = .true.
+                            exit
+                        end if
+                    end do 
+                end do
+            end do
+
+            if (.not.multiple_elements_present) then
+                call activate_performance_option("single_element")
+
+                !* pre-compute Z weighting for appropriate features
+                do ft=1,feature_params%num_features
+                    ftype = feature_params%info(ft)%ftype
+                    if (ftype.ne.featureID_StringToInt("atomic_number")) then
+                        za = feature_params%info(ft)%za
+                        zb = feature_params%info(ft)%zb
+
+                        if (feature_IsTwoBody(ftype)) then
+                            feature_params%info(ft)%z_single_element = &
+                                    &atomic_weighting_twobody_calc(zatom,zatom,za,zb)
+                        else if (feature_IsThreeBody(ftype)) then
+                            feature_params%info(ft)%z_single_element = &
+                                    &atomic_weighting_threebody_calc(zatom,zatom,zatom,za,zb)
+                        else
+                            call error("check_performance_criteria","Implementation error")
+                        end if
+                    end if
+                end do
+            end if
+
+        end subroutine check_performance_criteria
 end module
 

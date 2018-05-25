@@ -65,6 +65,7 @@ module feature_config
         real(8) :: add_cnst = 0.0d0         ! additive constant for this feature upon computation
         real(8), allocatable :: devel(:)    ! for developing functions
         real(8), allocatable :: linear_w(:)
+        real(8) :: z_single_element = 0.0d0 ! for when Z contribution can be factorised
     end type feature_
 
     type,public :: feature_info
@@ -96,7 +97,7 @@ module feature_config
     type(neigh_info),allocatable :: set_neigh_info(:)
 
     !* whether or not to use low mem (slow performance) or high mem (high performance)
-    logical :: performance_options(1:3) = .false. 
+    logical :: performance_options(1:4) = .false. 
 
     !* which physical properties should we calculate
     logical :: computation_options(1:2) = .false.
@@ -209,6 +210,9 @@ module feature_config
             else if (speedup.eq."keep_all_neigh_info") then
                 !* keep all nearest neighbour info once computed
                 idx = 3
+            else if (speedup.eq."single_element") then
+                !* single element in all train,holdout,test confs
+                idx = 4
             else
                 write(*,*) ""
                 write(*,*) "***********************************************"
