@@ -66,6 +66,8 @@ module feature_config
         real(8), allocatable :: devel(:)    ! for developing functions
         real(8), allocatable :: linear_w(:)
         real(8) :: z_single_element = 0.0d0 ! for when Z contribution can be factorised
+        logical :: is_twobody = .false.     ! whether feature is twobody
+        logical :: is_threebody = .false.   ! whether feature is threebody
     end type feature_
 
     type,public :: feature_info

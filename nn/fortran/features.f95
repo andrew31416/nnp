@@ -2204,9 +2204,13 @@ call cpu_time(t4)
                 
                 do ft=1,feature_params%num_features
                     ftype = feature_params%info(ft)%ftype
-                    if (.not.feature_IsTwoBody(ftype)) then
+                    
+                    if (.not.feature_params%info(ft)%is_twobody) then
                         cycle
                     end if
+                    !if (.not.feature_IsTwoBody(ftype)) then
+                    !    cycle
+                    !end if
 
                     rcut_ft = feature_params%info(ft)%rcut
                     if (dr.gt.rcut_ft) then
@@ -2462,9 +2466,13 @@ call cpu_time(t4)
                 
                 do ft=1,feature_params%num_features,1
                     ftype = feature_params%info(ft)%ftype
-                    if (.not.feature_IsThreeBody(ftype)) then
+                    
+                    if (.not.feature_params%info(ft)%is_threebody) then
                         cycle
                     end if
+                    !if (.not.feature_IsThreeBody(ftype)) then
+                    !    cycle
+                    !end if
                     
                     rcut_ft = feature_params%info(ft)%rcut
                     

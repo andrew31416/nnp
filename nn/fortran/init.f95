@@ -295,6 +295,7 @@ module init
             implicit none
 
             character(len=1024),intent(in) :: filepath
+            integer :: ft
 
             if (feature_params%num_features.ne.0) then
                 !* overwrite previous features
@@ -319,6 +320,15 @@ module init
                     call activate_performance_option("threebody_rcut")
                 end if
             end if
+
+            !* pre-compute two/three body type
+            do ft=1,feature_params%num_features,1
+                if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                    feature_params%info(ft)%is_twobody = .true.
+                else if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                    feature_params%info(ft)%is_threebody = .true.
+                end if
+            end do
 
         end subroutine init_features_from_disk
 
@@ -492,7 +502,7 @@ module init
             integer :: funit=5,iostat
             real(8),allocatable :: flat_weights(:)
 
-            open(unit=funit,file=filepath,action='write',iostat=iostat)
+            open(unit=funit,file=filepath,action='read',iostat=iostat)
             if (iostat.ne.0) then
                 write(*,*) 'file :',filepath,'could not be found'
                 call exit(0)
