@@ -233,7 +233,8 @@ program unittest
             call random_number(feature_params%info(5)%eta) 
             call random_number(feature_params%info(5)%za)
             call random_number(feature_params%info(5)%zb)
-            
+            feature_params%info(5)%scl_cnst = 1.0d0
+
             !* test feature 6
             feature_params%info(6)%ftype = featureID_StringToInt("acsf_behler-g5")
             feature_params%info(6)%rcut = 3.1d0

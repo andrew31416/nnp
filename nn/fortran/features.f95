@@ -119,6 +119,7 @@ real(8) :: t1,t2,t3,t4,t5
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
                     !call experimental_feature_calc(set_type,conf,updating_features)
+                    !call shift_x(set_type,conf)
                     
                     ! deprecated v
                     if (allocated(ultra_z)) then
@@ -167,6 +168,7 @@ call cpu_time(t4)
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
                     !call experimental_feature_calc(set_type,conf,updating_features)
+                    !call shift_x(set_type,conf)
 ! DEBUG
 call cpu_time(t5)
 !write(*,*) ''
@@ -1609,7 +1611,7 @@ call cpu_time(t4)
             else
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
             end if
-
+            
             data_sets(set_type)%configs(conf)%x(ft_idx+1,atm) = &
                     &data_sets(set_type)%configs(conf)%x(ft_idx+1,atm)&
                     + (func_normal(x1,mean,prec) + func_normal(x2,mean,prec)) * &
@@ -2002,7 +2004,7 @@ call cpu_time(t4)
             real(8) :: rcut,dr,r_nl(1:3),r_nl_central(1:3),dr_vec(1:3)
             real(8) :: rcut_ft,taper,taper_deriv,tmpz,feat_val
             real(8) :: feat_deriv,feat_deriv_vec(1:3),ww_dble
-            real(8) :: eta,rs,prec,mean,phi(1:1000),const,scl,add
+            real(8) :: eta,rs,prec,mean,phi(1:1000),const,scl
             real(8) :: fs,za,zb
             logical :: nonzero_derivative
 
@@ -2114,7 +2116,6 @@ call cpu_time(t4)
                     rs   = feature_params%info(ft)%rs
                     eta  = feature_params%info(ft)%eta
                     scl  = feature_params%info(ft)%scl_cnst
-                    add  = feature_params%info(ft)%add_cnst
                     if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
                         prec = feature_params%info(ft)%prec(1,1)
                         mean = feature_params%info(ft)%mean(1)
@@ -2139,18 +2140,18 @@ call cpu_time(t4)
                             &(set_neigh_info(conf)%twobody(atm)%z(neigh)+1.0d0)**zb
                    
                     if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then 
-                        feat_val = taper*tmpz*scl + add
+                        feat_val = taper*tmpz*scl 
                     else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                        feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl + add
+                        feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl 
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                        feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl + add
+                        feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl
                     else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
                         const = dr * 6.28318530718 / rcut_ft
                         do ww=1,num_weights,1
                             phi(ww) = sin(dble(ww)*const)
                         end do
                         feat_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1)*&
-                                &taper*tmpz*scl + add
+                                &taper*tmpz*scl 
                     else                        
                         call error("twobody_atom_contribution","Implementation error")
                     end if
@@ -2231,8 +2232,8 @@ call cpu_time(t4)
             real(8) :: drjkdrz(1:3),tmp1,tmp2,dxdr(1:3),tmp_vec1(1:3),tmp_vec2(1:3)
             real(8) :: norm_tmp1(1:3,1:3),norm_tmp2(1:3,1:3),tmp_deriv1(1:3),tmp_deriv2(1:3)
             real(8) :: za,zb,eta,fs,xi,lambda,tap_ij,tap_ik,tap_jk,tap_ij_deriv
-            real(8) :: tap_ik_deriv,tap_jk_deriv,scl,add,tmp_z,drij,drik,drjk
-            real(8) :: r_nl(1:3),feat_val,rcut,cos_angle_val
+            real(8) :: tap_ik_deriv,tap_jk_deriv,scl,tmp_z,drij,drik,drjk
+            real(8) :: r_nl(1:3),feat_val,rcut,cos_angle_val,rcut_ft
 
             if (set_neigh_info(conf)%threebody(atm)%n.eq.0) then
                 !* no 3body interactions for this central atom
@@ -2332,6 +2333,9 @@ call cpu_time(t4)
                 data_sets(set_type)%configs(conf)%x(ft+1,atm) = 0.0d0
             end do !* end loop over features
 
+            !* max 3body cut off
+            rcut = maxrcut(2)
+
             do bond=1,set_neigh_info(conf)%threebody(atm)%n,1
                 drij = set_neigh_info(conf)%threebody(atm)%dr(1,bond)
                 drik = set_neigh_info(conf)%threebody(atm)%dr(2,bond)
@@ -2358,14 +2362,18 @@ call cpu_time(t4)
                         cycle
                     end if
                     
+                    rcut_ft = feature_params%info(ft)%rcut
+                    
+                    if ((drij.gt.rcut_ft).or.(drik.gt.rcut_ft)) then
+                        cycle
+                    end if
                     if (.not.feat_doesnt_taper_drjk(ft)) then
                         !* drjk is tapered
-                        if (drjk.gt.rcut) then
+                        if (drjk.gt.rcut_ft) then
                             cycle
                         end if
                     end if
 
-                    rcut   = feature_params%info(ft)%rcut
                     fs     = feature_params%info(ft)%fs
                     eta    = feature_params%info(ft)%eta
                     xi     = feature_params%info(ft)%xi
@@ -2373,7 +2381,6 @@ call cpu_time(t4)
                     za     = feature_params%info(ft)%za
                     zb     = feature_params%info(ft)%zb
                     scl    = feature_params%info(ft)%scl_cnst
-                    add    = feature_params%info(ft)%add_cnst
                     if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                         prec = feature_params%info(ft)%prec
                         mean = feature_params%info(ft)%mean
@@ -2394,27 +2401,27 @@ call cpu_time(t4)
                             &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
 
                     if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
-                        tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2)) * tmp_z * scl
+                        tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2))*tmp_z*scl
                         tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
 
-                        feat_val = tmp1 * tmp2 * (tap_ij*tap_ik*tap_jk) + add
+                        feat_val = tmp2 * (tap_ij*tap_ik*tap_jk) 
                     else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
                         tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2)) * tmp_z * scl
                         tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
 
-                        feat_val = tmp1 * tmp2 * (tap_ij*tap_ik) + add
+                        feat_val = tmp2 * (tap_ij*tap_ik) 
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                         x1(1) = drij
                         x1(2) = drik
                         x1(3) = cos_angle_val
                         x2(1) = drik
-                        x2(1) = drij
+                        x2(2) = drij
                         x2(3) = cos_angle_val
         
                         tmp1 = func_normal(x1,mean,prec)
-                        tmp2 = func_normal(x1,mean,prec)
+                        tmp2 = func_normal(x2,mean,prec)
 
-                        feat_val = (tmp1 + tmp2)*tmp_z*(tap_ij*tap_ik*tap_jk)*scl + add
+                        feat_val = (tmp1 + tmp2)*tmp_z*(tap_ij*tap_ik*tap_jk)*scl 
                     end if
 
                     !* 0th derivative contribution
@@ -2485,9 +2492,9 @@ call cpu_time(t4)
                             end if
 
                             !* force contribution
-                            data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(:,deriv_idx) = &
-                                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(:,deriv_idx)+&
-                                &dxdr
+                            data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(:,deriv_idx)=&
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%&
+                                &vec(:,deriv_idx) + dxdr
 
                             if (calculate_property("stress")) then
                                 !* stress contribution
@@ -2514,5 +2521,27 @@ call cpu_time(t4)
                 end if
             end do
         end subroutine threebody_atom_contribution
+
+        subroutine shift_x(set_type,conf)
+            implicit none
+
+            !* args
+            integer,intent(in) :: set_type,conf
+            
+            !* scratch
+            integer :: atm,ft
+            real(8) :: add_cnst(1:feature_params%num_features)
+
+            do ft=1,feature_params%num_features
+                add_cnst(ft) = feature_params%info(ft)%add_cnst
+            end do
+
+            do atm=1,data_sets(set_type)%configs(conf)%n,1
+                do ft=1,feature_params%num_features
+                    data_sets(set_type)%configs(conf)%x(ft+1,atm) = data_sets(set_type)%&
+                            &configs(conf)%x(ft+1,atm) + add_cnst(ft)
+                end do
+            end do
+        end subroutine shift_x
 end module
 
