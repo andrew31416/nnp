@@ -99,10 +99,16 @@ module feature_config
     type(neigh_info),allocatable :: set_neigh_info(:)
 
     !* whether or not to use low mem (slow performance) or high mem (high performance)
-    logical :: performance_options(1:4) = .false. 
+    logical :: performance_options(1:5) = .false. 
 
     !* which physical properties should we calculate
     logical :: computation_options(1:2) = .false.
+
+    !* type of calculation being performaed
+    logical :: computation_type(1:3) = .false.
+
+    !* whether nearest image or full periodic boundaries are in use
+    logical :: periodic_boundary_convention(1:2) = .false.
 
     !* openMP pragma necessary for globally scoped variables
     !$omp threadprivate(feature_isotropic)
@@ -215,6 +221,8 @@ module feature_config
             else if (speedup.eq."single_element") then
                 !* single element in all train,holdout,test confs
                 idx = 4
+            else if (speedup.eq."single_element_all_equal") then
+                idx = 5
             else
                 write(*,*) ""
                 write(*,*) "***********************************************"
@@ -326,4 +334,121 @@ module feature_config
             !* turn on or off property
             computation_options(ComputationID_StringToIdx(property)) = logical_value
         end subroutine switch_property
+    
+        logical function image_convention(boundary_type)
+            implicit none
+
+            character(len=*),intent(in) :: boundary_type
+
+            image_convention = periodic_boundary_convention(BoundaryID_StringToInt(boundary_type))
+        end function image_convention
+
+        integer function BoundaryID_StringToInt(boundary_type)
+            implicit none
+
+            character(len=*),intent(in) :: boundary_type
+            integer :: res
+
+            if (boundary_type.eq."full_periodic") then
+                res = 1
+            else if (boundary_type.eq."nearest_image") then
+                res = 2
+            else
+                write(*,*) ""
+                write(*,*) "*************************************************"
+                write(*,*) "error raised in routine : BoundaryID_StringToInt" 
+                write(*,*) "************************************************"
+                write(*,*) ""
+                write(*,*) "Error : image convention",boundary_type,"is not recognised"
+                write(*,*) ""
+                call exit(0)
+            end if
+            BoundaryID_StringToInt = res
+        end function BoundaryID_StringToInt
+
+        subroutine set_image_convention(boundary_type)
+            implicit none
+
+            character(len=*),intent(in) :: boundary_type
+
+            if (boundary_type.eq."full_periodic") then
+                periodic_boundary_convention(BoundaryID_StringToInt("full_periodic")) = .true.
+                periodic_boundary_convention(BoundaryID_StringToInt("nearest_image")) = .false.
+            else if (boundary_type.eq."nearest_image") then
+                periodic_boundary_convention(BoundaryID_StringToInt("full_periodic")) = .false.
+                periodic_boundary_convention(BoundaryID_StringToInt("nearest_image")) = .true.
+            else
+                write(*,*) ""
+                write(*,*) "**********************************************"
+                write(*,*) "error raised in routine : set_image_convention" 
+                write(*,*) "**********************************************"
+                write(*,*) ""
+                write(*,*) "Error : image convention",boundary_type,"is not recognised"
+                write(*,*) ""
+                call exit(0)
+            end if
+        end subroutine set_image_convention
+
+        integer function CalculationID_StringToInt(calc_type)
+            implicit none
+
+            character(len=*),intent(in) :: calc_type
+
+            integer :: res = -1
+
+            if (calc_type.eq."single_point") then
+                res = 1
+            else if (calc_type.eq."optimize_net") then
+                res = 2
+            else if (calc_type.eq."optimize_features") then
+                res = 3
+            else
+                write(*,*) ""
+                write(*,*) "***************************************************"
+                write(*,*) "error raised in routine : CalculationID_StringToInt" 
+                write(*,*) "***************************************************"
+                write(*,*) ""
+                write(*,*) "Error : calculation type",calc_type,"is not recognised"
+                write(*,*) ""
+                call exit(0)
+            end if
+            CalculationID_StringToInt = res
+        end function CalculationID_StringToInt
+
+        subroutine set_calculation_type(calc_type)
+            implicit none
+
+            character(len=*),intent(in) :: calc_type
+
+            if (calc_type.eq."single_point") then
+                computation_type(CalculationID_StringToInt("single_point")) = .true.
+                computation_type(CalculationID_StringToInt("optimize_net")) = .false.
+                computation_type(CalculationID_StringToInt("optimize_features")) = .false.
+            else if (calc_type.eq."optimize_net") then
+                computation_type(CalculationID_StringToInt("single_point")) = .false.
+                computation_type(CalculationID_StringToInt("optimize_net")) = .true.
+                computation_type(CalculationID_StringToInt("optimize_features")) = .false.
+            else if (calc_type.eq."optimize_features") then
+                computation_type(CalculationID_StringToInt("single_point")) = .false.
+                computation_type(CalculationID_StringToInt("optimize_net")) = .false.
+                computation_type(CalculationID_StringToInt("optimize_features")) = .true.
+            else
+                write(*,*) ""
+                write(*,*) "**********************************************"
+                write(*,*) "error raised in routine : set_calculation_type" 
+                write(*,*) "**********************************************"
+                write(*,*) ""
+                write(*,*) "Error : calculation type",calc_type,"is not recognised"
+                write(*,*) ""
+                call exit(0)
+            end if
+        end subroutine set_calculation_type
+
+        logical function calculation_type(calc_type)
+            implicit none
+
+            character(len=*),intent(in) :: calc_type
+
+            calculation_type = computation_type(CalculationID_StringToInt(calc_type))
+        end function calculation_type
 end module feature_config
