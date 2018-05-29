@@ -325,7 +325,7 @@ module init
             do ft=1,feature_params%num_features,1
                 if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
                     feature_params%info(ft)%is_twobody = .true.
-                else if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                else if (feature_IsThreeBody(feature_params%info(ft)%ftype)) then
                     feature_params%info(ft)%is_threebody = .true.
                 end if
             end do
