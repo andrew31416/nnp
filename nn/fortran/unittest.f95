@@ -1611,8 +1611,8 @@ program unittest
                     call calculate_forces(set_type,conf)
                     approx_forces(:,:) = data_sets(set_type)%configs(conf)%current_fi(:,:)
             
-                    if (.not.twoD_array_equal(orig_forces,approx_forces,dble(1e-15),dble(1e-15),&
-                    &.false.)) then
+                    if (.not.twoD_array_equal(orig_forces,approx_forces,dble(1e-6),dble(1e-25),&
+                    &.true.)) then
                         conf_ok(conf) = .false.
                     else
                         conf_ok(conf) = .true.
@@ -1623,6 +1623,8 @@ program unittest
                     pass_test = .false.
                 end if
             end do
+            call switch_performance_option("lookup_tables","off")
+            
             test_lookup_tables = pass_test
         end function test_lookup_tables
 

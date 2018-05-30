@@ -355,6 +355,7 @@ module feature_util
             !* calculate isotropic atom-atom distances and derivatives     *!
             !===============================================================!
             use tapering, only : taper_1,taper_deriv_1
+            use lookup, only : access_lookup
 
             implicit none
 
@@ -436,7 +437,11 @@ module feature_util
                         cycle
                     else 
                         !* atom-atom distance
-                        set_neigh_info(conf)%twobody(ii)%dr(cntr) = sqrt(dr2)
+                        if (speedup_applies("lookup_tables")) then
+                            set_neigh_info(conf)%twobody(ii)%dr(cntr) = access_lookup(dr2,1)
+                        else
+                            set_neigh_info(conf)%twobody(ii)%dr(cntr) = sqrt(dr2)
+                        end if
 
                         if (speedup_applies("twobody_rcut")) then
                             set_neigh_info(conf)%twobody(ii)%dr_taper(cntr) = taper_1(&
@@ -488,6 +493,7 @@ module feature_util
             !* calculate isotropic atom-atom distances and derivatives     *!
             !===============================================================!
             use tapering, only : taper_1,taper_deriv_1
+            use lookup, only : access_lookup
 
             implicit none
 
@@ -581,7 +587,12 @@ module feature_util
                         cycle
                     end if
 
-                    drij = sqrt(dr2ij)
+                    if (speedup_applies("lookup_tables")) then
+                        !* sqrt is always table 1
+                        drij = access_lookup(dr2ij,1)
+                    else
+                        drij = sqrt(dr2ij)
+                    end if
                     drij_vec = rjj - rii
         
 
@@ -603,8 +614,13 @@ module feature_util
                             cycle
                         end if
 
-                        drik = sqrt(dr2ik)
-                        drjk = sqrt(dr2jk)
+                        if (speedup_applies("lookup_tables")) then
+                            drik = access_lookup(dr2ik,1) 
+                            drjk = access_lookup(dr2jk,1) 
+                        else
+                            drik = sqrt(dr2ik)
+                            drjk = sqrt(dr2jk)
+                        end if
                         drik_vec = rkk - rii
                         drjk_vec = rkk - rjj
 

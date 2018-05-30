@@ -12,7 +12,7 @@ module lookup
     end type lookup_table
 
     !* number of elements in all univariate lookup tables
-    integer,private :: lookup_table_size = 1000
+    integer,private :: lookup_table_size = 5000
 
     integer,allocatable,public :: map_to_tbl_idx(:,:)
 
@@ -31,7 +31,6 @@ module lookup
 
         subroutine check_ftype_consistent(expected_type,ft)
             use feature_config
-            use io, only : error
 
             implicit none
 
@@ -39,10 +38,8 @@ module lookup
             character(len=*),intent(in) :: expected_type
 
             if (featureID_StringToInt(expected_type).ne.feature_params%info(ft)%ftype) then
-! DEBUG
-write(*,*) expected_type,ft
-! DEBUG                
-                call error("check_ftype_consistent","wrong function type associated with feat.")
+                call lookup_error("check_ftype_consistent",&
+                        &"wrong function type associated with feat.")
             end if
         end subroutine
 
@@ -65,9 +62,7 @@ write(*,*) expected_type,ft
         end function wrap_cosine
 
         subroutine fill_lookup(tbl,func_type,ft)
-            use feature_util, only : maxrcut
             use feature_config
-            use io, only : error
             use tapering, only : taper_1,taper_deriv_1
 
             implicit none
@@ -82,11 +77,12 @@ write(*,*) expected_type,ft
             real(8) :: prec_vec(1:3,1:3),fs,rcut,scl
             real(8) :: k_cnst,ww_dble
             real(8),allocatable :: phi(:)
-
+            
             !* basis parameters
             ftype  = feature_params%info(ft)%ftype
             rcut   = feature_params%info(ft)%rcut
             rs     = feature_params%info(ft)%rs
+            fs     = feature_params%info(ft)%fs
             eta    = feature_params%info(ft)%eta
             lambda = feature_params%info(ft)%lambda
             scl    = feature_params%info(ft)%scl_cnst
@@ -113,14 +109,14 @@ write(*,*) expected_type,ft
                 deallocate(lookup_tables(tbl)%array)
             end if
 
-            max_rcuts(1) = maxrcut(0)   ! 2+3 body
-            max_rcuts(2) = maxrcut(1)   ! 2 body
-            max_rcuts(3) = maxrcut(2)   ! 3 body
+            max_rcuts(1) = lookup_maxrcut(0)   ! 2+3 body
+            max_rcuts(2) = lookup_maxrcut(1)   ! 2 body
+            max_rcuts(3) = lookup_maxrcut(2)   ! 3 body
 
             if (func_type.eq."sqrt") then
                 !* sqrt(x)
                 lookup_tables(tbl)%xmin = 0.0d0
-                lookup_tables(tbl)%xmax = max_rcuts(1)
+                lookup_tables(tbl)%xmax = 4.0d0*max_rcuts(1)**2 ! drjk can be at most 2*rcut
             else if (func_type.eq."acsf_behler-g2_a") then
                 !* exp(-eta*(dr-rs)^2) * taper(dr,rcut,fs) * scl
                 lookup_tables(tbl)%xmin = 0.0d0
@@ -194,7 +190,7 @@ write(*,*) expected_type,ft
                 
                 call check_ftype_consistent("acsf_behler-g5",ft)
             else
-                call error("fill_lookup","unsupported function type")
+                call lookup_error("fill_lookup","unsupported function type")
             end if
 
 
@@ -271,7 +267,7 @@ write(*,*) expected_type,ft
                     x = wrap_cosine(x)  !* make sure cos(theta) = [-1,1]
                     func_val = (1.0d0+lambda*x)**(xi-1.0d0)
                 else
-                    call error("fill_lookup","unsupported function type")
+                    call lookup_error("fill_lookup","unsupported function type")
                 end if
                
 
@@ -280,7 +276,7 @@ write(*,*) expected_type,ft
             end do
 
             if (.not.check_table(tbl)) then
-                call error("fill_lookup","access_lookup inconsistent with stored array")
+                call lookup_error("fill_lookup","access_lookup inconsistent with stored array")
             end if
     
             if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
@@ -319,6 +315,8 @@ write(*,*) expected_type,ft
         end function func1
 
         logical function check_table(tbl)
+            use util, only : scalar_equal
+            
             implicit none
 
             integer,intent(in) :: tbl
@@ -347,10 +345,15 @@ write(*,*) expected_type,ft
                 !* x = [xmin,xmax]
                 x = x_from_idx(lookup_tables(tbl)%xmin,lookup_tables(tbl)%xmax,N,idx)
 
-                if (abs(access_lookup(x,tbl)-lookup_tables(tbl)%array(idx)).gt.1e-15) then
+                if(.not.scalar_equal(access_lookup(x,tbl),lookup_tables(tbl)%array(idx),&
+                &dble(1e-10),dble(1e-30),.false.)) then    
                     res = .false.
                 end if
             end do
+            
+            if (.not.res) then
+            write(*,*) 'BAD TBL:',tbl,lookup_tables(tbl)%array(1:2)
+            end if
 
             check_table = res
         end function check_table
@@ -500,4 +503,78 @@ write(*,*) expected_type,ft
                 table = table + tmp
             end do
         end subroutine init_lookup_tables
+
+        subroutine lookup_error(routine,message)
+            implicit none
+
+            character(len=*),intent(in) :: routine,message
+            character,dimension(1:len(routine)+26) :: header
+            header(:) = "*"
+
+            write(*,*) ''
+            write(*,*) header
+            write(*,*) 'error raised in routine :',routine
+            write(*,*) header
+            write(*,*) ''
+            write(*,*) 'Error : ',message
+            call exit(0)
+        end subroutine lookup_error
+        
+        real(8) function lookup_maxrcut(arg)
+            !===============================================================!
+            ! Return maximum cut off radius of all current features         !
+            !                                                               !
+            ! Input                                                         !
+            ! -----                                                         !
+            !   - arg : 0 = max of all features                             !
+            !           1 = max of all isotropic features                   !
+            !           2 = max of all anisotropic features                 !
+            !===============================================================!
+            use feature_config
+            
+            implicit none
+
+            integer,intent(in) :: arg
+
+            real(8),allocatable :: tmprcut(:)
+            integer :: ii,ftype
+            real(8) :: tmpr
+
+            allocate(tmprcut(feature_params%num_features))
+
+            do ii=1,feature_params%num_features,1
+                !* feature type
+                ftype = feature_params%info(ii)%ftype
+
+                !* interaction cut off (can be null)
+                tmpr = feature_params%info(ii)%rcut
+
+                if (arg.eq.0) then
+                    if (ftype.eq.featureID_StringToInt("atomic_number")) then
+                        tmprcut(ii) = -1.0d0
+                    else
+                        !* all features
+                        tmprcut(ii) = tmpr
+                    end if
+                else if (arg.eq.1) then
+                    if (feature_IsTwoBody(ftype)) then
+                        tmprcut(ii) = tmpr
+                    else
+                        tmprcut(ii) = -1.0d0
+                    end if
+                else if (arg.eq.2) then
+                    if ( (feature_IsTwoBody(ftype).neqv..true.).and.(ftype.ne.&
+                    &featureID_StringToInt("atomic_number")) ) then
+                        tmprcut(ii) = tmpr
+                    else
+                        tmprcut(ii) = -1.0d0
+                    end if
+                end if
+            end do
+
+            tmpr = maxval(tmprcut)
+            deallocate(tmprcut)
+    
+            lookup_maxrcut = tmpr
+        end function lookup_maxrcut
 end module lookup
