@@ -2054,6 +2054,37 @@ call cpu_time(t4)
             end if
 
         end subroutine append_stress_contribution
+        
+        subroutine direct_stress_contribution(dxdr,r_nl,ft,atm,stress_tensor)
+            implicit none
+
+            !* args
+            real(8),intent(in) :: dxdr(1:3),r_nl(1:3)
+            integer,intent(in) :: ft,atm
+            real(8),intent(inout) :: stress_tensor(1:3,1:3)
+                
+                
+            integer :: xx,yy
+            
+            do xx=1,3
+                do yy=1,3
+                    stress_tensor(xx,yy) = stress_tensor(xx,yy) + dxdr(xx)*r_nl(yy)*dydx(ft,atm)
+                end do
+            end do
+        end subroutine direct_stress_contribution
+
+        subroutine direct_force_contribution(dxdr,ft,atm,fxx,fyy,fzz)
+            implicit none
+
+            real(8),intent(in) :: dxdr(1:3)
+            real(8),intent(inout) :: fxx(:),fyy(:),fzz(:)
+            integer,intent(in) :: ft,atm
+
+            !* for compatibility with DLPOLY
+            fxx(atm) = fxx(atm) + dxdr(1)*dydx(ft,atm) 
+            fyy(atm) = fyy(atm) + dxdr(2)*dydx(ft,atm) 
+            fzz(atm) = fzz(atm) + dxdr(3)*dydx(ft,atm) 
+        end subroutine direct_force_contribution
 
         subroutine experimental_feature_calc(set_type,conf,updating_features)
             implicit none
@@ -2102,7 +2133,7 @@ call cpu_time(t4)
 
             !* scratch
             integer :: neigh,ft,ftype,cntr,arg,zz,deriv_idx
-            integer :: num_weights,ww
+            integer :: num_weights,ww,deriv_atm
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
             integer :: idx_to_contrib(1:set_neigh_info(conf)%twobody(atm)%n)
             real(8) :: rcut,dr,r_nl(1:3),r_nl_central(1:3),dr_vec(1:3)
@@ -2126,7 +2157,7 @@ call cpu_time(t4)
             !* max rcut of any 2body feature
             rcut = maxrcut(1)
 
-            if (calculate_property("forces")) then
+            if (calculate_property("forces").and.(.not.calculation_type("single_point"))) then
                 !* local coordinate of central atom
                 r_nl_central = set_neigh_info(conf)%twobody(atm)%r_nl_atom
 
@@ -2186,11 +2217,13 @@ call cpu_time(t4)
                 end do !* end loop over features
             end if !* forces
 
-            do ft=1,feature_params%num_features
-                if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
-                    data_sets(set_type)%configs(conf)%x(ft+1,atm) = 0.0d0
-                end if
-            end do
+            if (.not.calculation_type("single_point")) then
+                do ft=1,feature_params%num_features
+                    if (feature_IsTwoBody(feature_params%info(ft)%ftype)) then
+                        data_sets(set_type)%configs(conf)%x(ft+1,atm) = 0.0d0
+                    end if
+                end do
+            end if
 
             do neigh=1,set_neigh_info(conf)%twobody(atm)%n,1
                 if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(neigh)) then
@@ -2208,9 +2241,6 @@ call cpu_time(t4)
                     if (.not.feature_params%info(ft)%is_twobody) then
                         cycle
                     end if
-                    !if (.not.feature_IsTwoBody(ftype)) then
-                    !    cycle
-                    !end if
 
                     rcut_ft = feature_params%info(ft)%rcut
                     if (dr.gt.rcut_ft) then
@@ -2246,39 +2276,44 @@ call cpu_time(t4)
                     !* atomic number weighting
                     tmpz = (set_neigh_info(conf)%twobody(atm)%z_atom+1.0d0)**za * &
                             &(set_neigh_info(conf)%twobody(atm)%z(neigh)+1.0d0)**zb
-                   
-                    if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then 
-                        feat_val = taper*tmpz*scl 
-                    else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                        feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl 
-                    else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                        feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl
-                    else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
-                        const = dr * 6.28318530718 / rcut_ft
-                        do ww=1,num_weights,1
-                            phi(ww) = sin(dble(ww)*const)
-                        end do
-                        feat_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1)*&
-                                &taper*tmpz*scl 
-                    else                        
-                        call error("twobody_atom_contribution","Implementation error")
-                    end if
-
+                    
                     !* 0th derivative contribution
-                    data_sets(set_type)%configs(conf)%x(ft+1,atm) = &
-                            &data_sets(set_type)%configs(conf)%x(ft+1,atm) + feat_val
+                    if (.not.calculation_type("single_point")) then
+                   
+                        if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then 
+                            feat_val = taper*tmpz*scl 
+                        else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                            feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl 
+                        else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                            feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl
+                        else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                            const = dr * 6.28318530718 / rcut_ft
+                            do ww=1,num_weights,1
+                                phi(ww) = sin(dble(ww)*const)
+                            end do
+                            feat_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1)*&
+                                    &taper*tmpz*scl 
+                        else                        
+                            call error("twobody_atom_contribution","Implementation error")
+                        end if
+
+                        data_sets(set_type)%configs(conf)%x(ft+1,atm) = &
+                                &data_sets(set_type)%configs(conf)%x(ft+1,atm) + feat_val
+                    end if !* for single_point, x are computed in twobody_info routine
 
                     if (calculate_property("forces").and.nonzero_derivative) then 
                         do zz=1,2
                             !* zz=1, derivative wrt neigh, zz=2 : wrt. central atom
                             if (zz.eq.1) then
                                 deriv_idx = idx_to_contrib(neigh)
+                                deriv_atm = set_neigh_info(conf)%twobody(atm)%idx(neigh)
                                 dr_vec = set_neigh_info(conf)%twobody(atm)%drdri(:,neigh)
                                 if (calculate_property("stress")) then
                                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,neigh)
                                 end if
                             else
                                 deriv_idx = 1
+                                deriv_atm = atm 
                                 dr_vec = -set_neigh_info(conf)%twobody(atm)%drdri(:,neigh)
                                 if (calculate_property("stress")) then
                                     r_nl = r_nl_central
@@ -2310,14 +2345,30 @@ call cpu_time(t4)
                             feat_deriv_vec = dr_vec*feat_deriv
 
                             !* force contribution
-                            data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(1:3,&
-                                    &deriv_idx) = data_sets(set_type)%configs(conf)%&
-                                    &x_deriv(ft,atm)%vec(1:3,deriv_idx) + feat_deriv_vec
+                            if (calculation_type("single_point")) then
+                                !* dydx is known
+                                call direct_force_contribution(feat_deriv_vec,ft,deriv_atm,&
+                                        &data_sets(set_type)%configs(conf)%current_fi(1,:),&
+                                        &data_sets(set_type)%configs(conf)%current_fi(2,:),&
+                                        &data_sets(set_type)%configs(conf)%current_fi(3,:))
+                            else
+                                !* dydx is unknown
+                                data_sets(set_type)%configs(conf)%x_deriv(ft,atm)%vec(1:3,&
+                                        &deriv_idx) = data_sets(set_type)%configs(conf)%&
+                                        &x_deriv(ft,atm)%vec(1:3,deriv_idx) + feat_deriv_vec
+                            end if
 
                             if (calculate_property("stress")) then
-                                !* stress contribution
-                                call append_stress_contribution(feat_deriv_vec,r_nl,set_type,&
+                                if (calculation_type("single_point")) then
+                                    !* dydx is known
+                                    call direct_stress_contribution(feat_deriv_vec,r_nl,ft,&
+                                            &deriv_atm,&
+                                            &data_sets(set_type)%configs(conf)%current_stress)
+                                else
+                                    !* dydx is unknown
+                                    call append_stress_contribution(feat_deriv_vec,r_nl,set_type,&
                                         &conf,atm,ft,deriv_idx)
+                                end if
                             end if
                         end do !* end loop over zz
                     end if !* forces
@@ -2470,9 +2521,6 @@ call cpu_time(t4)
                     if (.not.feature_params%info(ft)%is_threebody) then
                         cycle
                     end if
-                    !if (.not.feature_IsThreeBody(ftype)) then
-                    !    cycle
-                    !end if
                     
                     rcut_ft = feature_params%info(ft)%rcut
                     
@@ -2656,6 +2704,9 @@ call cpu_time(t4)
             end do
         end subroutine shift_x
         
+
+
+
         subroutine check_performance_criteria()
             use util, only : scalar_equal
             
@@ -2664,9 +2715,12 @@ call cpu_time(t4)
             integer :: set_type,conf,atm,ft,ftype
             real(8) :: zatom,za,zb
             logical :: multiple_elements_present
+            real(8) :: z_consts(1:2)
+            logical :: z_params_are_different = .false.
 
             zatom = -1.0d0
             multiple_elements_present = .false.
+            z_consts = -1000.0d0
 
             !* check for single element case
             do set_type=1,size(data_sets)
@@ -2700,14 +2754,48 @@ call cpu_time(t4)
                         if (feature_IsTwoBody(ftype)) then
                             feature_params%info(ft)%z_single_element = &
                                     &atomic_weighting_twobody_calc(zatom,zatom,za,zb)
+
+                            !* store basis params
+                            if (z_consts(1).gt.-1000.0d0) then
+                                if (.not.scalar_equal(z_consts(1),za,dble(1e-15),dble(1e-15),&
+                                &.false.)) then
+                                    z_params_are_different = .true.
+                                else if (.not.scalar_equal(z_consts(2),zb,dble(1e-15),dble(1e-15),&
+                                &.false.)) then
+                                    z_params_are_different = .true.
+                                end if
+                            else
+                                z_consts(1) = za
+                                z_consts(2) = zb
+                            end if
+
                         else if (feature_IsThreeBody(ftype)) then
                             feature_params%info(ft)%z_single_element = &
                                     &atomic_weighting_threebody_calc(zatom,zatom,zatom,za,zb)
+                            
+                            !* store basis params
+                            if (z_consts(1).gt.-1000.0d0) then
+                                if (.not.scalar_equal(z_consts(1),za,dble(1e-15),dble(1e-15),&
+                                &.false.)) then
+                                    z_params_are_different = .true.
+                                else if (.not.scalar_equal(z_consts(2),zb,dble(1e-15),dble(1e-15),&
+                                &.false.)) then
+                                    z_params_are_different = .true.
+                                end if
+                            else
+                                z_consts(1) = za
+                                z_consts(2) = zb
+                            end if
                         else
                             call error("check_performance_criteria","Implementation error")
                         end if
                     end if
                 end do
+
+                if (.not.z_params_are_different) then
+                    !* all features have same atomic number factor
+                    call activate_performance_option("single_element_all_equal")
+                end if
             end if
 
         end subroutine check_performance_criteria

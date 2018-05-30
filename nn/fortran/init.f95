@@ -291,7 +291,8 @@ module init
 
         subroutine init_features_from_disk(filepath)
             use feature_util, only : performance_option_Nbody_rcut_applies
-            
+            !use features, only : check_performance_criteria
+
             implicit none
 
             character(len=1024),intent(in) :: filepath
@@ -320,6 +321,8 @@ module init
                     call activate_performance_option("threebody_rcut")
                 end if
             end if
+
+            !call check_performance_criteria()
 
             !* pre-compute two/three body type
             do ft=1,feature_params%num_features,1
