@@ -208,7 +208,8 @@ program unittest
             feature_params%info(2)%fs = 0.2d0
             call random_number(feature_params%info(2)%za)
             call random_number(feature_params%info(2)%zb)
-            
+            feature_params%info(2)%is_twobody = .true.
+
             !* test feature 3
             feature_params%info(3)%ftype = featureID_StringToInt("acsf_behler-g2")            
             feature_params%info(3)%rcut = rcut
@@ -217,6 +218,7 @@ program unittest
             call random_number(feature_params%info(3)%rs)
             call random_number(feature_params%info(3)%za)
             call random_number(feature_params%info(3)%zb)
+            feature_params%info(3)%is_twobody = .true.
             
             !* test feature 4
             feature_params%info(4)%ftype = featureID_StringToInt("acsf_normal-b2")
@@ -229,6 +231,7 @@ program unittest
             allocate(feature_params%info(4)%mean(1))
             call random_number(feature_params%info(4)%mean(1)) 
             feature_params%info(4)%sqrt_det = sqrt(feature_params%info(4)%prec(1,1))
+            feature_params%info(4)%is_twobody = .true.
 
             !* test feature 5
             feature_params%info(5)%ftype = featureID_StringToInt("acsf_behler-g4")
@@ -240,6 +243,7 @@ program unittest
             call random_number(feature_params%info(5)%za)
             call random_number(feature_params%info(5)%zb)
             feature_params%info(5)%scl_cnst = 1.0d0
+            feature_params%info(5)%is_threebody = .true.
 
             !* test feature 6
             feature_params%info(6)%ftype = featureID_StringToInt("acsf_behler-g5")
@@ -251,6 +255,7 @@ program unittest
             call random_number(feature_params%info(6)%eta) 
             call random_number(feature_params%info(6)%za)
             call random_number(feature_params%info(6)%zb)
+            feature_params%info(6)%is_threebody = .true.
             
             !* test feature 7
             feature_params%info(7)%ftype = featureID_StringToInt("acsf_normal-b3")
@@ -265,6 +270,7 @@ program unittest
             feature_params%info(7)%mean(2) = 2.1d0
             feature_params%info(7)%mean(3) = 0.3d0
             feature_params%info(7)%sqrt_det = sqrt(matrix_determinant(feature_params%info(7)%prec))
+            feature_params%info(7)%is_threebody = .true.
 
             !* feature 8 : 2body fourier linear model
             feature_params%info(8)%ftype = featureID_StringToInt("acsf_fourier-b2")
@@ -272,6 +278,7 @@ program unittest
             feature_params%info(8)%fs = 0.1d0
             allocate(feature_params%info(8)%linear_w(10))
             call random_number(feature_params%info(8)%linear_w)
+            feature_params%info(8)%is_twobody = .true.
 
             do set_type=1,2
                 do conf=1,data_sets(set_type)%nconf
@@ -1592,7 +1599,7 @@ program unittest
                     
                     !* make sure look up tables are being used
                     call switch_performance_option("lookup_tables","on")
-
+                    
                     call deallocate_feature_deriv_info()
                     call calculate_features(scale_features,parallel,updating_features)
 

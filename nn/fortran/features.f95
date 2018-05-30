@@ -17,7 +17,7 @@ module features
             logical,intent(in) :: parallel,scale_features,updating_features
 
             integer :: set_type
-
+            
             do set_type=1,2
                 !* calculate forces and stress tensor
                 call calculate_features_singleset(set_type,.true.,.true.,scale_features,parallel,&
@@ -164,7 +164,6 @@ call cpu_time(t3)
 call cpu_time(t4)
 ! DEBUG
                     end if
-                    
                     !* calculate features and their derivatives
                     call calculate_all_features(set_type,conf,updating_features)
                     !call experimental_feature_calc(set_type,conf,updating_features)
@@ -2126,6 +2125,8 @@ call cpu_time(t4)
         end subroutine experimental_feature_calc
 
         subroutine twobody_atom_contribution(set_type,conf,atm)
+            use lookup
+            
             implicit none
 
             !* args
@@ -2142,7 +2143,7 @@ call cpu_time(t4)
             real(8) :: eta,rs,prec,mean,phi(1:1000),const,scl
             real(8) :: fs,za,zb
             logical :: nonzero_derivative
-
+            
             if (set_neigh_info(conf)%twobody(atm)%n.eq.0) then
                 !* no twobody interactions for this central atom
                 do ft=1,feature_params%num_features
@@ -2278,28 +2279,40 @@ call cpu_time(t4)
                             &(set_neigh_info(conf)%twobody(atm)%z(neigh)+1.0d0)**zb
                     
                     !* 0th derivative contribution
-                    if (.not.calculation_type("single_point")) then
+                    !if (.not.calculation_type("single_point")) then
                    
                         if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then 
                             feat_val = taper*tmpz*scl 
                         else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                            feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl 
+                            if (speedup_applies("lookup_tables")) then
+                                feat_val = access_lookup(dr,map_to_tbl_idx(1,ft))*tmpz
+                            else
+                                feat_val = exp(-eta*(dr-rs)**2)*taper*tmpz*scl 
+                            end if
                         else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                            feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl
+                            if (speedup_applies("lookup_tables")) then
+                                feat_val = access_lookup(dr,map_to_tbl_idx(1,ft))*tmpz
+                            else
+                                feat_val = exp(-0.5d0*prec*((dr-mean)**2))*taper*tmpz*scl
+                            end if
                         else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
-                            const = dr * 6.28318530718 / rcut_ft
-                            do ww=1,num_weights,1
-                                phi(ww) = sin(dble(ww)*const)
-                            end do
-                            feat_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1)*&
-                                    &taper*tmpz*scl 
+                            if (speedup_applies("lookup_tables")) then
+                                feat_val = access_lookup(dr,map_to_tbl_idx(1,ft))*tmpz
+                            else
+                                const = dr * 6.28318530718 / rcut_ft
+                                do ww=1,num_weights,1
+                                    phi(ww) = sin(dble(ww)*const)
+                                end do
+                                feat_val = ddot(num_weights,feature_params%info(ft)%linear_w,&
+                                        &1,phi,1)*taper*tmpz*scl
+                            end if 
                         else                        
                             call error("twobody_atom_contribution","Implementation error")
                         end if
 
                         data_sets(set_type)%configs(conf)%x(ft+1,atm) = &
                                 &data_sets(set_type)%configs(conf)%x(ft+1,atm) + feat_val
-                    end if !* for single_point, x are computed in twobody_info routine
+                    !end if !* for single_point, x are computed in twobody_info routine
 
                     if (calculate_property("forces").and.nonzero_derivative) then 
                         do zz=1,2
@@ -2323,22 +2336,34 @@ call cpu_time(t4)
                             if (ftype.eq.featureID_StringToInt("acsf_behler-g1")) then
                                 feat_deriv = taper_deriv*tmpz*scl
                             else if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
-                                feat_deriv = exp(-eta*(dr-rs)**2)  *  (taper_deriv - &
-                                        &2.0d0*eta*(dr-rs)*taper) * tmpz * scl
+                                if (speedup_applies("lookup_tables")) then
+                                    feat_deriv = access_lookup(dr,map_to_tbl_idx(2,ft))*tmpz
+                                else
+                                    feat_deriv = exp(-eta*(dr-rs)**2)  *  (taper_deriv - &
+                                            &2.0d0*eta*(dr-rs)*taper) * tmpz * scl
+                                end if
                             else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
-                                feat_deriv = exp(-0.5d0*prec*(dr-mean)**2)*(taper_deriv - & 
-                                        &prec*(dr-mean)*taper)*tmpz*scl
+                                if (speedup_applies("lookup_tables")) then
+                                    feat_deriv = access_lookup(dr,map_to_tbl_idx(2,ft))*tmpz
+                                else
+                                    feat_deriv = exp(-0.5d0*prec*(dr-mean)**2)*(taper_deriv - & 
+                                            &prec*(dr-mean)*taper)*tmpz*scl
+                                end if
                             else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
-                                const = 6.28318530718 / rcut_ft
-                                do ww=1,num_weights,1
-                                    ww_dble = dble(ww)
+                                if (speedup_applies("lookup_tables")) then
+                                    feat_deriv = access_lookup(dr,map_to_tbl_idx(2,ft))*tmpz
+                                else
+                                    const = 6.28318530718 / rcut_ft
+                                    do ww=1,num_weights,1
+                                        ww_dble = dble(ww)
 
-                                    phi(ww) = taper_deriv*sin(ww_dble*const*dr) + &
-                                            &taper*const*ww_dble*cos(ww_dble*const*dr)
-                                end do
-                                
-                                feat_deriv = ddot(num_weights,&
-                                        &feature_params%info(ft)%linear_w,1,phi,1)*tmpz*scl
+                                        phi(ww) = taper_deriv*sin(ww_dble*const*dr) + &
+                                                &taper*const*ww_dble*cos(ww_dble*const*dr)
+                                    end do
+                                    
+                                    feat_deriv = ddot(num_weights,&
+                                            &feature_params%info(ft)%linear_w,1,phi,1)*tmpz*scl
+                                end if
                             end if
 
                             !* dx / dr_derividx
@@ -2377,6 +2402,8 @@ call cpu_time(t4)
         end subroutine twobody_atom_contribution
 
         subroutine threebody_atom_contribution(set_type,conf,atm)
+            use lookup
+            
             implicit none
 
             !* args
@@ -2387,7 +2414,7 @@ call cpu_time(t4)
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
             integer :: cntr,neigh,ii,bond,zz,ftype,deriv_idx,arg
             real(8) :: x1(1:3),x2(1:3),prec(1:3,1:3),mean(1:3)
-            real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3)
+            real(8) :: dcosdrz(1:3),drijdrz(1:3),drikdrz(1:3),tmp3
             real(8) :: drjkdrz(1:3),tmp1,tmp2,dxdr(1:3),tmp_vec1(1:3),tmp_vec2(1:3)
             real(8) :: norm_tmp1(1:3,1:3),norm_tmp2(1:3,1:3),tmp_deriv1(1:3),tmp_deriv2(1:3)
             real(8) :: za,zb,eta,fs,xi,lambda,tap_ij,tap_ik,tap_jk,tap_ij_deriv
@@ -2561,15 +2588,29 @@ call cpu_time(t4)
                             &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za
 
                     if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
-                        tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2))*tmp_z*scl
-                        tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
+                        if (speedup_applies("lookup_tables")) then
+                            tmp1 = access_lookup(drij**2+drik**2+drjk**2,map_to_tbl_idx(1,ft))*tmp_z
+                            tmp2 = tmp1 * access_lookup(cos_angle_val,map_to_tbl_idx(2,ft))
 
-                        feat_val = tmp2 * (tap_ij*tap_ik*tap_jk) 
+                            feat_val = tmp2 * (tap_ij*tap_ik*tap_jk)
+                        else
+                            tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2+drjk**2))*tmp_z*scl
+                            tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
+
+                            feat_val = tmp2 * (tap_ij*tap_ik*tap_jk) 
+                        end if
                     else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
-                        tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2)) * tmp_z * scl
-                        tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
+                        if (speedup_applies("lookup_tables")) then
+                            tmp1 = access_lookup(drij**2+drik**2,map_to_tbl_idx(1,ft))*tmp_z
+                            tmp2 = tmp1 * access_lookup(cos_angle_val,map_to_tbl_idx(2,ft))
 
-                        feat_val = tmp2 * (tap_ij*tap_ik) 
+                            feat_val = tmp2 * (tap_ij*tap_ik)
+                        else
+                            tmp1 = 2.0d0**(1.0d0-xi)*exp(-eta*(drij**2+drik**2)) * tmp_z * scl
+                            tmp2 = tmp1 * (1.0d0 + lambda*cos_angle_val)**xi 
+
+                            feat_val = tmp2 * (tap_ij*tap_ik) 
+                        end if
                     else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
                         x1(1) = drij
                         x1(2) = drik
@@ -2622,15 +2663,27 @@ call cpu_time(t4)
                             end if
 
                             if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
+                                if (speedup_applies("lookup_tables")) then
+                                    tmp3 = access_lookup(cos_angle_val,map_to_tbl_idx(3,ft))
+                                else
+                                    tmp3 = (1.0d0+lambda*cos_angle_val)**(xi-1.0d0)
+                                end if
+
                                 dxdr = tap_ij*tap_ik*tap_jk*lambda*xi*&
-                                    &((1.0d0+lambda*cos_angle_val)**(xi-1.0d0))*dcosdrz*tmp1 +&
+                                    &tmp3*dcosdrz*tmp1 +&
                                     &(tap_ik*tap_jk*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz+&
                                     & tap_ij*tap_jk*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz+&
                                     & tap_ij*tap_ik*(tap_jk_deriv - 2.0d0*eta*tap_jk*drjk)*drjkdrz)*&
                                     &tmp2
                             else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                                if (speedup_applies("lookup_tables")) then
+                                    tmp3 = access_lookup(cos_angle_val,map_to_tbl_idx(3,ft))
+                                else
+                                    tmp3 = (1.0d0+lambda*cos_angle_val)**(xi-1.0d0)
+                                end if
+                                
                                 dxdr = tmp1*(tap_ij*tap_ik)*lambda*xi*&
-                                    &((1.0d0+lambda*cos_angle_val)**(xi-1.0d0))*dcosdrz + &
+                                    &tmp3*dcosdrz + &
                                     &(tap_ik*(tap_ij_deriv - 2.0d0*eta*tap_ij*drij)*drijdrz +&
                                     &tap_ij*(tap_ik_deriv - 2.0d0*eta*tap_ik*drik)*drikdrz )*tmp2
                             else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
