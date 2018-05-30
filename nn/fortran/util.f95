@@ -159,6 +159,35 @@ module util
             array_equal = equal
         end function array_equal
 
+        logical function twoD_array_equal(arr1,arr2,ftol,rtol,verbose)
+            implicit none
+
+            real(8),intent(in) :: arr1(:,:),arr2(:,:),ftol,rtol
+            logical,intent(in) :: verbose
+
+            !* scratch
+            integer :: dim1(1:2),dim2(1:2),ii,jj
+            logical :: equal
+
+            equal = .true.
+
+            dim1 = shape(arr1)
+            dim2 = shape(arr2)
+
+            if ((dim1(1).ne.dim2(1)).or.(dim1(2).ne.dim2(2))) then
+                equal = .false.
+            end if
+
+            do ii=1,dim1(1),1
+                do jj=1,dim1(2),1
+                    if (.not.scalar_equal(arr1(ii,jj),arr2(ii,jj),ftol,rtol,verbose)) then
+                        equal = .false.
+                    end if
+                end do
+            end do
+            twoD_array_equal = equal
+        end function twoD_array_equal
+
         logical function scalar_equal(scl1,scl2,ftol,rtol,verbose)
             implicit none
 

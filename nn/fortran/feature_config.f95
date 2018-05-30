@@ -99,7 +99,7 @@ module feature_config
     type(neigh_info),allocatable :: set_neigh_info(:)
 
     !* whether or not to use low mem (slow performance) or high mem (high performance)
-    logical :: performance_options(1:5) = .false. 
+    logical :: performance_options(1:6) = .false. 
 
     !* which physical properties should we calculate
     logical :: computation_options(1:2) = .false.
@@ -223,6 +223,8 @@ module feature_config
                 idx = 4
             else if (speedup.eq."single_element_all_equal") then
                 idx = 5
+            else if (speedup.eq."lookup_tables") then
+                idx = 6
             else
                 write(*,*) ""
                 write(*,*) "***********************************************"
@@ -334,6 +336,32 @@ module feature_config
             !* turn on or off property
             computation_options(ComputationID_StringToIdx(property)) = logical_value
         end subroutine switch_property
+        
+        subroutine switch_performance_option(speedup,state)
+            implicit none
+
+            character(len=*),intent(in) :: speedup,state
+
+            logical :: logical_value
+
+            if (state.eq."on") then
+                logical_value = .true.
+            else if (state.eq."off") then
+                logical_value = .false.
+            else
+                write(*,*) ""
+                write(*,*) "***************************************************"
+                write(*,*) "error raised in routine : switch_performance_option" 
+                write(*,*) "***************************************************"
+                write(*,*) ""
+                write(*,*) "Error : state",state,"is not recognised"
+                write(*,*) ""
+                call exit(0)
+            end if
+
+            !* turn on or off property
+            performance_options(SpeedUpID_StringToIdx(speedup)) = logical_value 
+        end subroutine switch_performance_option
     
         logical function image_convention(boundary_type)
             implicit none

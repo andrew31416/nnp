@@ -22,11 +22,12 @@ f3="feature_config."
 f4="util."
 f5="feature_util."
 f6="io."
-f7="init."
-f8="propagate."
-f9="measures."
-f10="features."
-f11="feature_selection."
+f7="lookup."
+f8="init."
+f9="propagate."
+f10="measures."
+f11="features."
+f12="feature_selection."
 
 #----------------------------------#
 # files to create f2py pragma from #
@@ -90,6 +91,7 @@ $FC -c  $f8$suffix $FFLAGS $DEBUG
 $FC -c  $f9$suffix $FFLAGS $DEBUG
 $FC -c $f10$suffix $FFLAGS $DEBUG
 $FC -c $f11$suffix $FFLAGS $DEBUG
+$FC -c $f12$suffix $FFLAGS $DEBUG
 
 $f90wrap -m $modname $fwrap_files -k kind_map -S 12 --only $fwrap_functions
 

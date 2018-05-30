@@ -39,6 +39,9 @@ module lookup
             character(len=*),intent(in) :: expected_type
 
             if (featureID_StringToInt(expected_type).ne.feature_params%info(ft)%ftype) then
+! DEBUG
+write(*,*) expected_type,ft
+! DEBUG                
                 call error("check_ftype_consistent","wrong function type associated with feat.")
             end if
         end subroutine
@@ -483,9 +486,9 @@ module lookup
                     map_to_tbl_idx(3,ft) = table + 2
                 else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
                     !* create arrays
-                    call fill_lookup(table,"acsf_behler-g4_a",ft)
-                    call fill_lookup(table+1,"acsf_behler-g4_b",ft)
-                    call fill_lookup(table+2,"acsf_behler-g4_c",ft)
+                    call fill_lookup(table,"acsf_behler-g5_a",ft)
+                    call fill_lookup(table+1,"acsf_behler-g5_b",ft)
+                    call fill_lookup(table+2,"acsf_behler-g5_c",ft)
                     
                     !* map back to table index
                     map_to_tbl_idx(1,ft) = table

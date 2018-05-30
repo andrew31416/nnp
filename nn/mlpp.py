@@ -847,13 +847,26 @@ class MultiLayerPerceptronPotential():
         """
     
         # python format    
-        with open('{}.pckl','wb') as f:
+        with open('{}.pckl'.format(filename),'wb') as f:
             pickle.dump({"activation":self.activation,"weights":self.weights,\
                     "hidden_layer_sizes":self.hidden_layer_sizes,"D":self.D},f)
         f.close()
 
         # fortran format
         nnp.util.io._write_weights_to_disk('{}.fortran'.format(filename))
+
+    def load(self,filename="weights"):
+        """
+        Load neural net weights from from Python formatted file
+        """
+
+        with open('{}.pckl'.format(filename),'rb') as f:
+            data = pickle.load(f)
+        f.close()
+
+        self.activation = data["activation"]
+        self.weights = data["weights"]
+        self.hidden_layer_sizes = data["hidden_layer_sizes"]
 
 class MlppError(Exception):
     pass    

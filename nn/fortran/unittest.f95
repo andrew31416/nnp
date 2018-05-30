@@ -9,6 +9,7 @@ program unittest
     use features
     use feature_util
     use feature_selection
+    use lookup
 
     implicit none
 
@@ -18,7 +19,7 @@ program unittest
         subroutine main()
             implicit none
 
-            logical :: tests(1:12)
+            logical :: tests(1:13)
             
             !* net params
             integer :: num_nodes(1:2),nlf_type,fD
@@ -29,7 +30,7 @@ program unittest
 
             !* scratch
             integer :: ii
-            character(len=24),dimension(12) :: test_string
+            character(len=24),dimension(13) :: test_string
 
             integer :: num_tests
 
@@ -66,6 +67,9 @@ program unittest
             !* calculate features and analytical derivatives
             call calculate_features(parallel,scale_features,.false.)
 
+            !* generate lookup tables
+            call init_lookup_tables()
+
             call initialise_net(num_nodes,nlf_type,fD)
 
             !* give biases non zero values
@@ -83,10 +87,11 @@ program unittest
             tests(7)  = test_threebody_derivatives()      ! d cos(angle) /dr_i etc.
             tests(8)  = test_dxdr()                       ! d feature / d atom position
             tests(9)  = test_forces()                     ! - d E_tot / d r_atm 
-            tests(10) = test_feature_selection_loss_jac() ! dloss / d(feature)param
-            tests(11) = test_d2ydx2()                     ! d^2 y / dx^2 
-            tests(12) = test_stress()                     ! stress tensor
-           
+            tests(10) = test_lookup_tables()              ! force comparison for lookup tables
+            tests(11) = test_feature_selection_loss_jac() ! dloss / d(feature)param
+            tests(12) = test_d2ydx2()                     ! d^2 y / dx^2 
+            tests(13) = test_stress()                     ! stress tensor
+
             test_string(1)  = "dydw"
             test_string(2)  = "jac. loss (energy)"
             test_string(3)  = "jac. loss (forces)"
@@ -96,9 +101,10 @@ program unittest
             test_string(7)  = "dcos/dr"
             test_string(8)  = "dxdr"
             test_string(9)  = "forces"
-            test_string(10) = "jac. loss (features)"
-            test_string(11) = "d^2y/dxdx"
-            test_string(12) = "stress"
+            test_string(10) = "lookup table"
+            test_string(11) = "jac. loss (features)"
+            test_string(12) = "d^2y/dxdx"
+            test_string(13) = "stress"
             
             do ii=1,num_tests
                 call unittest_test(ii,test_string(ii),tests(ii))    
@@ -1532,6 +1538,93 @@ program unittest
             end do
             test_stress = ok
         end function test_stress
+
+        logical function test_lookup_tables()
+            implicit none
+            
+            integer :: set_type,conf,atm
+            logical,allocatable :: conf_ok(:)
+            logical :: parallel,updating_features,scale_features
+            real(8),allocatable :: orig_forces(:,:),approx_forces(:,:)
+            logical :: pass_test
+
+            scale_features = .false.
+            parallel = .false.
+            updating_features = .false.
+            pass_test = .true.
+
+            do set_type=1,2,1
+                if (allocated(conf_ok)) then
+                    deallocate(conf_ok)
+                end if
+                allocate(conf_ok(data_sets(set_type)%nconf))
+
+                do conf=1,data_sets(set_type)%nconf,1
+                    if (allocated(dydx)) then
+                        deallocate(dydx)
+                    end if
+                    call allocate_dydx(set_type,conf)
+                    call allocate_units(set_type,conf)
+                    
+                    !* make sure we'are calculating derivatives
+                    call switch_property("forces","on")
+
+                    !* make sure no look up tables are being used
+                    call switch_performance_option("lookup_tables","off")
+
+                    call deallocate_feature_deriv_info()
+                    call calculate_features(scale_features,parallel,updating_features)
+
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        call forward_propagate(set_type,conf)
+                        call backward_propagate(set_type,conf)
+                    end do
+                    
+                    if (allocated(orig_forces)) then
+                        deallocate(orig_forces)
+                    end if
+                    allocate(orig_forces(3,data_sets(set_type)%configs(conf)%n))
+                    
+                    !* analytical forces
+                    call calculate_forces(set_type,conf)
+                    orig_forces(:,:) = data_sets(set_type)%configs(conf)%current_fi(:,:)
+                    
+                    
+                    !* make sure look up tables are being used
+                    call switch_performance_option("lookup_tables","on")
+
+                    call deallocate_feature_deriv_info()
+                    call calculate_features(scale_features,parallel,updating_features)
+
+                    
+                    do atm=1,data_sets(set_type)%configs(conf)%n,1
+                        call forward_propagate(set_type,conf)
+                        call backward_propagate(set_type,conf)
+                    end do
+                    
+                    if (allocated(approx_forces)) then
+                        deallocate(approx_forces)
+                    end if
+                    allocate(approx_forces(3,data_sets(set_type)%configs(conf)%n))
+                    
+                    !* analytical forces
+                    call calculate_forces(set_type,conf)
+                    approx_forces(:,:) = data_sets(set_type)%configs(conf)%current_fi(:,:)
+            
+                    if (.not.twoD_array_equal(orig_forces,approx_forces,dble(1e-15),dble(1e-15),&
+                    &.false.)) then
+                        conf_ok(conf) = .false.
+                    else
+                        conf_ok(conf) = .true.
+                    end if
+                end do
+
+                if (.not.all(conf_ok)) then
+                    pass_test = .false.
+                end if
+            end do
+            test_lookup_tables = pass_test
+        end function test_lookup_tables
 
         subroutine unittest_error(routine,message)
             implicit none
