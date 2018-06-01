@@ -210,13 +210,14 @@ call cpu_time(t5)
             end if
         end subroutine calculate_features_singleset
 
-        subroutine calculate_distance_distributions(set_type,sample_rate,twobody_dist,&
+        subroutine calculate_distance_distributions(set_type,sample_rate,mask,twobody_dist,&
         &threebody_dist,num_two,num_three)
             implicit none
 
             !* args
             integer,intent(in) :: set_type
             real(8),intent(in) :: sample_rate(1:2)
+            logical,intent(in) :: mask(:)
             real(8),intent(out) :: twobody_dist(:)
             real(8),intent(out) :: threebody_dist(:,:)
             integer,intent(out) :: num_two,num_three
@@ -224,6 +225,7 @@ call cpu_time(t5)
 
             !* scratch
             integer :: conf,atm,bond,dim_1,dim_2(1:2)
+            integer :: cntr2,cntr3
             real(8) :: mxrcut
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
@@ -249,6 +251,8 @@ call cpu_time(t5)
             end if
             allocate(set_neigh_info(data_sets(set_type)%nconf))
             
+            cntr2 = 0
+            cntr3 = 0
             do conf=1,data_sets(set_type)%nconf
                 call get_ultracell(mxrcut,5000,set_type,conf,&
                         &ultra_cart,ultra_idx,ultra_z)
@@ -257,9 +261,16 @@ call cpu_time(t5)
                 call calculate_twobody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
             
                 do atm=1,data_sets(set_type)%configs(conf)%n
-                    !if (feature_isotropic(atm)%n.gt.0) then
+                    cntr2 = cntr2 + 1
+                    if (cntr2.gt.size(mask)) then
+                        call error("calculate_distance_distribution","mask array is too small")
+                    end if                            
+                    if (mask(cntr2)) then
+                        !* allows custom query of specific atom environments
+                        cycle
+                    end if
+                    
                     if (set_neigh_info(conf)%twobody(atm)%n.gt.0) then
-                        !do bond=1,feature_isotropic(atm)%n,1
                         do bond=1,set_neigh_info(conf)%twobody(atm)%n,1
                             if ((abs(sample_rate(1)-1.0d0).lt.1e-10).or.&
                             &(rand().lt.sample_rate(1))) then
@@ -283,6 +294,15 @@ call cpu_time(t5)
                     call calculate_threebody_info(set_type,conf,ultra_cart,ultra_z,ultra_idx)
                 
                     do atm=1,data_sets(set_type)%configs(conf)%n
+                        cntr3 = cntr3 + 1
+                        if (cntr3.gt.size(mask)) then
+                            call error("calculate_distance_distribution","mask array is too small")
+                        end if                            
+                        if (mask(cntr3)) then
+                            !* allows custom query of specific atom environments
+                            cycle
+                        end if
+                        
                         if (set_neigh_info(conf)%threebody(atm)%n.gt.0) then
                             do bond=1,set_neigh_info(conf)%threebody(atm)%n,1
                                 if ((abs(sample_rate(2)-1.0d0).lt.1e-10).or.&

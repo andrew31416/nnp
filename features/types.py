@@ -2,6 +2,7 @@
 Python types for feature information
 """
 import nnp.util.io
+import nnp.util.misc
 import nnp.nn.fortran.nn_f95 as f95_api
 from nnp.features import pca as features_pca
 import numpy as np
@@ -197,7 +198,7 @@ class feature():
         elif key == "eta":
             value = [[0,None]]
         elif key == "rs":
-            value = [[None,None]]
+            value = [[0,None]]
         elif key == "mean":
             if self.type == "acsf_normal-b2":
                 value = [[None,None]]
@@ -303,7 +304,7 @@ class features():
     >>> _features.set_configuration(gip_test,"test")
     """
 
-    def __init__(self,train_data,PCA='linear'):
+    def __init__(self,train_data=None,PCA=None):
         # atomic configuraitons
         self.data = {"train":train_data,"test":None}
 
@@ -314,7 +315,8 @@ class features():
         self.sample_rate = {'twobody':0.5,'threebody':0.1}
 
         # parse data into fortran structure
-        self.set_configuration(gip=self.data["train"],set_type="train")
+        if train_data is not None:
+            self.set_configuration(gip=self.data["train"],set_type="train")
         
         self.features = []
 
@@ -371,6 +373,8 @@ class features():
         if set_type == "train":
             # pre conditioning coefficients need recomputing
             self.precondition_computed = False
+        else:
+            self.precondition_computed = True
 
     def set_pca(self,pca_type):
         if pca_type not in [None,'linear']:
@@ -423,7 +427,7 @@ class features():
                 present = True
         return present
 
-    def bond_distribution(self,set_type="train"):
+    def bond_distribution(self,set_type="train",mask=None):
         """
         Calculate the two body and three body distributions
         
@@ -462,10 +466,19 @@ class features():
         threebody = np.zeros((3,int(num64_floats/3.)),dtype=np.float64,order='F') 
         _sample_rate = np.asarray([self.sample_rate["twobody"],self.sample_rate["threebody"]],\
                 dtype=np.float64)
+
+        if mask is None:
+            mask = np.zeros(nnp.util.misc.total_atoms_in_set(set_type),dtype=np.int8)
+        else:
+            mask = np.asarray(mask,dtype=np.int8)
+            if mask.shape[0]!=nnp.util.misc.total_atoms_in_set(set_type):
+                raise FeaturesError("supplied mask has size {} rather than {}".format(\
+                        mask.shape[0],nnp.util.misc.total_atoms_in_set(set_type)))
                 
         # calculate 2&3 body distributions
         n2,n3 = getattr(f95_api,"f90wrap_calculate_distance_distributions")(\
-                set_type=self._set_map[set_type],sample_rate=_sample_rate,twobody_dist=twobody,\
+                set_type=self._set_map[set_type],sample_rate=_sample_rate,\
+                mask=mask,twobody_dist=twobody,\
                 threebody_dist=threebody)
 
         if remove_features:
@@ -508,7 +521,7 @@ class features():
         self.precondition_computed = True
         del feature_list                    
 
-    def calculate(self,set_type="train",calculate_forces=False,scale=False,safe=True,\
+    def calculate(self,set_type="train",calculate_forces=False,scale=True,safe=True,\
     updating_features=False,calculate_stress=False):
         """
         Compute the value of all features for the given set type
@@ -543,8 +556,9 @@ class features():
         elif set_type.lower() not in ['train','test','holdout']:
             raise FeaturesError("set type {} not supported".format(set_type))
         if scale and not self.precondition_computed:
-            raise FeaturesError("attempting to calculate features with scaling before \
-                    self.calculate_precondition() has been called") 
+            print('Warning : precondition may not be computed, check')
+            #raise FeaturesError("attempting to calculate features with scaling before \
+            #        self.calculate_precondition() has been called") 
 
         set_type = set_type.lower()
 
@@ -865,7 +879,7 @@ class features():
 
         getattr(f95_api,"f90wrap_get_features")(self._set_map[set_type],all_features)
         
-        return np.asarray(all_features,order='C')
+        return np.asarray(all_features,order='C').T
         
     def fit(self,X,feature_save_interval=0,only_energy=False,maxiter=None,search_scope="local",\
             verbose=False,global_maxiter=500):
