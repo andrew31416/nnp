@@ -38,15 +38,21 @@ module features
             real(8),allocatable :: ultra_cart(:,:)
             real(8),allocatable :: ultra_z(:)
             integer,allocatable :: ultra_idx(:)
-            real(8) :: mxrcut
+            real(8) :: mxrcut,buffersizeMB
             logical :: calc_twobody,calc_threebody
-            integer :: conf
+            integer :: conf,buffersizeDBLS
 
             !* openMP variables
             integer :: thread_idx,num_threads,bounds(1:2)
 ! DEBUG
 real(8) :: t1,t2,t3,t4,t5
 ! DEBUG
+           
+            !* numerical param - size of buffer for ultracell (MB)
+            buffersizeMB = 10.0d0
+
+            !* buffer size in 3x64b floats
+            buffersizeDBLS = int(buffersizeMB*dble(1e6)/(3.0d0*64.0d0))
             
             if (updating_features) then
                 !* only recomputing features benefits from storing all neigh info
@@ -103,7 +109,7 @@ real(8) :: t1,t2,t3,t4,t5
 
                     if (.not.allocated(set_neigh_info(conf)%twobody)) then
                         !* only calculate if first time running
-                        call get_ultracell(mxrcut,5000,set_type,conf,&
+                        call get_ultracell(mxrcut,buffersizeDBLS,set_type,conf,&
                                 &ultra_cart,ultra_idx,ultra_z)
 
                         !* always calc. two-body info for features

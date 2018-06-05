@@ -202,9 +202,10 @@ module feature_util
                                     cntr = cntr + 1
                                     ultranatm = ultranatm + 1
                                     
-                                    if (ultranatm.gt.maxsize) then
-                                        write(*,*) 'Warning - more than',maxsize,'ultracell atoms found',&
-                                                &'. Increase maxsize to continue'
+                                    if (ultranatm+natm.gt.maxsize) then
+                                        write(*,*) 'Warning - more than',&
+                                            &maxsize,'ultracell atoms found',&
+                                            &'. Increase buffersizeMB in features.f95 to continue'
                                         call exit(0)
                                     end if
 
