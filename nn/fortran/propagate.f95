@@ -347,18 +347,19 @@ module propagate
 
             data_sets(set_type)%configs(conf)%current_fi = 0.0d0
             data_sets(set_type)%configs(conf)%current_stress = 0.0d0
-    
+
             do atm=1,natm,1
                 do ii=1,D,1
                     if (data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n.eq.0) then
                         !* feature doest not contain any position info
                         cycle
                     end if
+                   
                     
                     do deriv_idx=1,data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%n,1
                         !* d feature_{ii,atm} / d r_jj
                         jj = data_sets(set_type)%configs(conf)%x_deriv(ii,atm)%idx(deriv_idx)
-                        
+
                         !* -= d E_atm / d feature_{ii,atm} * d feature_{ii,atm} / d r_jj
                         data_sets(set_type)%configs(conf)%current_fi(:,jj) = &
                                 &data_sets(set_type)%configs(conf)%current_fi(:,jj) - dydx(ii,atm)*&

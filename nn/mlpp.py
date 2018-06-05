@@ -218,8 +218,11 @@ class MultiLayerPerceptronPotential():
                 raise MlppError("Must have more than 1 configuration in training set")
 
             # 1. empirical sample mean and variance for each component
-            data_mean = np.average(self.computed_features,axis=1)
-            data_vari = np.std(self.computed_features,axis=1)**2
+            data_mean = np.average(self.computed_features,axis=0)
+            data_vari = np.std(self.computed_features,axis=0)**2
+
+            if data_mean.shape[0]!=len(self.features.features):
+                raise MlppError("inconsisten sample and feature dimension")
 
             # idx of bad features
             bad_feature = np.isinf(1.0/np.average(self.computed_features**2,axis=1))

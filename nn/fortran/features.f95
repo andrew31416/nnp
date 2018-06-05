@@ -715,6 +715,7 @@ call cpu_time(t2)
 call cpu_time(t3)
 ! THIS section is slow vv
 ! DEBUG
+
             
             !* zero features
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
@@ -1075,7 +1076,7 @@ call cpu_time(t4)
                     &exp(-eta*(drij**2+drik**2+drjk**2))*tmp_taper*tmp_atmz
         end subroutine feature_behler_g4
        
-        subroutine feature_behler_g4_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib)                    
+        subroutine feature_behler_g4_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib) 
             implicit none
 
             !* args
@@ -1174,6 +1175,44 @@ call cpu_time(t4)
                 if (calculate_property("stress")) then
                     r_nl = set_neigh_info(conf)%threebody(atm)%r_nl(:,zz,bond_idx)    
                 end if
+
+!if((conf.eq.2).and.(atm.eq.1).and.(ft_idx.eq.5).and.&
+!&(atm.ne.set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx)).and.&
+!&(atm.ne.set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx)).and.&
+!&(set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx).ne.&
+!&set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx))) then
+!
+!if (zz.eq.1) then
+!write(*,*) 'i=',atm,'j=',set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx),&
+!&'k=',set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx),'drij/drj=',drijdrz,&
+!&'drikdrj=',drikdrz,'drjkdrj=',drjkdrz,'dcos/drj=',dcosdrz
+!else if (zz.eq.2) then
+!write(*,*) 'i=',atm,'j=',set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx),&
+!&'k=',set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx),'drij/drk=',drijdrz,&
+!&'drikdrk=',drikdrz,'drjkdrk=',drjkdrz,'dcos/drk=',dcosdrz
+!else
+!write(*,*) 'i=',atm,'j=',set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx),&
+!&'k=',set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx),'drij/dri=',drijdrz,&
+!&'drikdri=',drikdrz,'drjkdri=',drjkdrz,'dcos/dri=',dcosdrz
+!end if
+!
+!end if
+
+!if ((conf.eq.1).and.(atm.eq.1).and.(ft_idx.eq.5)) then
+!if (zz.eq.1) then
+!write(*,*) 'i=',atm,'j=',set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx),&
+!&'k=',set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx),'drij/drj=',drijdrz,&
+!&'drikdrj=',drikdrz,'drjkdrj=',drjkdrz,'dcos/drj=',dcosdrz
+!else if (zz.eq.2) then
+!write(*,*) 'i=',atm,'j=',set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx),&
+!&'k=',set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx),'drij/drk=',drijdrz,&
+!&'drikdrk=',drikdrz,'drjkdrk=',drjkdrz,'dcos/drk=',dcosdrz
+!else
+!write(*,*) 'i=',atm,'j=',set_neigh_info(conf)%threebody(atm)%idx(1,bond_idx),&
+!&'k=',set_neigh_info(conf)%threebody(atm)%idx(2,bond_idx),'drij/dri=',drijdrz,&
+!&'drikdri=',drikdrz,'drjkdri=',drjkdrz,'dcos/dri=',dcosdrz
+!end if
+!end if
 
                 dxdr = tap_ij*tap_ik*tap_jk*lambda*xi*((1.0d0+lambda*cos_angle)**(xi-1.0d0))*&
                     &dcosdrz*tmp_feature1 +&

@@ -495,8 +495,8 @@ class features():
                 calculate_stress=False,scale=False,safe=True,\
                 updating_features=updating_features)
    
-        xmax = np.max(feature_list,axis=1)
-        xmin = np.min(feature_list,axis=1)
+        xmax = np.max(feature_list,axis=0)
+        xmin = np.min(feature_list,axis=0)
 
         if np.isclose(xmax,xmin,rtol=1e-128,atol=1e-128).any():
             warnings.warn("Feature found with possibly no support in training set: {} {}".\
