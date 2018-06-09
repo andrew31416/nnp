@@ -809,6 +809,7 @@ module feature_selection
             end if
 
             do ii=lim1,lim2,1
+                ! NO SELF INTERACTION
                 if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     !* d r_i - (r_i + const) / d r_i = 0
                     cycle

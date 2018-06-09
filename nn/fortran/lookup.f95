@@ -12,7 +12,7 @@ module lookup
     end type lookup_table
 
     !* number of elements in all univariate lookup tables
-    integer,private :: lookup_table_size = 5000
+    integer,private :: lookup_table_size = 50000
 
     integer,allocatable,public :: map_to_tbl_idx(:,:)
 

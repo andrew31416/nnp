@@ -52,7 +52,7 @@ program unittest
             
             !* features
             fD = 8
-            natm = 5
+            natm = 5!fails for 15
             nconf = 2
 
             
@@ -127,14 +127,19 @@ program unittest
             integer,intent(in) :: natm,nconf
 
             !* scratch 
-            integer :: set_type,conf,ii
-            real(8) :: tmpz
+            integer :: set_type,conf,atm,ii
+            real(8) :: tmpZ
+            real(8),allocatable :: frac_coords(:,:)
 
             do set_type=1,2
                 data_sets(set_type)%nconf = nconf
                 allocate(data_sets(set_type)%configs(nconf))
 
                 do conf=1,nconf
+                    if (allocated(frac_coords)) then
+                        deallocate(frac_coords)
+                    end if
+                    allocate(frac_coords(3,natm))
                     allocate(data_sets(set_type)%configs(conf)%r(3,natm))
                     allocate(data_sets(set_type)%configs(conf)%z(natm))
                     allocate(data_sets(set_type)%configs(conf)%current_ei(natm))
@@ -142,18 +147,18 @@ program unittest
                     allocate(data_sets(set_type)%configs(conf)%ref_fi(3,natm))
                     
                     data_sets(set_type)%configs(conf)%cell = 0.0d0
-                    !data_sets(set_type)%configs(conf)%cell(1,1) = 4.0d0
-                    data_sets(set_type)%configs(conf)%cell(1,1) = 6.5d0
-                    data_sets(set_type)%configs(conf)%cell(2,1) = 0.1d0
-                    data_sets(set_type)%configs(conf)%cell(3,1) = 0.2d0
-                    data_sets(set_type)%configs(conf)%cell(1,2) = 0.1d0
-                    !data_sets(set_type)%configs(conf)%cell(2,2) = 4.0d0
-                    data_sets(set_type)%configs(conf)%cell(2,2) = 6.5d0
+                    data_sets(set_type)%configs(conf)%cell(1,1) = 6.0d0
+                    !data_sets(set_type)%configs(conf)%cell(1,1) = 10.5d0
+                    data_sets(set_type)%configs(conf)%cell(2,1) = 0.2d0
+                    data_sets(set_type)%configs(conf)%cell(3,1) = 0.3d0
+                    data_sets(set_type)%configs(conf)%cell(1,2) =-0.1d0
+                    data_sets(set_type)%configs(conf)%cell(2,2) = 6.0d0
+                    !data_sets(set_type)%configs(conf)%cell(2,2) = 10.5d0
                     data_sets(set_type)%configs(conf)%cell(3,2) = 0.3d0
-                    data_sets(set_type)%configs(conf)%cell(1,3) = -0.1d0
-                    data_sets(set_type)%configs(conf)%cell(2,3) = 0.2d0
-                    !data_sets(set_type)%configs(conf)%cell(3,3) = 4.0d0
-                    data_sets(set_type)%configs(conf)%cell(3,3) = 6.5d0
+                    data_sets(set_type)%configs(conf)%cell(1,3) = -0.2d0
+                    data_sets(set_type)%configs(conf)%cell(2,3) = 0.4d0
+                    data_sets(set_type)%configs(conf)%cell(3,3) = 6.0d0
+                    !data_sets(set_type)%configs(conf)%cell(3,3) = 10.5d0
                     data_sets(set_type)%configs(conf)%n = natm
                     call random_number(data_sets(set_type)%configs(conf)%ref_energy)
                     data_sets(set_type)%configs(conf)%ref_fi = 0.0d0
@@ -163,12 +168,13 @@ program unittest
                     !data_sets(set_type)%configs(conf)%r(1,2) = 1.0d0
                     !data_sets(set_type)%configs(conf)%r(1,3) = 2.0d0
                 
-
-                    do ii=1,3
-                        call random_number(data_sets(set_type)%configs(conf)%r(ii,:))
-                        data_sets(set_type)%configs(conf)%r(ii,:) = &
-                                &data_sets(set_type)%configs(conf)%r(ii,:)*&
-                                &data_sets(set_type)%configs(conf)%cell(ii,ii)
+                    !* uniform random [0,1]
+                    call random_number(frac_coords)
+                    do atm=1,natm,1
+                        do ii=1,3
+                            data_sets(set_type)%configs(conf)%r(ii,atm) = sum(frac_coords(:,atm)*&
+                                    &data_sets(set_type)%configs(conf)%cell(:,ii))
+                        end do
                     end do
                     
                     do ii=1,natm
@@ -563,6 +569,9 @@ program unittest
                     anl_jac_ok(cntr) = feature_selection_subsidiary_1(original_weights,&
                             &set_type,ft,ii,anl_jac(cntr))
                     cntr = cntr + 1
+if (.not.anl_jac_ok(cntr-1)) then
+write(*,*) 'ftype ',ftype,'not ok'
+end if                    
                 end do !* loop over optimizable attributes for given feature
 
             end do !* end loop over features
@@ -684,7 +693,7 @@ program unittest
 
             match_found = .false.
             do ww=1,num_steps,1
-                if (scalar_equal(num_jac(ww),anl_res,dble(1e-5),dble(1e-14),.false.)) then
+                if (scalar_equal(num_jac(ww),anl_res,dble(1e-5),dble(1e-14),.true.)) then
                     match_found = .true.
                 end if
             end do
@@ -1117,10 +1126,15 @@ program unittest
                                     else
                                         !* compute finite difference
                                         do jj=1,data_sets(set_type)%configs(conf)%n
+                                            if (set_neigh_info(conf)%threebody(jj)%n.eq.0) then
+                                                cycle
+                                            end if
+                                            
                                             if (size(set_neigh_info(conf)%threebody(jj)%cos_ang)&
                                             &.ne.size(threebody_dif(jj)%cos_ang)) then
                                                 write(*,*) 'dw = ',dw,&
                                                         &'too large in threebody deriv test'
+write(*,*) size(set_neigh_info(conf)%threebody(jj)%cos_ang),size(threebody_dif(jj)%cos_ang)
                                                 call exit(0)
                                             end if
                                             

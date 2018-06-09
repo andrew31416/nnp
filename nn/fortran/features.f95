@@ -851,6 +851,7 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
+                ! NO SELF INTERACTION
                 if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle
@@ -983,10 +984,12 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
-                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
-                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
-                    cycle
-                end if
+! no self interaction          
+!                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
+!                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+!                    cycle
+!                end if
+! debug       
                 
                 !* atom-atom distance
                 dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
@@ -1489,6 +1492,7 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
+                ! NO SELF INTERACTION
                 if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle
@@ -1972,6 +1976,7 @@ call cpu_time(t4)
 
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
+                ! NO SELF INTERACTION
                 if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
                     ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
                     cycle

@@ -748,6 +748,9 @@ module feature_util
                                 sign_ik(3) = -1.0d0
                             end if
                         end if
+
+    
+    ! NO SELF INTERACTION
     !aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
     !aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
     !aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
@@ -981,6 +984,13 @@ module feature_util
                     allocatable_feature(ii)%idx(:,:) = feature_in(ii)%idx(:,:)
                     allocatable_feature(ii)%dcos_dr(:,:,:) = feature_in(ii)%dcos_dr(:,:,:)
                     allocatable_feature(ii)%drdri(:,:,:) = feature_in(ii)%drdri(:,:,:)
+                else if (allocated(allocatable_feature(ii)%cos_ang)) then
+                    deallocate(allocatable_feature(ii)%cos_ang)
+                    deallocate(allocatable_feature(ii)%dr)
+                    deallocate(allocatable_feature(ii)%z)
+                    deallocate(allocatable_feature(ii)%idx)
+                    deallocate(allocatable_feature(ii)%dcos_dr)
+                    deallocate(allocatable_feature(ii)%drdri)
                 end if
             end do
         end subroutine
