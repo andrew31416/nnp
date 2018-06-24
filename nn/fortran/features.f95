@@ -1883,8 +1883,8 @@ call cpu_time(t4)
             !* scratch
             real(8) :: dr,tmp1,tmp2,tmp3,za,zb,rcut,fs
             real(8) :: phi(1:size(feature_params%info(ft_idx)%linear_w))
-            real(8) :: zatom,zneigh
-            integer :: kk,num_weights
+            real(8) :: zatom,zneigh,kk_dble
+            integer :: kk,num_weights,fourier_terms
            
             !* atom-neigh_idx distance 
             dr = set_neigh_info(conf)%twobody(atm)%dr(neigh_idx)
@@ -1895,8 +1895,11 @@ call cpu_time(t4)
             rcut = feature_params%info(ft_idx)%rcut
             fs   = feature_params%info(ft_idx)%fs
 
-            !* number of weights
+            !* number of weights (1 weight per sin/cos)
             num_weights = size(feature_params%info(ft_idx)%linear_w)
+
+            !* number of sin + cos terms
+            fourier_terms = int(num_weights/2)
 
             !* 2 pi / rcut
             tmp1 = dr * 6.28318530718 / rcut
@@ -1918,9 +1921,12 @@ call cpu_time(t4)
             end if
        
             ! we don't care about constant offset, discard 0th contribution
-            do kk=1,num_weights,1
-                !* design matrix elements = cos(k 2pi dr / rcut)
-                phi(kk) = sin(dble(kk)*tmp1)
+            do kk=1,fourier_terms,1
+                kk_dble = dble(kk)
+
+                !* w = (w_sin , w_cos) -> phi = (phi_sin, phi_cos)
+                phi(kk) = sin(kk_dble*tmp1)
+                phi(kk+fourier_terms) = cos(kk_dble*tmp1)
             end do !*end loop over linear model weights
         
             current_val = current_val + &
@@ -1938,8 +1944,8 @@ call cpu_time(t4)
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
             real(8) :: fs,rcut,tmpz,tmp3,r_nl(1:3)
             real(8) :: za,zb,kk_dble,phi(1:size(feature_params%info(ft_idx)%linear_w))
-            real(8) :: zatom,zneigh
-            integer :: ii,kk,lim1,lim2,num_weights
+            real(8) :: zatom,zneigh,tmp4,tmps,tmpc
+            integer :: ii,kk,lim1,lim2,num_weights,fourier_terms
 
             !* symmetry function params
             za   = feature_params%info(ft_idx)%za
@@ -1949,6 +1955,9 @@ call cpu_time(t4)
 
             !* number of functions in linear model (no bias)
             num_weights = size(feature_params%info(ft_idx)%linear_w)
+            
+            !* number of sin + cos terms
+            fourier_terms = int(num_weights/2)
 
             !* 2 pi / rcut
             tmp1 = 6.28318530718d0 / rcut
@@ -2004,11 +2013,14 @@ call cpu_time(t4)
                     tmpz = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
                 end if
 
-                do kk=1,num_weights,1
+                do kk=1,fourier_terms,1
                     kk_dble = dble(kk)
+                    tmp4 = kk_dble*tmp1*dr_scl
+                    tmps = sin(tmp4)
+                    tmpc = cos(tmp4)
                    
-                    phi(kk) = tap_deriv*sin(kk_dble * tmp1 * dr_scl) + &
-                            &tap*tmp1*kk_dble*cos(kk_dble * tmp1 * dr_scl)
+                    phi(kk) = tap_deriv*tmps + tap*tmp1*kk_dble*tmpc
+                    phi(kk+fourier_terms) = tap_deriv*tmpc - tap*tmp1*kk_dble*tmps
                 end do !* end loop over linear model weights
 
                 !* Gamma' \sum_k w_k cos(2 pi k dr/rcut)  + 

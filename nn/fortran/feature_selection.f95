@@ -343,7 +343,7 @@ module feature_selection
             type(feature_),intent(inout) :: feature_deriv
 
             !* scratch 
-            integer :: ftype,kk
+            integer :: ftype,kk,fourier_terms
             real(8) :: mu,prec,scl_cnst,fs,rcut
             real(8) :: tmp1,tmp2,tmpz,za,zb,tmp_taper,tmp_cnst
 
@@ -397,9 +397,14 @@ module feature_selection
                 !* 2 pi r/rcut
                 tmp1 = dr*6.28318530718d0 / rcut
 
-                do kk=1,size(feature_params%info(ft_idx)%linear_w),1
+                fourier_terms = int(size(feature_params%info(ft_idx)%linear_w)/2)
+
+                do kk=1,fourier_terms,1
                     feature_deriv%linear_w(kk) = feature_deriv%linear_w(kk) + &
                             &sin(dble(kk)*tmp1)*tmp_taper
+                    
+                    feature_deriv%linear_w(kk+fourier_terms) = &
+                            &feature_deriv%linear_w(kk+fourier_terms) + cos(dble(kk)*tmp1)*tmp_taper
                 end do
             else
                 call error("feature_TwoBody_param_deriv","Implementation error")
@@ -794,8 +799,9 @@ module feature_selection
             !* scratch
             real(8) :: rcut,tmp1,scl_cnst,za,zb,tmpz,tmp_taper,tmp_taper_deriv
             real(8) :: tmp_cnst,rs,eta,tmp2,tmp3,tmp4,tmp5,dr_vec(1:3)
-            real(8) :: dr,fs,zatm,zngh,mu,lambda,kk_dble
+            real(8) :: dr,fs,zatm,zngh,mu,lambda,kk_dble,tmps,tmpc
             integer :: ii,kk,ftype,neigh_idx,lim1,lim2,deriv_idx,xx
+            integer :: fourier_terms
 
             if (neigh.eq.0) then
                 !* take derivative wrt central atom (atm)
@@ -928,13 +934,25 @@ end if
 
                     !* 2 pi r / rcut
                     tmp2 = tmp1*dr
+                    
+                    fourier_terms = int(size(feature_params%info(ft_idx)%linear_w)/2)
+
 
                     do xx=1,3
-                        do kk=1,size(feature_params%info(ft_idx)%linear_w),1
+                        do kk=1,fourier_terms,1
+                            tmps = sin(tmp2*kk_dble)
+                            tmpc = cos(tmp2*kk_dble)
+                            
                             d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk) = &
                                     &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk) +&
-                                    &( tmp_taper_deriv*sin(tmp2*kk_dble) + tmp_taper*tmp1*kk_dble*&
-                                    &cos(kk_dble*tmp2) )*dr_vec(xx)
+                                    &( tmp_taper_deriv*tmps + tmp_taper*tmp1*kk_dble*tmpc )*&
+                                    &dr_vec(xx)
+                            
+                            d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk+fourier_terms) = &
+                                    &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%&
+                                    &linear_w(kk+fourier_terms) +&
+                                    &( tmp_taper_deriv*tmpc - tmp_taper*tmp1*kk_dble*tmps )*&
+                                    &dr_vec(xx)
 
                         end do
                     end do
