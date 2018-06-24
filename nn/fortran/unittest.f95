@@ -457,7 +457,7 @@ program unittest
 
                     do ww=2,15,1
                         !* finite difference
-                        dw = 1.0d0/(5.0d0**(ww))
+                        dw = 1.0d0/(2.0d0**(ww))
 
                         do kk=1,2,1
                             if (kk.eq.1) then
@@ -479,7 +479,7 @@ program unittest
 
                         num_jac(jj) = dloss / (2.0d0 * dw)
 
-                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-10),&
+                        if (scalar_equal(num_jac(jj),anl_jac(jj),dble(1e-8),&
                         &dble(1e-10),.false.)) then
                             deriv_ok = .true.
                         end if
@@ -487,7 +487,6 @@ program unittest
                     end do !* end loop over +/- dw
 
                     if (deriv_ok.neqv..true.) then
-                        !write(*,*) 'failed for ',jj,'of',nwght,num_jac(jj),anl_jac(jj)
                         all_ok = .false.
                     end if
 
@@ -693,7 +692,7 @@ end if
 
             match_found = .false.
             do ww=1,num_steps,1
-                if (scalar_equal(num_jac(ww),anl_res,dble(1e-5),dble(1e-14),.true.)) then
+                if (scalar_equal(num_jac(ww),anl_res,dble(1e-5),dble(1e-14),.false.)) then
                     match_found = .true.
                 end if
             end do
@@ -820,7 +819,7 @@ end if
 
                             deriv_ok = .false.
 
-                            do ww=-2,3 
+                            do ww=-2,5 
                                 !* finite difference for feature
                                 dw = 1.0d0/(10**ww)
 
@@ -1475,7 +1474,7 @@ write(*,*) size(set_neigh_info(conf)%threebody(jj)%cos_ang),size(threebody_dif(j
                             !* coordinate value
                             x0 = data_sets(set_type)%configs(conf)%x(kk+1,atm)
 
-                            do ww=-5,1
+                            do ww=2,10
                                 !* loop over a number of finite differences
                                 dx = dble(1.0d0/(5.0d0**ww))
 

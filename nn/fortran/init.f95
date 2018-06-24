@@ -27,34 +27,6 @@ module init
             call allocate_weights_nobiasT(net_weights_nobiasT)
             call allocate_weights(dydw)
 
-            !if (allocated(net_units%a%hl1)) then
-            !    deallocate(net_units%a%hl1)
-            !    deallocate(net_units%a%hl2)
-            !    deallocate(net_units%a_deriv%hl1)
-            !    deallocate(net_units%a_deriv%hl2)
-            !end if
-
-            !allocate(net_units%a%hl1(net_dim%hl1))
-            !allocate(net_units%a%hl2(net_dim%hl2))
-            !allocate(net_units%a_deriv%hl1(net_dim%hl1))
-            !allocate(net_units%a_deriv%hl2(net_dim%hl2))
-           
-           ! if (allocated(net_units%z%hl1)) then
-           !     deallocate(net_units%z%hl1)
-           !     deallocate(net_units%z%hl2)
-           ! end if
-           ! 
-           ! !* include null value for bias
-           ! allocate(net_units%z%hl1(0:net_dim%hl1))
-           ! allocate(net_units%z%hl2(0:net_dim%hl2))
-           !
-           ! if (allocated(net_units%delta%hl1)) then
-           !     deallocate(net_units%delta%hl1)
-           !     deallocate(net_units%delta%hl2)
-           ! end if
-           ! 
-           ! allocate(net_units%delta%hl1(net_dim%hl1))
-           ! allocate(net_units%delta%hl2(net_dim%hl2))
 
             !* total number of net weights
             nwght = total_num_weights() 
@@ -211,7 +183,8 @@ module init
             
             implicit none
 
-            integer :: seed
+            integer :: seed,conf,atm,ntot,ww
+            real(8) :: av_x(1:D)
 
             !* random seed
             call system_clock(seed)
@@ -219,14 +192,41 @@ module init
             !* initialise
             call srand(seed)
           
+            !* total number of atoms for average
+            ntot = 0
+            av_x = 0.0d0
+
+            do conf=1,data_sets(1)%nconf,1
+                ntot = ntot + data_sets(1)%configs(conf)%n
+                do atm=1,data_sets(1)%configs(conf)%n
+                    av_x = av_x + data_sets(1)%configs(conf)%x(2:,atm)
+                end do
+            end do
+            av_x = av_x / dble(ntot)
+
             !* feature weights
             call random_number(net_weights%hl1(:,:))
             call random_number(net_weights%hl2(:,:))
             call random_number(net_weights%hl3(:))
+            net_weights%hl1(:,:) = ( net_weights%hl1(:,:)-0.5d0)
+            net_weights%hl2(:,:) = ( net_weights%hl2(:,:)-0.5d0)
+            net_weights%hl3(:)   = ( net_weights%hl3(:)  -0.5d0)
 
-            net_weights%hl1(:,:) = ( net_weights%hl1(:,:)-0.5d0)*0.001d0
-            net_weights%hl2(:,:) = ( net_weights%hl2(:,:)-0.5d0)*0.001d0
-            net_weights%hl3(:)   = ( net_weights%hl3(:)  -0.5d0)*0.001d0
+            do ww=1,net_dim%hl1
+                net_weights%hl1(ww,1:) = net_weights%hl1(ww,1:) / av_x
+            end do
+
+            allocate(net_units%a%hl1(net_dim%hl1,data_sets(1)%configs(1)%n))
+
+            ! forward prop
+            call dgemm('n','n',net_dim%hl1,data_sets(1)%configs(1)%n,&
+                    &D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
+                    &data_sets(1)%configs(1)%x,D+1,0.0d0,net_units%a%hl1,net_dim%hl1)
+
+            deallocate(net_units%a%hl1)
+
+            net_weights%hl2(:,:) =  net_weights%hl2(:,:)*1.000d0
+            net_weights%hl3(:)   =  net_weights%hl3(:)*1.000d0
 
             !* set biases to zero
             net_weights%hl1(:,0) = 0.0d0
