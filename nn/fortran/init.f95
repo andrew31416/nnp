@@ -184,6 +184,7 @@ module init
             implicit none
 
             integer :: seed,conf,atm,ntot,ww
+            logical :: need_to_deallocate = .false.
             real(8) :: av_x(1:D)
 
             !* random seed
@@ -216,14 +217,19 @@ module init
                 net_weights%hl1(ww,1:) = net_weights%hl1(ww,1:) / av_x
             end do
 
-            allocate(net_units%a%hl1(net_dim%hl1,data_sets(1)%configs(1)%n))
+            if (.not.allocated(net_units%a%hl1)) then
+                allocate(net_units%a%hl1(net_dim%hl1,data_sets(1)%configs(1)%n))
+                need_to_deallocate = .true.
+            end if
 
             ! forward prop
             call dgemm('n','n',net_dim%hl1,data_sets(1)%configs(1)%n,&
                     &D+1,1.0d0,net_weights%hl1,net_dim%hl1,&
                     &data_sets(1)%configs(1)%x,D+1,0.0d0,net_units%a%hl1,net_dim%hl1)
 
-            deallocate(net_units%a%hl1)
+            if (need_to_deallocate) then
+                deallocate(net_units%a%hl1)
+            end if
 
             net_weights%hl2(:,:) =  net_weights%hl2(:,:)*1.000d0
             net_weights%hl3(:)   =  net_weights%hl3(:)*1.000d0

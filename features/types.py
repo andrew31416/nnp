@@ -134,6 +134,8 @@ class feature():
         elif self.type in ["acsf_fourier-b2"]:
             if key == "weights":
                 value = np.asarray(value,dtype=np.float64)
+                if np.mod(value.shape[0],2)!=0:
+                    raise FeatureError("Univariate fourier series weights must be even in length")
         try:
             self.params[key] = deepcopy(value)
         except KeyError:
