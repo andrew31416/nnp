@@ -443,16 +443,14 @@ module init
 
             natm = data_sets(set_type)%configs(conf)%n
 
-            if (allocated(net_units%a%hl1)) then
-               deallocate(net_units%a%hl1)
-               deallocate(net_units%a%hl2)
-               deallocate(net_units%a_deriv%hl1)
-               deallocate(net_units%a_deriv%hl2)
-               deallocate(net_units%z%hl1)
-               deallocate(net_units%z%hl2)
-               deallocate(net_units%delta%hl1)
-               deallocate(net_units%delta%hl2)
-            end if
+            if (allocated(net_units%a%hl1))  deallocate(net_units%a%hl1)
+            if (allocated(net_units%a%hl2))  deallocate(net_units%a%hl2)
+            if (allocated(net_units%a_deriv%hl1))  deallocate(net_units%a_deriv%hl1)
+            if (allocated(net_units%a_deriv%hl2))  deallocate(net_units%a_deriv%hl2)
+            if (allocated(net_units%z%hl1))  deallocate(net_units%z%hl1)
+            if (allocated(net_units%z%hl2))  deallocate(net_units%z%hl2)
+            if (allocated(net_units%delta%hl1))  deallocate(net_units%delta%hl1)
+            if (allocated(net_units%delta%hl2))  deallocate(net_units%delta%hl2)
 
             !* layer 1
             allocate(net_units%a%hl1(1:net_dim%hl1,1:natm)) 
