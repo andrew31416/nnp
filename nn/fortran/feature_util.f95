@@ -751,20 +751,20 @@ module feature_util
 
     
     ! NO SELF INTERACTION
-    !aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
-    !aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
-    !aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
-    !aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
-    !aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
-    !aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
-    !
-    !sign_ij(1) =  1.0d0
-    !sign_ij(2) =  0.0d0
-    !sign_ij(3) = -1.0d0
+    aniso_info%drdri(:,1,cntr) = drij_vec / drij  ! d |rj-ri| / drj
+    aniso_info%drdri(:,2,cntr) = 0.0d0            ! d |rj-ri| / drk
+    aniso_info%drdri(:,3,cntr) = drik_vec / drik  ! d |rk-ri| / drk
+    aniso_info%drdri(:,4,cntr) = 0.0d0            ! d |rk-ri| / drj
+    aniso_info%drdri(:,5,cntr) = drjk_vec / drjk  ! d |rk-rj| / drk
+    aniso_info%drdri(:,6,cntr) = 0.0d0            ! d |rk-rj| / dri
+    
+    sign_ij(1) =  1.0d0
+    sign_ij(2) =  0.0d0
+    sign_ij(3) = -1.0d0
 
-    !sign_ik(1) =  0.0d0
-    !sign_ik(2) =  1.0d0
-    !sign_ik(3) = -1.0d0
+    sign_ik(1) =  0.0d0
+    sign_ik(2) =  1.0d0
+    sign_ik(3) = -1.0d0
 
                         ! remember that d |rj-ri| / dri = - d |rj-ri| / drj
                    

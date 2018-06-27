@@ -52,7 +52,7 @@ program unittest
             
             !* features
             fD = 8
-            natm = 5!fails for 15
+            natm = 7!fails for 15
             nconf = 2
 
             
@@ -66,7 +66,7 @@ program unittest
 
             !* calculate features and analytical derivatives
             call calculate_features(parallel,scale_features,.false.)
-
+            
             !* generate lookup tables
             call init_lookup_tables()
 
@@ -203,7 +203,7 @@ program unittest
             feature_params%num_features = fD
 
 
-            rcut = 7.0d0
+            rcut = 6.0d0
           
             !* test feature 1 
             feature_params%info(1)%ftype = featureID_StringToInt("atomic_number")    
@@ -241,7 +241,7 @@ program unittest
 
             !* test feature 5
             feature_params%info(5)%ftype = featureID_StringToInt("acsf_behler-g4")
-            feature_params%info(5)%rcut = 4.0d0
+            feature_params%info(5)%rcut = 3.2d0!4.0d0
             feature_params%info(5)%fs = 0.2d0
             call random_number(feature_params%info(5)%lambda)
             call random_number(feature_params%info(5)%xi) 
@@ -455,7 +455,7 @@ program unittest
                 
                     deriv_ok = .false.
 
-                    do ww=2,15,1
+                    do ww=2,30,1
                         !* finite difference
                         dw = 1.0d0/(2.0d0**(ww))
 
