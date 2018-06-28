@@ -433,6 +433,7 @@ call cpu_time(t2)
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
             integer :: idx_to_contrib
             integer :: ftype_acsf_behler_g1,ftype_acsf_behler_g2
+            integer :: ftype_acsf_normal_b2,ftype_acsf_fourier_b2
             logical :: zero_neighbours 
             logical :: property_calc_forces,property_calc_stress
             logical :: speedup_twobody_rcut,speedup_single_element
@@ -539,13 +540,12 @@ call cpu_time(t2)
             !* int comparison quicker than string
             ftype_acsf_behler_g1 = featureID_StringToInt("acsf_behler-g1")
             ftype_acsf_behler_g2 = featureID_StringToInt("acsf_behler-g2")
+            ftype_acsf_normal_b2 = featureID_StringToInt("acsf_normal-b2")
+            ftype_acsf_fourier_b2 = featureID_StringToInt("acsf_fourier-b2")
           
             !* atomic weighting method call string comparison, quicker to call just once
             tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
 
-! debug
-!return
-! debug
             
             do ii=1,set_neigh_info(conf)%twobody(atm)%n
                 if (set_neigh_info(conf)%twobody(atm)%dr(ii).le.rcut) then
@@ -558,7 +558,7 @@ call cpu_time(t2)
                         call feature_behler_g1(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                        if (calculate_property("forces")) then
+                        if (property_calc_forces) then
                             call feature_behler_g1_deriv(set_type,conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                 &vec(1:3,idx_to_contrib),idx_to_contrib)
@@ -575,29 +575,32 @@ call cpu_time(t2)
                                 &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                 &vec(1:3,idx_to_contrib),idx_to_contrib)
                         end if
-                    else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                    else if (ftype.eq.ftype_acsf_normal_b2) then
                         call feature_normal_iso(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                        if (calculate_property("forces")) then
+                        if (property_calc_forces) then
                             call feature_normal_iso_deriv(set_type,conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &vec(1:3,idx_to_contrib),idx_to_contrib)
                         end if
-                    else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
-                        call feature_fourier_b2(conf,atm,ii,ft_idx,&
+                    else if (ftype.eq.ftype_acsf_fourier_b2) then
+                        call feature_fourier_b2(conf,atm,ii,ft_idx,speedup_twobody_rcut,&
+                                &speedup_single_element,tmpz,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
 
-                        if (calculate_property("forces")) then
+                        if (property_calc_forces) then
                             call feature_fourier_b2_deriv(set_type,conf,atm,ii,ft_idx,&
-                                    &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
-                                    &vec(1:3,idx_to_contrib),idx_to_contrib)
+                                &speedup_twobody_rcut,speedup_single_element,property_calc_stress,&
+                                &tmpz,&
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
+                                &vec(1:3,idx_to_contrib),idx_to_contrib)
                         end if
                     else if (ftype.eq.featureID_StringToInt("devel_iso")) then
                         call feature_iso_devel(conf,atm,ii,ft_idx,&
                                 &data_sets(set_type)%configs(conf)%x(arr_idx,atm))
                         
-                        if (calculate_property("forces")) then
+                        if (property_calc_forces) then
                             call feature_iso_devel_deriv(set_type,conf,atm,ii,ft_idx,&
                                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%&
                                     &vec(1:3,idx_to_contrib),idx_to_contrib)
@@ -621,6 +624,8 @@ call cpu_time(t2)
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
                     call feature_fourier_b2_deriv(set_type,conf,atm,0,ft_idx,&
+                            &speedup_twobody_rcut,speedup_single_element,property_calc_stress,&
+                            &tmpz,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(1:3,1),1)
                 else if (ftype.eq.featureID_StringToInt("devel_iso")) then
                     call feature_iso_devel_deriv(set_type,conf,atm,0,ft_idx,&
@@ -1887,10 +1892,13 @@ call cpu_time(t4)
             
         end subroutine feature_normal_threebody_deriv
         
-        subroutine feature_fourier_b2(conf,atm,neigh_idx,ft_idx,current_val)
+        subroutine feature_fourier_b2(conf,atm,neigh_idx,ft_idx,speedup_twobody_rcut,&
+        &speedup_single_element,tmpz,current_val)
             implicit none
 
             integer,intent(in) :: conf,atm,neigh_idx,ft_idx
+            logical,intent(in) :: speedup_twobody_rcut,speedup_single_element
+            real(8),intent(in) :: tmpz
             real(8),intent(inout) :: current_val
 
             !* scratch
@@ -1918,20 +1926,21 @@ call cpu_time(t4)
             tmp1 = dr * 6.28318530718 / rcut
 
             !* tapering
-            if (speedup_applies("twobody_rcut")) then
+            if (speedup_twobody_rcut) then
                 tmp2 = set_neigh_info(conf)%twobody(atm)%dr_taper(neigh_idx)
             else
                 tmp2 = taper_1(dr,rcut,fs)
             end if
            
-            if (speedup_applies("single_element")) then
-                tmp3 = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            if (speedup_single_element) then
+                tmp3 = tmpz
             else
                 zatom = set_neigh_info(conf)%twobody(atm)%z_atom
                 zneigh = set_neigh_info(conf)%twobody(atm)%z(neigh_idx)
                 
                 tmp3 = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
             end if
+
        
             ! we don't care about constant offset, discard 0th contribution
             do kk=1,fourier_terms,1
@@ -1947,17 +1956,23 @@ call cpu_time(t4)
 
         end subroutine feature_fourier_b2
         
-        subroutine feature_fourier_b2_deriv(set_type,conf,atm,neigh_idx,ft_idx,deriv_vec,deriv_idx)
+        subroutine feature_fourier_b2_deriv(set_type,conf,atm,neigh_idx,ft_idx,&
+        &speedup_twobody_rcut,speedup_single_element,property_calc_stress,tmpz,&
+        &deriv_vec,deriv_idx)
             implicit none
 
             integer,intent(in) :: set_type,conf,atm,neigh_idx,ft_idx,deriv_idx
+            logical,intent(in) :: speedup_twobody_rcut,speedup_single_element
+            logical,intent(in) :: property_calc_stress
+            real(8),intent(in) :: tmpz
             real(8),intent(inout) :: deriv_vec(1:3)
 
             !* scratch
             real(8) :: dr_scl,dr_vec(1:3),tap_deriv,tap,tmp1,tmp2
-            real(8) :: fs,rcut,tmpz,tmp3,r_nl(1:3)
-            real(8) :: za,zb,kk_dble,phi(1:size(feature_params%info(ft_idx)%linear_w))
+            real(8) :: fs,rcut,tmpz_scratch,tmp3,r_nl(1:3)
+            real(8) :: za,zb,phi(1:size(feature_params%info(ft_idx)%linear_w))
             real(8) :: zatom,zneigh,tmp4,tmps,tmpc
+            real(8) :: kk_dble(1:int(size(feature_params%info(ft_idx)%linear_w)/2))
             integer :: ii,kk,lim1,lim2,num_weights,fourier_terms
 
             !* symmetry function params
@@ -1974,25 +1989,29 @@ call cpu_time(t4)
 
             !* 2 pi / rcut
             tmp1 = 6.28318530718d0 / rcut
+            do kk=1,fourier_terms,1
+                !* can factorise this when differentiating by central atom
+                kk_dble(kk) = dble(kk)*tmp1
+            end do
             
             if (neigh_idx.eq.0) then
                 lim1 = 1
                 lim2 = set_neigh_info(conf)%twobody(atm)%n
                 tmp2 = -1.0d0       !* sign for drij/d r_central
-                if (calculate_property("stress")) then
+                if (property_calc_stress) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_atom
                 end if
             else
                 lim1 = neigh_idx
                 lim2 = neigh_idx    
                 tmp2 = 1.0d0        !* sign for drij/d r_neighbour
-                if (calculate_property("stress")) then
+                if (property_calc_stress) then
                     r_nl = set_neigh_info(conf)%twobody(atm)%r_nl_neigh(:,lim1)
                 end if
             end if
             
-            if (speedup_applies("single_element")) then
-                tmpz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            if (speedup_single_element) then
+                tmpz_scratch = tmpz
             end if
 
 
@@ -2011,7 +2030,7 @@ call cpu_time(t4)
                 dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
                 
                 !* tapering
-                if (speedup_applies("twobody_rcut")) then
+                if (speedup_twobody_rcut) then
                     tap = set_neigh_info(conf)%twobody(atm)%dr_taper(ii)
                     tap_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(ii)
                 else
@@ -2020,30 +2039,29 @@ call cpu_time(t4)
                 end if
 
                 !* atomic number
-                if (.not.speedup_applies("single_element")) then
+                if (.not.speedup_single_element) then
                     zatom = set_neigh_info(conf)%twobody(atm)%z_atom
                     zneigh = set_neigh_info(conf)%twobody(atm)%z(ii)
-                    tmpz = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
+                    tmpz_scratch = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
                 end if
 
                 do kk=1,fourier_terms,1
-                    kk_dble = dble(kk)
-                    tmp4 = kk_dble*tmp1*dr_scl
+                    tmp4 = kk_dble(kk)*dr_scl
                     tmps = sin(tmp4)
                     tmpc = cos(tmp4)
                    
-                    phi(kk) = tap_deriv*tmps + tap*tmp1*kk_dble*tmpc
-                    phi(kk+fourier_terms) = tap_deriv*tmpc - tap*tmp1*kk_dble*tmps
+                    phi(kk) = tap_deriv*tmps + tap*kk_dble(kk)*tmpc
+                    phi(kk+fourier_terms) = tap_deriv*tmpc - tap*kk_dble(kk)*tmps
                 end do !* end loop over linear model weights
 
                 !* Gamma' \sum_k w_k cos(2 pi k dr/rcut)  + 
                 !* Gamma \sum_k w_k 2*pi*k/rcut*sin(2 pi k dr/rcut)
                 tmp3 = ddot(num_weights,feature_params%info(ft_idx)%linear_w,1,phi,1) 
 
-                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp3*tmp2*tmpz
+                deriv_vec(:) = deriv_vec(:) + dr_vec(:)*tmp3*tmp2*tmpz_scratch
                 
-                if (calculate_property("stress")) then
-                    call append_stress_contribution(dr_vec*tmp3*tmp2*tmpz,&
+                if (property_calc_stress) then
+                    call append_stress_contribution(dr_vec*tmp3*tmp2*tmpz_scratch,&
                             &r_nl,set_type,conf,atm,ft_idx,deriv_idx)
                 end if
             end do
