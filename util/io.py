@@ -3,6 +3,7 @@ import tempfile
 import shutil
 import nnp.nn.fortran.nn_f95 as f95_api
 import parsers
+import warnings
 
 _set_map = {"train":1,"holdout":2,"test":3}
 
@@ -52,6 +53,7 @@ def _write_file(config,fname):
     for _attr in ["forces","energy"]:
         # if forces or energy not present, write as 0
         if getattr(config,_attr) is None:
+            warnings.warn("{} not present in config. Do not attempt training".format(_attr))
             if _attr == "forces":
                 _val[_attr] = np.zeros((getattr(config,"atomic_number").shape[0],3),dtype=np.float64)
             else:
