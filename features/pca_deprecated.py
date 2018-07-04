@@ -104,9 +104,14 @@ class pca_class():
                 
             return new_projection
 
-    def _calculate_covariance_matrix(self):
+    def _calculate_covariance_matrix(self,correlation=True):
         """
         Compute the covariance matrix of self.data
+
+        Parameters
+        ----------
+        correlation : boolean
+            If true, compute correlation rather than covariance matrix
         """
         self._sample_mean = np.average(self.data,axis=0)
         H = self.data - np.tile(self._sample_mean,(self.data.shape[0],1))

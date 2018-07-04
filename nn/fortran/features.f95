@@ -639,12 +639,16 @@ call cpu_time(t2)
 
             integer,intent(in) :: set_type,conf,atm,ft_idx
 
-            real(8) :: rcut
+            real(8) :: rcut,zconst
             integer :: ii,jj,arr_idx,cntr,ftype
             integer :: contrib_atms(1:data_sets(set_type)%configs(conf)%n)
             integer :: arg
             logical :: not_null
             logical,allocatable :: bond_contributes(:)
+            integer :: ftype_acsf_behler_g4,ftype_acsf_behler_g5
+            integer :: ftype_acsf_normal_b3
+            logical :: prop_calc_forces,prop_calc_stress
+            logical :: speedup_threebody_rcut,speedup_single_element
 ! DEBUG
 real(8) :: t1,t2,t3,t4
 call cpu_time(t1)
@@ -760,6 +764,19 @@ call cpu_time(t3)
 ! THIS section is slow vv
 ! DEBUG
 
+            !* int comparison is quicker than string comparison
+            ftype_acsf_behler_g4 = featureID_StringToInt("acsf_behler-g4")
+            ftype_acsf_behler_g5 = featureID_StringToInt("acsf_behler-g5")
+            ftype_acsf_normal_b3 = featureID_StringToInt("acsf_normal-b3")
+            
+            !* logical comparison quicker than string comparison
+            prop_calc_forces = calculate_property("forces")
+            prop_calc_stress = calculate_property("stress")
+                
+            if (speedup_applies("single_element")) then
+                !* remove costly string comparison from inner loop over bonds
+                zconst = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            end if
             
             !* zero features
             data_sets(set_type)%configs(conf)%x(arr_idx,atm) = 0.0d0
@@ -774,24 +791,26 @@ call cpu_time(t3)
                     cycle
                 end if
 
-                if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
-                    call feature_behler_g4(set_type,conf,atm,ft_idx,ii)
+                if (ftype.eq.ftype_acsf_behler_g4) then
+                    call feature_behler_g4(set_type,conf,atm,ft_idx,ii,speedup_threebody_rcut,&
+                            &speedup_single_element,zconst)
 
-                    if (calculate_property("forces")) then
+                    if (prop_calc_forces) then
                         call feature_behler_g4_deriv(set_type,conf,atm,ft_idx,ii,&
-                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(:,ii)) 
+                            &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(:,ii),&
+                            &speedup_threebody_rcut,speedup_single_element,zconst,prop_calc_stress) 
                     end if
-                else if (ftype.eq.featureID_StringToInt("acsf_behler-g5")) then
+                else if (ftype.eq.ftype_acsf_behler_g5) then
                     call feature_behler_g5(set_type,conf,atm,ft_idx,ii)
 
-                    if (calculate_property("forces")) then
+                    if (prop_calc_forces) then
                         call feature_behler_g5_deriv(set_type,conf,atm,ft_idx,ii,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(:,ii))
                     end if
-                else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                else if (ftype.eq.ftype_acsf_normal_b3) then
                     call feature_normal_threebody(set_type,conf,atm,ft_idx,ii)
 
-                    if (calculate_property("forces")) then
+                    if (prop_calc_forces) then
                         call feature_normal_threebody_deriv(set_type,conf,atm,ft_idx,ii,&
                             &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%idx_map(:,ii))
                     end if
@@ -1081,11 +1100,14 @@ call cpu_time(t4)
             end do
         end subroutine feature_behler_g2_deriv
        
-        subroutine feature_behler_g4(set_type,conf,atm,ft_idx,bond_idx)
+        subroutine feature_behler_g4(set_type,conf,atm,ft_idx,bond_idx,&
+        &speedup_threebody_rcut,speedup_single_element,zconst)
             implicit none
 
             !* args
             integer,intent(in) :: atm,ft_idx,bond_idx,set_type,conf
+            logical,intent(in) :: speedup_threebody_rcut,speedup_single_element
+            real(8),intent(in) :: zconst
 
             !* scratch
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
@@ -1112,14 +1134,14 @@ call cpu_time(t4)
 
             cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
-            if (speedup_applies("threebody_rcut")) then
+            if (speedup_threebody_rcut) then
                 tmp_taper = product(set_neigh_info(conf)%threebody(atm)%dr_taper(1:3,bond_idx))
             else
                 tmp_taper = taper_1(drij,rcut,fs)*taper_1(drik,rcut,fs)*taper_1(drjk,rcut,fs)
             end if
 
-            if (speedup_applies("single_element")) then
-                tmp_atmz = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            if (speedup_single_element) then
+                tmp_atmz = zconst
             else
                 zatom = set_neigh_info(conf)%threebody(atm)%z_atom
                 zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
@@ -1134,13 +1156,17 @@ call cpu_time(t4)
                     &exp(-eta*(drij**2+drik**2+drjk**2))*tmp_taper*tmp_atmz
         end subroutine feature_behler_g4
        
-        subroutine feature_behler_g4_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib) 
+        subroutine feature_behler_g4_deriv(set_type,conf,atm,ft_idx,bond_idx,idx_to_contrib,&
+        &speedup_threebody_rcut,speedup_single_element,zconst,prop_calc_stress) 
             implicit none
 
             !* args
             integer,intent(in) :: set_type,conf,atm,ft_idx,bond_idx
             integer,intent(in) :: idx_to_contrib(1:2)
-            
+            logical,intent(in) :: speedup_threebody_rcut,speedup_single_element
+            logical,intent(in) :: prop_calc_stress
+            real(8),intent(in) :: zconst
+
             !* scratch
             real(8) :: xi,eta,lambda,fs,rcut,za,zb
             real(8) :: drij,drik,drjk,cos_angle,tmp_z,dxdr(1:3)
@@ -1171,7 +1197,7 @@ call cpu_time(t4)
             cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
 
             !* tapering
-            if (speedup_applies("threebody_rcut")) then
+            if (speedup_threebody_rcut) then
                 !* same rcut,rs for all threebody features
                 tap_ij = set_neigh_info(conf)%threebody(atm)%dr_taper(1,bond_idx)
                 tap_ik = set_neigh_info(conf)%threebody(atm)%dr_taper(2,bond_idx)
@@ -1188,8 +1214,8 @@ call cpu_time(t4)
                 tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
             end if
 
-            if (speedup_applies("single_element")) then
-                tmp_z = atomic_weighting(-1.0d0,-1.0d0,-1.0d0,ft_idx)
+            if (speedup_single_element) then
+                tmp_z = zconst 
             else
                 zatom = set_neigh_info(conf)%threebody(atm)%z_atom
                 zneigh1 = set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)
@@ -1230,7 +1256,7 @@ call cpu_time(t4)
                     drikdrz = -set_neigh_info(conf)%threebody(atm)%drdri(:,3,bond_idx)
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
-                if (calculate_property("stress")) then
+                if (prop_calc_stress) then
                     r_nl = set_neigh_info(conf)%threebody(atm)%r_nl(:,zz,bond_idx)    
                 end if
 
@@ -1244,7 +1270,7 @@ call cpu_time(t4)
                 data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) = &
                     &data_sets(set_type)%configs(conf)%x_deriv(ft_idx,atm)%vec(:,deriv_idx) + dxdr
                 
-                if (calculate_property("stress")) then
+                if (prop_calc_stress) then
                     call append_stress_contribution(dxdr,r_nl,set_type,conf,atm,ft_idx,deriv_idx)
                 end if
             end do

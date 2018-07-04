@@ -46,17 +46,6 @@ module measures
                 !* split as evenly as possible
                 call load_balance_alg_1(thread_idx,num_threads,data_sets(set_type)%nconf,bounds)
                 
-                !!* number of confs per thread (except final thread)
-                !dconf = int(floor(float(data_sets(set_type)%nconf)/float(num_threads)))
-                !
-                !thread_start = thread_idx*dconf + 1
-                !
-                !if (thread_idx.eq.num_threads-1) then
-                !    thread_end = data_sets(set_type)%nconf
-                !else
-                !    thread_end = (thread_idx+1)*dconf
-                !end if 
-
                 do conf=bounds(1),bounds(2),1
                     call loss_confloop(set_type,conf)
                 end do
@@ -490,17 +479,6 @@ module measures
                         do dd=1,3 
                             tmp_buffer(dd) = tmp_buffer(dd) + vec(dd)*sgns(dd,idx)
                         end do 
-                        !do dd=1,3
-                        !    sgn(dd) = sign(1.0d0,data_sets(set_type)%configs(conf)%current_fi(dd,idx)-&
-                        !            &data_sets(set_type)%configs(conf)%ref_fi(dd,idx))
-                        !end do
-
-    
-                        !do dd=1,3
-                        !    tmp_jac%hl1 = tmp_jac%hl1 - vec(dd)*sgns(dd,idx)*d2ydxdw(atm,kk)%hl1
-                        !    tmp_jac%hl2 = tmp_jac%hl2 - vec(dd)*sgns(dd,idx)*d2ydxdw(atm,kk)%hl2
-                        !    tmp_jac%hl3 = tmp_jac%hl3 - vec(dd)*sgns(dd,idx)*d2ydxdw(atm,kk)%hl3
-                        !end do
                     end do !* end loop over neighbours to (kk,atm_loc)
                     
                     do dd=1,3
