@@ -70,12 +70,12 @@ module lookup
             integer,intent(in) :: tbl,ft
             character(len=*),intent(in) :: func_type
 
-            integer :: N,idx,ftype,ww,num_weights
+            integer :: N,idx,ftype,ww,num_weights,num_terms
             real(8) :: x,func_val,xi
             real(8) :: max_rcuts(1:3),rs,eta,lambda
             real(8) :: mean_scl,prec_scl,mean_vec(1:3)
             real(8) :: prec_vec(1:3,1:3),fs,rcut,scl
-            real(8) :: k_cnst,ww_dble
+            real(8) :: k_cnst,ww_dble,tmps,tmpc
             real(8),allocatable :: phi(:)
             
             !* basis parameters
@@ -227,21 +227,30 @@ module lookup
                     func_val = exp(-0.5d0*prec_scl*(x-mean_scl)**2) * (taper_deriv_1(x,rcut,fs) - &
                             &prec_scl*(x-mean_scl)*taper_1(x,rcut,fs)) * scl
                 else if (func_type.eq."acsf_fourier-b2_a") then
+                    num_terms = int(num_weights/2)                
+    
                     !* taper(dr,rcut,fs) * scl * sum_k sin(2 pi k * dr/rcut)
                     k_cnst = 6.28318530718 / rcut
-                    do ww=1,num_weights,1
+                    do ww=1,num_terms,1
                         ww_dble = dble(ww)
                         phi(ww) = sin(ww_dble * k_cnst * x)
+                        phi(ww+num_terms) = cos(ww_dble * k_cnst * x)
                     end do
                     func_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1) *&
                             &taper_1(x,rcut,fs)*scl
                 else if (func_type.eq."acsf_fourier-b2_b") then
+                    num_terms = int(num_weights/2)                
+                    
                     !* d/dr taper(dr,rcut,fs) * scl * sum_k sin(2 pi k * dr/rcut)
                     k_cnst = 6.28318530718 / rcut
-                    do ww=1,num_weights,1
-                        ww_dble = dble(ww)
-                        phi(ww) = taper_deriv_1(x,rcut,fs) * sin(ww_dble*k_cnst*x) + &
-                                &taper_1(x,rcut,fs) * ww_dble * k_cnst * cos(ww_dble*k_cnst*x)
+                    do ww=1,num_terms,1
+                        ww_dble = dble(ww)*k_cnst
+                        
+                        tmps = sin(ww_dble*x)
+                        tmpc = cos(ww_dble*x)
+
+                        phi(ww) = taper_deriv_1(x,rcut,fs)*tmps + taper_1(x,rcut,fs)*ww_dble*tmpc
+                        phi(ww+num_terms) = taper_deriv_1(x,rcut,fs)*tmpc - taper_1(x,rcut,fs)*ww_dble*tmps
                     end do
                     func_val = ddot(num_weights,feature_params%info(ft)%linear_w,1,phi,1) * scl
                 else if (func_type.eq."acsf_behler-g4_a") then
@@ -430,8 +439,14 @@ module lookup
 
             integer :: N,table,ft,ftype,tmp
 
+            !* if called, presume user wants to use lookup tables
+            !call activate_performance_option("lookup_tables")
+
             if (allocated(lookup_tables)) then
                 deallocate(lookup_tables)
+            end if
+            if (allocated(map_to_tbl_idx)) then
+                deallocate(map_to_tbl_idx)
             end if
 
             N = total_num_tables()

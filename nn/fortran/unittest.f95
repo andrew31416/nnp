@@ -935,7 +935,7 @@ end if
                            
                             !* if one of finite difference is OK, atom_passes = True
                             atom_passes = .false. 
-                            do ww=3,8,1
+                            do ww=1,9,1
         
                                 !-----------------------------!
                                 !* numerical differentiation *!

@@ -524,7 +524,7 @@ class features():
         del feature_list                    
 
     def calculate(self,set_type="train",calculate_forces=False,scale=True,safe=True,\
-    updating_features=False,calculate_stress=False):
+    updating_features=False,calculate_stress=False,use_lookup=False):
         """
         Compute the value of all features for the given set type
         
@@ -573,7 +573,11 @@ class features():
         getattr(f95_api,"f90wrap_init_feature_vectors")(init_type=self._set_map[set_type])
         
         t2 = time.time()
-        
+       
+        if use_lookup:
+            getattr(f95_api,"f90wrap_activate_lookup_tables")()
+            getattr(f95_api,"f90wrap_init_lookup_tables")()
+ 
         # compute features (and their derivatives wrt. atoms) 
         getattr(f95_api,"f90wrap_calculate_features_singleset")(set_type=self._set_map[set_type],\
                 need_forces=calculate_forces,need_stress=calculate_stress,\
@@ -950,7 +954,7 @@ class features():
         
         # compute pre conditioning and initialise net
         self.mlpp._prepare_data_structures(X=self.data["train"],set_type="train",\
-                derivatives=False,updating_features=True)
+                calculate_forces=False,updating_features=True)
       
         # compute initial weights and concacenate weights with feature params 
         x0 = self._init_concacenation()
@@ -1019,7 +1023,7 @@ class features():
             force_derivatives = True
 
         # write new features to fortran and compute feature values (no derivs)
-        self.calculate(set_type="train",derivatives=force_derivatives,scale=True,safe=True,\
+        self.calculate(set_type="train",calculate_forces=force_derivatives,scale=True,safe=True,\
                 updating_features=True)
     
         loss = self.mlpp._loss(weights=parameters[:self.mlpp.num_weights],set_type="train",\

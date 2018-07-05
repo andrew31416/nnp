@@ -1223,5 +1223,9 @@ module feature_util
             get_Nbody_common_fs = val
         end function get_Nbody_common_fs
         
+        subroutine activate_lookup_table()
+            implicit none
 
+            call activate_performance_option("lookup_tables")            
+        end subroutine activate_lookup_table
 end module        

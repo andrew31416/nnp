@@ -33,7 +33,7 @@ f12="feature_selection."
 # files to create f2py pragma from #
 #----------------------------------#
 
-fwrap_files="features.f95 init.f95 util.f95 measures.f95 propagate.f95 feature_selection.f95"
+fwrap_files="features.f95 init.f95 util.f95 measures.f95 propagate.f95 feature_selection.f95 lookup.f95"
 
 #--------------------------------------#
 # functions to take from wrapped files #
@@ -63,6 +63,8 @@ fwrap_functions+=" get_ref_energies"
 fwrap_functions+=" loss_feature_jacobian"
 fwrap_functions+=" stress_calculation_performed"
 fwrap_functions+=" write_net_to_disk"
+fwrap_functions+=" init_lookup_tables"
+fwrap_functions+=" activate_lookup_tables"
 
 # clear previous build
 rm $f1"o" $f1"mod"

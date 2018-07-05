@@ -1920,6 +1920,8 @@ call cpu_time(t4)
         
         subroutine feature_fourier_b2(conf,atm,neigh_idx,ft_idx,speedup_twobody_rcut,&
         &speedup_single_element,tmpz,current_val)
+            use lookup
+
             implicit none
 
             integer,intent(in) :: conf,atm,neigh_idx,ft_idx
@@ -1967,18 +1969,22 @@ call cpu_time(t4)
                 tmp3 = atomic_weighting(zatom,zneigh,-1.0d0,ft_idx)
             end if
 
-       
-            ! we don't care about constant offset, discard 0th contribution
-            do kk=1,fourier_terms,1
-                kk_dble = dble(kk)
+      
+            if (speedup_applies("lookup_tables")) then
+                current_val = current_val + access_lookup(dr,map_to_tbl_idx(1,ft_idx))*tmp3
+            else
+                ! we don't care about constant offset, discard 0th contribution
+                do kk=1,fourier_terms,1
+                    kk_dble = dble(kk)
 
-                !* w = (w_sin , w_cos) -> phi = (phi_sin, phi_cos)
-                phi(kk) = sin(kk_dble*tmp1)
-                phi(kk+fourier_terms) = cos(kk_dble*tmp1)
-            end do !*end loop over linear model weights
-        
-            current_val = current_val + &
-                    &ddot(num_weights,feature_params%info(ft_idx)%linear_w,1,phi,1)*tmp2*tmp3
+                    !* w = (w_sin , w_cos) -> phi = (phi_sin, phi_cos)
+                    phi(kk) = sin(kk_dble*tmp1)
+                    phi(kk+fourier_terms) = cos(kk_dble*tmp1)
+                end do !*end loop over linear model weights
+            
+                current_val = current_val + &
+                        &ddot(num_weights,feature_params%info(ft_idx)%linear_w,1,phi,1)*tmp2*tmp3
+            end if
 
         end subroutine feature_fourier_b2
         
@@ -2044,10 +2050,10 @@ call cpu_time(t4)
             !* derivative wrt. central atom itself
             do ii=lim1,lim2,1
                 ! NO SELF INTERACTION
-                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
-                    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
-                    cycle
-                end if
+                !if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
+                !    ! dr_vec =  d (r_i + const - r_i ) / d r_i = 0
+                !    cycle
+                !end if
                 
                 !* atom-atom distance
                 dr_scl = set_neigh_info(conf)%twobody(atm)%dr(ii)
