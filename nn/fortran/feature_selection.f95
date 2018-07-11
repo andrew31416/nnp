@@ -164,8 +164,8 @@ module feature_selection
             logical :: calc_threebody
             type(feature_info) :: force_contribution 
             type(feature_info) :: dxdparam(1:data_sets(set_type)%configs(conf)%n)
-            type(feature_info) :: d2xdrdparam(1:data_sets(set_type)%configs(conf)%n,&
-                                             &1:data_sets(set_type)%configs(conf)%n,1:3)
+            !type(feature_info) :: d2xdrdparam(1:data_sets(set_type)%configs(conf)%n,&
+            !                                 &1:data_sets(set_type)%configs(conf)%n,1:3)
             logical :: clc_prop_forces,lcl_feature_istwobody(1:feature_params%num_features)
             integer :: ftype_atomic_number,ftype_acsf_behler_g1
 
@@ -183,14 +183,14 @@ module feature_selection
                 call init_feature_array(force_contribution)
                 call zero_feature_info(force_contribution)
 
-                do atm=1,data_sets(set_type)%configs(conf)%n
-                    do neigh=1,data_sets(set_type)%configs(conf)%n
-                        do xx=1,3
-                            call init_feature_array(d2xdrdparam(atm,neigh,xx))
-                            call zero_feature_info(d2xdrdparam(atm,neigh,xx))
-                        end do
-                    end do
-                end do
+                !do atm=1,data_sets(set_type)%configs(conf)%n
+                !    do neigh=1,data_sets(set_type)%configs(conf)%n
+                !        do xx=1,3
+                !            call init_feature_array(d2xdrdparam(atm,neigh,xx))
+                !            call zero_feature_info(d2xdrdparam(atm,neigh,xx))
+                !        end do
+                !    end do
+                !end do
         
                 call compute_force_norm_const(set_type,conf)
             end if
@@ -295,7 +295,7 @@ module feature_selection
                             !* d f_atm / d ft_param += - d y_neigh / d ft_neigh * 
                             !* d^2 ft_neigh /  d r_atom d ft_param
                             call feature_TwoBody_param_forces_deriv(conf,atm,neigh,ft,&
-                                    &d2xdrdparam,force_contribution)
+                                    &force_contribution%info(ft))
                         end if
                     end do !* end loop over features
                 end do !* end loop over two body neighbours to atm
@@ -311,7 +311,7 @@ module feature_selection
                         else if (lcl_feature_istwobody(ft)) then
                             !* d x_ft,atm / d r_atm
                             call feature_TwoBody_param_forces_deriv(conf,atm,0,ft,&
-                                    &d2xdrdparam,force_contribution)
+                                    &force_contribution%info(ft))
                         end if
                     end do !* end loop over features
                 end if 
@@ -339,7 +339,7 @@ module feature_selection
 
                             if (clc_prop_forces) then
                                 call feature_ThreeBody_param_forces_deriv(set_type,conf,atm,&
-                                        &neigh,ft,d2xdrdparam)
+                                        &neigh,ft,force_contribution%info(ft))
                             end if 
                         end do !* end loop over features
                     end do !* end loop over threebody bonds to atm
@@ -366,7 +366,7 @@ module feature_selection
                     end do !* end loop over cartesian components
                 end do !* end loop over local atoms
                 
-                call calculate_dfdparam(set_type,conf,force_norm_const,dxdparam,d2xdrdparam,&
+                call calculate_dfdparam(set_type,conf,force_norm_const,dxdparam,&
                 &force_contribution)
                  
                 !* append force contribution to loss derivative 
@@ -869,13 +869,11 @@ module feature_selection
             num_optimizable_params = cntr
         end function num_optimizable_params
     
-        subroutine feature_TwoBody_param_forces_deriv(conf,atm,neigh,ft_idx,&
-        &d2xdrdparam,force_contribution)
+        subroutine feature_TwoBody_param_forces_deriv(conf,atm,neigh,ft_idx,force_contribution)
             implicit none
 
             integer,intent(in) :: conf,atm,neigh,ft_idx
-            type(feature_info),intent(inout) :: d2xdrdparam(:,:,:)
-            type(feature_info),intent(inout) :: force_contribution
+            type(feature_),intent(inout) :: force_contribution
 
             !* scratch
             real(8) :: rcut,tmp1,scl_cnst,za,zb,tmpz,tmp_taper,tmp_taper_deriv
@@ -884,7 +882,32 @@ module feature_selection
             real(8),allocatable :: phi(:),tmp_array(:)
             integer :: ii,kk,ftype,neigh_idx,lim1,lim2,deriv_idx,xx
             integer :: fourier_terms,num_terms
+            
+            
+            ftype = feature_params%info(ft_idx)%ftype
 
+            !* constant shift due to original pre conditioning
+            scl_cnst = feature_params%info(ft_idx)%scl_cnst
+
+            !* atomic number contribution
+            za = feature_params%info(ft_idx)%za
+            zb = feature_params%info(ft_idx)%zb
+            zatm = set_neigh_info(conf)%twobody(atm)%z_atom
+
+            !* tapering
+            rcut = feature_params%info(ft_idx)%rcut
+            fs = feature_params%info(ft_idx)%fs
+            
+            !* don't need to reallocate mem every iteration
+            if (ftype.eq.ftype_acsf_behler_g2) then
+                allocate(phi(2))
+            else if (ftype.eq.ftype_acsf_normal_b2) then
+                allocate(phi(2))
+            else if (ftype.eq.ftype_acsf_fourier_b2) then
+                allocate(phi(size(feature_params%info(ft_idx)%linear_w)))
+            end if
+
+            !* determine boundaries of loop
             if (neigh.eq.0) then
                 !* take derivative wrt central atom (atm)
                 lim1 = 1
@@ -907,8 +930,11 @@ module feature_selection
                 !* neighbour info
                 dr = set_neigh_info(conf)%twobody(atm)%dr(ii)
                 neigh_idx = set_neigh_info(conf)%twobody(atm)%idx(ii)
-                zatm = set_neigh_info(conf)%twobody(atm)%z_atom
                 zngh = set_neigh_info(conf)%twobody(atm)%z(ii)
+                !* CAN SPEED THIS UP
+                tmpz = (zatm+1.0d0)**za * (zngh+1.0d0)**zb
+                !* constant term
+                tmp_cnst = scl_cnst*tmpz
 
                 if (neigh.eq.0) then
                     !* d rij / d r_central
@@ -918,28 +944,8 @@ module feature_selection
                     dr_vec(:) = set_neigh_info(conf)%twobody(atm)%drdri(:,ii)
                 end if
 
-                
-                ftype = feature_params%info(ft_idx)%ftype
 
-                !* constant shift due to original pre conditioning
-                scl_cnst = feature_params%info(ft_idx)%scl_cnst
-
-                !* atomic number contribution
-                za = feature_params%info(ft_idx)%za
-                zb = feature_params%info(ft_idx)%zb
-                tmpz = (zatm+1.0d0)**za * (zngh+1.0d0)**zb
-
-                !* tapering
-                rcut = feature_params%info(ft_idx)%rcut
-                fs = feature_params%info(ft_idx)%fs
-
-! debug
-if (dr.gt.rcut) then
-    write(*,*) 'dr > rcut'
-    call exit(0)
-end if
-! debug
-
+                !* CAN REMOVE STRING COMPARISON
                 if (speedup_applies("twobody_rcut")) then
                     tmp_taper = set_neigh_info(conf)%twobody(atm)%dr_taper(ii)
                     tmp_taper_deriv = set_neigh_info(conf)%twobody(atm)%dr_taper_deriv(ii)
@@ -948,8 +954,6 @@ end if
                     tmp_taper_deriv = taper_deriv_1(dr,rcut,fs)
                 end if
 
-                !* constant term
-                tmp_cnst = scl_cnst*tmpz
                 
                 if (ftype.eq.ftype_acsf_behler_g2) then
                     !* params
@@ -974,16 +978,22 @@ end if
                     !* d x / d rs
                     !tmp7 = 2.0d0*eta*tmp1*tmp2*tmp_taper
 
+                    !* eta
+                    phi(1) = tmp_cnst*tmp4
+                    
+                    !* rs
+                    phi(2) = tmp_cnst*tmp5
+
                     ! DEBUG d2xdrdp
-                    do xx=1,3
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = &
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + &
-                                &tmp_cnst*tmp4*dr_vec(xx)
-                        
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%rs = &
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%rs + &
-                                &tmp_cnst*tmp5*dr_vec(xx)
-                    end do
+                    !do xx=1,3
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = &
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + &
+                    !            &tmp_cnst*tmp4*dr_vec(xx)
+                    !    
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%rs = &
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%rs + &
+                    !            &tmp_cnst*tmp5*dr_vec(xx)
+                    !end do
 
                 else if (ftype.eq.ftype_acsf_normal_b2) then
                     !* params
@@ -1001,17 +1011,23 @@ end if
                     
                     !* d^2 / d mean
                     tmp5 = lambda*(tmp1*tmp3 + tmp2*tmp_taper)
+                   
+                    !* precision
+                    phi(1) = tmp_cnst*tmp4
                     
-                    ! DEBUG d2xdrdp
-                    do xx=1,3
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) = &
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) + &
-                                &tmp_cnst*tmp4*dr_vec(xx)
-                        
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) = &
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) + &
-                                &tmp_cnst*tmp5*dr_vec(xx)
-                    end do
+                    !* mean
+                    phi(2) = tmp_cnst*tmp5
+
+                    !! DEBUG d2xdrdp
+                    !do xx=1,3
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) = &
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) + &
+                    !            &tmp_cnst*tmp4*dr_vec(xx)
+                    !    
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) = &
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) + &
+                    !            &tmp_cnst*tmp5*dr_vec(xx)
+                    !end do
                 else if (ftype.eq.ftype_acsf_fourier_b2) then
                     !* 2 pi / rcut
                     tmp1 = 6.28318530718d0/rcut
@@ -1020,8 +1036,6 @@ end if
                     tmp2 = tmp1*dr
                     
                     fourier_terms = int(size(feature_params%info(ft_idx)%linear_w)/2)
-
-                    allocate(phi(size(feature_params%info(ft_idx)%linear_w)))
 
                     do kk=1,fourier_terms,1
                         kk_dble = dble(kk)                            
@@ -1033,57 +1047,30 @@ end if
                         phi(kk+fourier_terms) = tmp_cnst*(tmp_taper_deriv*tmpc - tmp_taper*tmp1*kk_dble*tmps )
                     end do                    
                     
-                    do xx=1,3
-                        !do kk=1,fourier_terms,1
-                        !    kk_dble = dble(kk)                            
-
-                        !    tmps = sin(tmp2*kk_dble)
-                        !    tmpc = cos(tmp2*kk_dble)
-                        !    
-                        !    phi(kk) = ( tmp_taper_deriv*tmps + tmp_taper*tmp1*kk_dble*tmpc )*&
-                        !            &dr_vec(xx)
-
-                        !    phi(kk+fourier_terms) = (tmp_taper_deriv*tmpc - tmp_taper*tmp1*kk_dble*tmps )*&
-                        !            &dr_vec(xx)
-
-                        !    !d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk) = &
-                        !    !        &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk) +&
-                        !    !        &( tmp_taper_deriv*tmps + tmp_taper*tmp1*kk_dble*tmpc )*&
-                        !    !        &dr_vec(xx)
-                        !    !
-                        !    !d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w(kk+fourier_terms) = &
-                        !    !        &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%&
-                        !    !        &linear_w(kk+fourier_terms) +&
-                        !    !        &( tmp_taper_deriv*tmpc - tmp_taper*tmp1*kk_dble*tmps )*&
-                        !    !        &dr_vec(xx)
-
-                        !end do
-
-                        ! DEBUG d2xdrdp
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w = &
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w + phi*dr_vec(xx)
-                    end do
-       
-                    ! DEBUG
-                    !call experimental_force(phi,dr_vec,atm,deriv_idx,ft_idx,ftype,force_contribution%info(ft_idx))
-
-                    deallocate(phi)
+                    !do xx=1,3
+                    !    ! DEBUG d2xdrdp
+                    !    !d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w = &
+                    !    !        &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w + phi*dr_vec(xx)
+                    !end do
                 else
                     call error("feature_TwoBody_param_forces_deriv","Implementation error")
                 end if
-
+                
+                !* append to force contribution to loss derivative
+                call experimental_force_twobody(phi,dr_vec,atm,deriv_idx,ft_idx,ftype,force_contribution)
             end do !* end loop over ii (neighbours to take derivative wrt)
+            
+            deallocate(phi)
 
         end subroutine feature_TwoBody_param_forces_deriv
         
         
-        subroutine feature_ThreeBody_param_forces_deriv(set_type,conf,atm,bond_idx,ft_idx,&
-        &d2xdrdparam)
+        subroutine feature_ThreeBody_param_forces_deriv(set_type,conf,atm,bond_idx,ft_idx,force_contribution)
             implicit none
             
             !* args
             integer,intent(in) :: set_type,conf,atm,bond_idx,ft_idx
-            type(feature_info),intent(inout) :: d2xdrdparam(:,:,:)
+            type(feature_),intent(inout) :: force_contribution
 
             !* scratch
             real(8) :: rcut,fs,za,zb,lambda,eta,xi,scl
@@ -1091,6 +1078,7 @@ end if
             real(8) :: tap_ij_deriv,tap_ik_deriv,tap_jk_deriv
             real(8) :: tmp_z,drijdrz(1:3),drikdrz(1:3),drjkdrz(1:3)
             real(8) :: const(1:8),cos_angle,dcosdrz(1:3)
+            real(8),allocatable :: phi(:,:)
             integer :: deriv_idx,ftype,zz,xx
 
             rcut   = feature_params%info(ft_idx)%rcut
@@ -1106,6 +1094,11 @@ end if
 
             if ( (drij.gt.rcut).or.(drik.gt.rcut).or.(drjk.gt.rcut) ) then
                 return
+            end if
+
+            if (ftype.eq.ftype_acsf_behler_g4) then
+                !* mem for force contribution appendage
+                allocate(phi(3,2))
             end if
 
             cos_angle = set_neigh_info(conf)%threebody(atm)%cos_ang(bond_idx)
@@ -1127,7 +1120,7 @@ end if
                 tap_jk_deriv = taper_deriv_1(drjk,rcut,fs)
             end if
    
-            !* atomic contribution and unit rescaling
+            !* CAN SPEED THIS UP
             tmp_z = ( ((set_neigh_info(conf)%threebody(atm)%z(1,bond_idx)+1.0d0)*&
                     &(set_neigh_info(conf)%threebody(atm)%z(2,bond_idx)+1.0d0))**zb *&
                     &(set_neigh_info(conf)%threebody(atm)%z_atom+1.0d0)**za ) * scl
@@ -1196,44 +1189,64 @@ end if
                     !* summation of distances squared
                     const(8) = -(drij**2 + drik**2 + drjk**2)
 
-                    do xx=1,3,1
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi = &
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi + &
-                                &(  const(5)*dcosdrz(xx) + &
-                                &(tap_ik*tap_jk*(tap_ij_deriv-2.0d0*eta*tap_ij*drij)*drijdrz(xx)+&
-                                & tap_ij*tap_jk*(tap_ik_deriv-2.0d0*eta*tap_ik*drik)*drikdrz(xx)+&
-                                & tap_ij*tap_ik*(tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*drjkdrz(xx))*&
+                    !* xi
+                    phi(:,1) = (  const(5)*dcosdrz + &
+                                &(tap_ik*tap_jk*(tap_ij_deriv-2.0d0*eta*tap_ij*drij)*drijdrz+&
+                                & tap_ij*tap_jk*(tap_ik_deriv-2.0d0*eta*tap_ik*drik)*drikdrz+&
+                                & tap_ij*tap_ik*(tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*drjkdrz)*&
                                 &const(6)  ) * tmp_z
 
-                        d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = & 
-                                &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + &
-                                &tmp_z*const(2)*(const(3)**(xi-1.0d0))*const(1)*(&
-                                &xi*lambda*const(7)*const(8)*dcosdrz(xx) + &
+                    !* eta
+                    phi(:,2) = tmp_z*const(2)*(const(3)**(xi-1.0d0))*const(1)*(&
+                                &xi*lambda*const(7)*const(8)*dcosdrz + &
                                 const(3)*(&
-                                &tap_ij*tap_ik*drjkdrz(xx)*( (tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*&
+                                &tap_ij*tap_ik*drjkdrz*( (tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*&
                                 &const(8) - 2.0d0*tap_jk*drjk) + &
-                                &tap_ij*tap_jk*drikdrz(xx)*( (tap_ik_deriv-2.0d0*eta*tap_ik*drik)*&
+                                &tap_ij*tap_jk*drikdrz*( (tap_ik_deriv-2.0d0*eta*tap_ik*drik)*&
                                 &const(8) - 2.0d0*tap_ik*drik) + &
-                                &tap_ik*tap_jk*drijdrz(xx)*( (tap_ij_deriv-2.0d0*eta*tap_ij*drij)*&
+                                &tap_ik*tap_jk*drijdrz*( (tap_ij_deriv-2.0d0*eta*tap_ij*drij)*&
                                 &const(8) - 2.0d0*tap_ij*drij) )  )
-                    end do
+
+                    !do xx=1,3,1
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi = &
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%xi + &
+                    !            &(  const(5)*dcosdrz(xx) + &
+                    !            &(tap_ik*tap_jk*(tap_ij_deriv-2.0d0*eta*tap_ij*drij)*drijdrz(xx)+&
+                    !            & tap_ij*tap_jk*(tap_ik_deriv-2.0d0*eta*tap_ik*drik)*drikdrz(xx)+&
+                    !            & tap_ij*tap_ik*(tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*drjkdrz(xx))*&
+                    !            &const(6)  ) * tmp_z
+
+                    !    d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = & 
+                    !            &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + &
+                    !            &tmp_z*const(2)*(const(3)**(xi-1.0d0))*const(1)*(&
+                    !            &xi*lambda*const(7)*const(8)*dcosdrz(xx) + &
+                    !            const(3)*(&
+                    !            &tap_ij*tap_ik*drjkdrz(xx)*( (tap_jk_deriv-2.0d0*eta*tap_jk*drjk)*&
+                    !            &const(8) - 2.0d0*tap_jk*drjk) + &
+                    !            &tap_ij*tap_jk*drikdrz(xx)*( (tap_ik_deriv-2.0d0*eta*tap_ik*drik)*&
+                    !            &const(8) - 2.0d0*tap_ik*drik) + &
+                    !            &tap_ik*tap_jk*drijdrz(xx)*( (tap_ij_deriv-2.0d0*eta*tap_ij*drij)*&
+                    !            &const(8) - 2.0d0*tap_ij*drij) )  )
+                    !end do
 
                 else
                     call error("feature_ThreeBody_param_deriv","Implementation error")
                 end if
+        
+                call experimental_force_threebody(phi,atm,deriv_idx,ft_idx,ftype,force_contribution)
             end do
+            deallocate(phi)
         end subroutine feature_ThreeBody_param_forces_deriv
       
-        subroutine calculate_dfdparam(set_type,conf,norm_consts,dxdparam,d2xdrdparam,&
-        &force_contribution)
+        subroutine calculate_dfdparam(set_type,conf,norm_consts,dxdparam,force_contribution)
             implicit none
 
             !* args
             integer,intent(in) :: set_type,conf
             real(8),intent(in) :: norm_consts(1:3,1:data_sets(set_type)%configs(conf)%n)
             type(feature_info),intent(in) :: dxdparam(1:data_sets(set_type)%configs(conf)%n)
-            type(feature_info),intent(in) :: d2xdrdparam(1:data_sets(set_type)%configs(conf)%n,&
-                                                        &1:data_sets(set_type)%configs(conf)%n,1:3)
+            !type(feature_info),intent(in) :: d2xdrdparam(1:data_sets(set_type)%configs(conf)%n,&
+            !                                            &1:data_sets(set_type)%configs(conf)%n,1:3)
             type(feature_info),intent(inout) :: force_contribution
 
             !* scratch
@@ -1261,19 +1274,19 @@ end if
                         end do !* end loop over 2nd features
 
                         ! DEBUG d2xdrdp
-                        do xx=1,3
-                            const = -dydx(ft,jj)*norm_consts(xx,ii)
+                        !do xx=1,3
+                        !    const = -dydx(ft,jj)*norm_consts(xx,ii)
 
-                            call add_individual_features(d2xdrdparam(ii,jj,xx)%info(ft),&
-                                    &const,force_contribution%info(ft))
-                        end do !* end loop over cartesian components
+                        !    call add_individual_features(d2xdrdparam(ii,jj,xx)%info(ft),&
+                        !            &const,force_contribution%info(ft))
+                        !end do !* end loop over cartesian components
                     end do !* end loop over neighbours to atm
                 end do !* end loop over features
             end do !* end loop over local atoms
 
         end subroutine calculate_dfdparam
 
-        subroutine experimental_force(param_derivs,dr_vec,atm,neigh,ft,ftype,force_contribution)
+        subroutine experimental_force_twobody(param_derivs,dr_vec,atm,neigh,ft,ftype,force_contribution)
             implicit none
 
             !* args
@@ -1289,14 +1302,40 @@ end if
 
             if (ftype.eq.ftype_acsf_behler_g2) then
                 force_contribution%eta = force_contribution%eta + param_derivs(1)*tmp
-                force_contribution%rs  = force_contribution%eta + param_derivs(2)*tmp
+                force_contribution%rs  = force_contribution%rs + param_derivs(2)*tmp
             else if (ftype.eq.ftype_acsf_fourier_b2) then
                 call daxpy(size(force_contribution%linear_w),tmp,param_derivs,1,force_contribution%linear_w,1)
+            else if (ftype.eq.ftype_acsf_normal_b2) then
+                force_contribution%prec(1,1) = force_contribution%prec(1,1) + param_derivs(1)*tmp
+                force_contribution%mean(1)  = force_contribution%mean(1) + param_derivs(2)*tmp
             else
                 write(*,*) "experimental_force : feature not implemented yet"
                 call exit(0)
             end if
 
-        end subroutine experimental_force
+        end subroutine experimental_force_twobody
+
+        subroutine experimental_force_threebody(param_derivs,atm,neigh,ft,ftype,force_contribution)
+            implicit none
+
+            !* args
+            real(8),intent(in) :: param_derivs(:,:)
+            integer,intent(in) :: atm,neigh,ft,ftype
+            type(feature_),intent(inout) :: force_contribution
+
+            !* param_derivs = (xx,param)
+
+            if (ftype.eq.ftype_acsf_behler_g4) then
+                force_contribution%xi = force_contribution%xi - dydx(ft,atm)*&
+                        &dot_product(force_norm_const(:,neigh),param_derivs(:,1))
+                
+                force_contribution%eta = force_contribution%eta - dydx(ft,atm)*&
+                        &dot_product(force_norm_const(:,neigh),param_derivs(:,2))
+            else
+                write(*,*) "experimental_force_threebody : feature not implemented yet",ftype
+                call exit(0)
+            end if
+        end subroutine experimental_force_threebody
+
 
 end module feature_selection
