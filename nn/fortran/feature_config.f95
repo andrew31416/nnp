@@ -99,7 +99,7 @@ module feature_config
     type(neigh_info),allocatable :: set_neigh_info(:)
 
     !* whether or not to use low mem (slow performance) or high mem (high performance)
-    logical :: performance_options(1:6) = .false. 
+    logical :: performance_options(1:7) = .false. 
 
     !* which physical properties should we calculate
     logical :: computation_options(1:2) = .false.
@@ -225,6 +225,9 @@ module feature_config
                 idx = 5
             else if (speedup.eq."lookup_tables") then
                 idx = 6
+            else if (speedup.eq."equal_fourier_cardinality") then
+                !* 2body fourier features are present and all have same # of weights
+                idx = 7
             else
                 write(*,*) ""
                 write(*,*) "***********************************************"

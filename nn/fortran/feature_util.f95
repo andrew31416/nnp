@@ -1228,4 +1228,40 @@ module feature_util
 
             call activate_performance_option("lookup_tables")            
         end subroutine activate_lookup_table
+
+        logical function get_num_fourier_weights(num_fourier_weights)
+            implicit none
+
+            !* args
+            integer,allocatable,dimension(:),intent(inout) :: num_fourier_weights
+
+            !* scratch
+            integer :: ft,cntr
+            logical :: activate    
+
+            cntr = 0
+            do ft=1,feature_params%num_features
+                if (feature_params%info(ft)%ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    cntr = cntr + 1
+                end if
+            end do
+
+            if (cntr.eq.0) then
+                activate = .false.
+            else
+                activate = .true.
+
+                !* count # of weights for each fourier 2body basis        
+                allocate(num_fourier_weights(cntr)) 
+            
+                cntr = 1
+                do ft=1,feature_params%num_features
+                    if (feature_params%info(ft)%ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                        num_fourier_weights(cntr) = size(feature_params%info(ft)%linear_w)
+                        cntr = cntr + 1
+                    end if
+                end do
+            end if 
+            get_num_fourier_weights = activate
+        end function get_num_fourier_weights
 end module        

@@ -16,7 +16,8 @@ module feature_selection
     implicit none
 
     real(8),external :: ddot
-    
+    external :: daxpy
+
     integer,private :: ftype_acsf_behler_g1 
     integer,private :: ftype_acsf_behler_g2 
     integer,private :: ftype_acsf_behler_g4 
@@ -27,6 +28,9 @@ module feature_selection
     logical,private :: clc_prop_forces
     logical,private :: speedup_single_element_all_equal
     real(8),private :: atomic_const 
+    
+    real(8),allocatable :: force_norm_const(:,:)
+    !$omp threadprivate(force_norm_const)
 
     contains
         subroutine loss_feature_jacobian(flat_weights,set_type,scale_features,parallel,jacobian)
@@ -46,6 +50,15 @@ module feature_selection
             
             !* openMP variables
             integer :: thread_idx,num_threads,bounds(1:2)
+            
+            !* int comparison quicker than string 
+            ftype_acsf_behler_g1  = featureID_StringToInt("acsf_behler-g1") 
+            ftype_acsf_behler_g2  = featureID_StringToInt("acsf_behler-g2")  
+            ftype_acsf_behler_g4  = featureID_StringToInt("acsf_behler-g4") 
+            ftype_acsf_behler_g5  = featureID_StringToInt("acsf_behler-g5") 
+            ftype_acsf_normal_b2  = featureID_StringToInt("acsf_normal-b2") 
+            ftype_acsf_normal_b3  = featureID_StringToInt("acsf_normal-b3") 
+            ftype_acsf_fourier_b2 = featureID_StringToInt("acsf_fourier-b2") 
             
             if (num_optimizable_params().ne.size(jacobian)) then
                 call error("loss_feature_jacobian",&
@@ -145,7 +158,6 @@ module feature_selection
 
             !* scratch
             real(8) :: mxrcut,dr,zatm,zngh,tmpE,invN
-            real(8) :: force_norm_const(1:3,1:data_sets(set_type)%configs(conf)%n)
             real(8),allocatable :: ultra_cart(:,:),ultra_z(:)
             integer,allocatable :: ultra_idx(:)
             integer :: atm,neigh,ftype,bond,ft,xx
@@ -179,6 +191,8 @@ module feature_selection
                         end do
                     end do
                 end do
+        
+                call compute_force_norm_const(set_type,conf)
             end if
             
             !* max cut off of all interactions
@@ -281,7 +295,7 @@ module feature_selection
                             !* d f_atm / d ft_param += - d y_neigh / d ft_neigh * 
                             !* d^2 ft_neigh /  d r_atom d ft_param
                             call feature_TwoBody_param_forces_deriv(conf,atm,neigh,ft,&
-                                    &d2xdrdparam)
+                                    &d2xdrdparam,force_contribution)
                         end if
                     end do !* end loop over features
                 end do !* end loop over two body neighbours to atm
@@ -297,7 +311,7 @@ module feature_selection
                         else if (lcl_feature_istwobody(ft)) then
                             !* d x_ft,atm / d r_atm
                             call feature_TwoBody_param_forces_deriv(conf,atm,0,ft,&
-                                    &d2xdrdparam)
+                                    &d2xdrdparam,force_contribution)
                         end if
                     end do !* end loop over features
                 end if 
@@ -365,6 +379,36 @@ module feature_selection
                 deallocate(ultra_cart)
             end if
         end subroutine single_conf_feat_jac
+
+        subroutine compute_force_norm_const(set_type,conf)
+            implicit none
+
+            !* args
+            integer :: set_type,conf
+
+            !* scratch
+            integer :: atm,xx
+
+            if (allocated(force_norm_const)) then
+                deallocate(force_norm_const)
+            end if
+            allocate(force_norm_const(1:3,1:data_sets(set_type)%configs(conf)%n))
+            
+            !* norm between model and ref forces
+            do atm=1,data_sets(set_type)%configs(conf)%n
+                do xx=1,3,1
+                    force_norm_const(xx,atm) = sign(1.0d0,&
+                            &data_sets(set_type)%configs(conf)%current_fi(xx,atm)-&
+                            &data_sets(set_type)%configs(conf)%ref_fi(xx,atm))
+                    if (loss_norm_type.eq.2) then
+                        force_norm_const(xx,atm) = 2.0d0*force_norm_const(xx,atm)*abs(&
+                                &data_sets(set_type)%configs(conf)%current_fi(xx,atm)-&
+                                &data_sets(set_type)%configs(conf)%ref_fi(xx,atm))
+                    end if 
+                end do !* end loop over cartesian components
+            end do !* end loop over local atoms
+
+        end subroutine compute_force_norm_const
 
         subroutine feature_TwoBody_param_deriv(dr,zatm,zngh,ft_idx,feature_deriv)
             implicit none
@@ -436,10 +480,10 @@ module feature_selection
 
                 do kk=1,fourier_terms,1
                     feature_deriv%linear_w(kk) = feature_deriv%linear_w(kk) + &
-                            &sin(dble(kk)*tmp1)*tmp_taper
+                            &sin(dble(kk)*tmp1)*tmp_cnst
                     
                     feature_deriv%linear_w(kk+fourier_terms) = &
-                            &feature_deriv%linear_w(kk+fourier_terms) + cos(dble(kk)*tmp1)*tmp_taper
+                            &feature_deriv%linear_w(kk+fourier_terms) + cos(dble(kk)*tmp1)*tmp_cnst
                 end do
             else
                 call error("feature_TwoBody_param_deriv","Implementation error")
@@ -583,23 +627,23 @@ module feature_selection
                 ftype = feature_params%info(ft)%ftype
                 lcl_feat_derivs%info(ft)%ftype = ftype
 
-                if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                if (ftype.eq.ftype_acsf_normal_b2) then
                     allocate(lcl_feat_derivs%info(ft)%mean(1))
                     allocate(lcl_feat_derivs%info(ft)%prec(1,1))
                 
-                    lcl_feat_derivs%info(ft)%mean(:) = 0.0d0
-                    lcl_feat_derivs%info(ft)%prec(:,:) = 0.0d0
-                else if (ftype.eq.featureID_StringToInt("acsf_normal-b3")) then
+                    lcl_feat_derivs%info(ft)%mean = 0.0d0
+                    lcl_feat_derivs%info(ft)%prec = 0.0d0
+                else if (ftype.eq.ftype_acsf_normal_b3) then
                     allocate(lcl_feat_derivs%info(ft)%mean(3))
                     allocate(lcl_feat_derivs%info(ft)%prec(3,3))
                     
-                    lcl_feat_derivs%info(ft)%mean(:) = 0.0d0
-                    lcl_feat_derivs%info(ft)%prec(:,:) = 0.0d0
-                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                    lcl_feat_derivs%info(ft)%mean = 0.0d0
+                    lcl_feat_derivs%info(ft)%prec = 0.0d0
+                else if (ftype.eq.ftype_acsf_fourier_b2) then
                     num_weights = size(feature_params%info(ft)%linear_w)
                     allocate(lcl_feat_derivs%info(ft)%linear_w(num_weights))
 
-                    lcl_feat_derivs%info(ft)%linear_w(:) = 0.0d0
+                    lcl_feat_derivs%info(ft)%linear_w = 0.0d0
                 end if
                 
                 lcl_feat_derivs%info(ft)%rs = 0.0d0
@@ -647,19 +691,20 @@ module feature_selection
             
             ftype = feat_in%ftype
 
-            if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+            if (ftype.eq.ftype_acsf_behler_g2) then
                 feat_out%eta = feat_out%eta + feat_in%eta*const
                 feat_out%rs  = feat_out%rs  + feat_in%rs*const
-            else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
-            &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+            else if (ftype.eq.ftype_acsf_fourier_b2) then
+                call daxpy(size(feat_out%linear_w),const,feat_in%linear_w,1,feat_out%linear_w,1)
+                !feat_out%linear_w = feat_out%linear_w + feat_in%linear_w*const
+            else if ( (ftype.eq.ftype_acsf_behler_g4).or.&
+            &(ftype.eq.ftype_acsf_behler_g5) ) then
                 feat_out%eta = feat_out%eta + feat_in%eta*const
                 feat_out%xi  = feat_out%xi  + feat_in%xi*const
-            else if ( (ftype.eq.featureID_StringToInt("acsf_normal-b2")).or.&
-            &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+            else if ( (ftype.eq.ftype_acsf_normal_b2).or.&
+            &(ftype.eq.ftype_acsf_normal_b3) ) then
                 feat_out%mean = feat_out%mean + feat_in%mean*const
                 feat_out%prec = feat_out%prec + feat_in%prec*const
-            else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
-                feat_out%linear_w = feat_out%linear_w + feat_in%linear_w*const
             end if
         end subroutine add_individual_features
 
@@ -697,30 +742,30 @@ module feature_selection
 
                 ftype = feature_params%info(ft)%ftype
 
-                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                if (ftype.eq.ftype_acsf_behler_g2) then
                     lcl_feat_derivs%info(ft)%eta = lcl_feat_derivs%info(ft)%eta + &
                             &tmp_feat_derivs%info(ft)%eta*tmpE * dydx(ft,atm)
                     
                     lcl_feat_derivs%info(ft)%rs = lcl_feat_derivs%info(ft)%rs + &
                             &tmp_feat_derivs%info(ft)%rs*tmpE * dydx(ft,atm)
                 
-                else if ( (ftype.eq.featureID_StringToInt("acsf_behler-g4")).or.&
-                &(ftype.eq.featureID_StringToInt("acsf_behler-g5")) ) then
+                else if ( (ftype.eq.ftype_acsf_behler_g4).or.&
+                &(ftype.eq.ftype_acsf_behler_g5) ) then
                     lcl_feat_derivs%info(ft)%eta = lcl_feat_derivs%info(ft)%eta + &
                             &tmp_feat_derivs%info(ft)%eta*tmpE * dydx(ft,atm)
                     
                     lcl_feat_derivs%info(ft)%xi = lcl_feat_derivs%info(ft)%xi + &
                             &tmp_feat_derivs%info(ft)%xi*tmpE * dydx(ft,atm)
                 
-                else if ( (ftype.eq.featureID_StringToInt("acsf_normal-b2")).or.& 
-                &(ftype.eq.featureID_StringToInt("acsf_normal-b3")) ) then
+                else if ( (ftype.eq.ftype_acsf_normal_b2).or.& 
+                &(ftype.eq.ftype_acsf_normal_b3) ) then
                     lcl_feat_derivs%info(ft)%mean = lcl_feat_derivs%info(ft)%mean + &
                             &tmp_feat_derivs%info(ft)%mean*tmpE * dydx(ft,atm)
                     
                     lcl_feat_derivs%info(ft)%prec = lcl_feat_derivs%info(ft)%prec + &
                             &tmp_feat_derivs%info(ft)%prec*tmpE * dydx(ft,atm)
                 
-                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                else if (ftype.eq.ftype_acsf_fourier_b2) then
                     lcl_feat_derivs%info(ft)%linear_w = lcl_feat_derivs%info(ft)%linear_w + &
                             &tmp_feat_derivs%info(ft)%linear_w*tmpE * dydx(ft,atm)
                 end if
@@ -825,17 +870,18 @@ module feature_selection
         end function num_optimizable_params
     
         subroutine feature_TwoBody_param_forces_deriv(conf,atm,neigh,ft_idx,&
-        &d2xdrdparam)
+        &d2xdrdparam,force_contribution)
             implicit none
 
             integer,intent(in) :: conf,atm,neigh,ft_idx
             type(feature_info),intent(inout) :: d2xdrdparam(:,:,:)
+            type(feature_info),intent(inout) :: force_contribution
 
             !* scratch
             real(8) :: rcut,tmp1,scl_cnst,za,zb,tmpz,tmp_taper,tmp_taper_deriv
             real(8) :: tmp_cnst,rs,eta,tmp2,tmp3,tmp4,tmp5,dr_vec(1:3)
             real(8) :: dr,fs,zatm,zngh,mu,lambda,kk_dble,tmps,tmpc
-            real(8),allocatable :: phi(:)
+            real(8),allocatable :: phi(:),tmp_array(:)
             integer :: ii,kk,ftype,neigh_idx,lim1,lim2,deriv_idx,xx
             integer :: fourier_terms,num_terms
 
@@ -852,10 +898,10 @@ module feature_selection
 
             do ii=lim1,lim2,1
                 ! NO SELF INTERACTION
-                if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
-                    !* d r_i - (r_i + const) / d r_i = 0
-                    cycle
-                end if
+                !if (atm.eq.set_neigh_info(conf)%twobody(atm)%idx(ii)) then
+                !    !* d r_i - (r_i + const) / d r_i = 0
+                !    cycle
+                !end if
 
 
                 !* neighbour info
@@ -905,7 +951,7 @@ end if
                 !* constant term
                 tmp_cnst = scl_cnst*tmpz
                 
-                if (ftype.eq.featureID_StringToInt("acsf_behler-g2")) then
+                if (ftype.eq.ftype_acsf_behler_g2) then
                     !* params
                     eta = feature_params%info(ft_idx)%eta
                     rs = feature_params%info(ft_idx)%rs
@@ -928,6 +974,7 @@ end if
                     !* d x / d rs
                     !tmp7 = 2.0d0*eta*tmp1*tmp2*tmp_taper
 
+                    ! DEBUG d2xdrdp
                     do xx=1,3
                         d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta = &
                                 &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%eta + &
@@ -938,7 +985,7 @@ end if
                                 &tmp_cnst*tmp5*dr_vec(xx)
                     end do
 
-                else if (ftype.eq.featureID_StringToInt("acsf_normal-b2")) then
+                else if (ftype.eq.ftype_acsf_normal_b2) then
                     !* params
                     mu = feature_params%info(ft_idx)%mean(1)
                     lambda = feature_params%info(ft_idx)%prec(1,1)
@@ -955,6 +1002,7 @@ end if
                     !* d^2 / d mean
                     tmp5 = lambda*(tmp1*tmp3 + tmp2*tmp_taper)
                     
+                    ! DEBUG d2xdrdp
                     do xx=1,3
                         d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) = &
                                 &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%prec(1,1) + &
@@ -964,7 +1012,7 @@ end if
                                 &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%mean(1) + &
                                 &tmp_cnst*tmp5*dr_vec(xx)
                     end do
-                else if (ftype.eq.featureID_StringToInt("acsf_fourier-b2")) then
+                else if (ftype.eq.ftype_acsf_fourier_b2) then
                     !* 2 pi / rcut
                     tmp1 = 6.28318530718d0/rcut
 
@@ -981,8 +1029,8 @@ end if
                         tmps = sin(tmp2*kk_dble)
                         tmpc = cos(tmp2*kk_dble)
                         
-                        phi(kk) = ( tmp_taper_deriv*tmps + tmp_taper*tmp1*kk_dble*tmpc )
-                        phi(kk+fourier_terms) = (tmp_taper_deriv*tmpc - tmp_taper*tmp1*kk_dble*tmps )
+                        phi(kk) = tmp_cnst*( tmp_taper_deriv*tmps + tmp_taper*tmp1*kk_dble*tmpc )
+                        phi(kk+fourier_terms) = tmp_cnst*(tmp_taper_deriv*tmpc - tmp_taper*tmp1*kk_dble*tmps )
                     end do                    
                     
                     do xx=1,3
@@ -1011,9 +1059,13 @@ end if
 
                         !end do
 
+                        ! DEBUG d2xdrdp
                         d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w = &
                                 &d2xdrdparam(deriv_idx,atm,xx)%info(ft_idx)%linear_w + phi*dr_vec(xx)
                     end do
+       
+                    ! DEBUG
+                    !call experimental_force(phi,dr_vec,atm,deriv_idx,ft_idx,ftype,force_contribution%info(ft_idx))
 
                     deallocate(phi)
                 else
@@ -1110,7 +1162,7 @@ end if
                     drjkdrz =  set_neigh_info(conf)%threebody(atm)%drdri(:,6,bond_idx)
                 end if
 
-                if (ftype.eq.featureID_StringToInt("acsf_behler-g4")) then
+                if (ftype.eq.ftype_acsf_behler_g4) then
                     !* feature specific params
                     eta    = feature_params%info(ft_idx)%eta 
                     lambda = feature_params%info(ft_idx)%lambda 
@@ -1187,7 +1239,7 @@ end if
             !* scratch
             integer :: ii,jj,xx,neigh_idx,ft,ft2
             real(8) :: const
-
+            
             do jj=1,data_sets(set_type)%configs(conf)%n,1
                 do ft=1,feature_params%num_features,1
                     if (data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%n.le.0) then
@@ -1208,6 +1260,7 @@ end if
                             end do
                         end do !* end loop over 2nd features
 
+                        ! DEBUG d2xdrdp
                         do xx=1,3
                             const = -dydx(ft,jj)*norm_consts(xx,ii)
 
@@ -1219,5 +1272,31 @@ end if
             end do !* end loop over local atoms
 
         end subroutine calculate_dfdparam
+
+        subroutine experimental_force(param_derivs,dr_vec,atm,neigh,ft,ftype,force_contribution)
+            implicit none
+
+            !* args
+            real(8),intent(in) :: dr_vec(1:3)
+            real(8),intent(in) :: param_derivs(:)
+            integer,intent(in) :: atm,neigh,ft,ftype
+            type(feature_),intent(inout) :: force_contribution
+
+            !* scratch
+            real(8) :: tmp
+
+            tmp = -1.0d0*dydx(ft,atm)*dot_product(force_norm_const(:,neigh),dr_vec)
+
+            if (ftype.eq.ftype_acsf_behler_g2) then
+                force_contribution%eta = force_contribution%eta + param_derivs(1)*tmp
+                force_contribution%rs  = force_contribution%eta + param_derivs(2)*tmp
+            else if (ftype.eq.ftype_acsf_fourier_b2) then
+                call daxpy(size(force_contribution%linear_w),tmp,param_derivs,1,force_contribution%linear_w,1)
+            else
+                write(*,*) "experimental_force : feature not implemented yet"
+                call exit(0)
+            end if
+
+        end subroutine experimental_force
 
 end module feature_selection

@@ -296,13 +296,14 @@ module init
         end subroutine init_configs_from_disk
 
         subroutine init_features_from_disk(filepath)
-            use feature_util, only : performance_option_Nbody_rcut_applies
+            use feature_util, only : performance_option_Nbody_rcut_applies,get_num_fourier_weights
             !use features, only : check_performance_criteria
 
             implicit none
 
             character(len=1024),intent(in) :: filepath
             integer :: ft
+            integer,allocatable :: num_w(:)
 
             if (feature_params%num_features.ne.0) then
                 !* overwrite previous features
@@ -339,6 +340,13 @@ module init
                 end if
             end do
 
+            !* check if 2body fourier feats are present and if all have same length
+            if (get_num_fourier_weights(num_w)) then
+                !* all fourier feats should have same number of weights
+                if(all(num_w.eq.num_w(1))) then
+                    call activate_performance_option("equal_fourier_cardinality")  
+                end if
+            end if
         end subroutine init_features_from_disk
 
         subroutine init_feature_vectors(init_type)

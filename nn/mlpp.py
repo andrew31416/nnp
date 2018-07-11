@@ -269,6 +269,7 @@ class MultiLayerPerceptronPotential():
             z1_mean = np.average(z1,axis=1)
             z1_vari = np.std(z1,axis=1)**2
 
+
             #w2_variance = self.activation_variance / np.sum(z1_vari + z1_mean**2)
             #self.weights = np.hstack(( self.weights,\
             #        np.asarray(np.random.normal(loc=0.0,scale=np.sqrt(w2_variance),\
@@ -512,19 +513,22 @@ class MultiLayerPerceptronPotential():
                     jac=self._loss_jacobian,x0=self.weights,solver=self.solver,\
                     args=("train"),**self.solver_kwargs)
         else:
-            if self.precision_update_interval != 0:
-                try:
-                    self.solver_kwargs["maxiter"] = self.precision_update_interval
-                except KeyError:
-                    self.solver_kwargs.update({"maxiter":self.precision_update_interval})
-                # SCIPY's l-bfgs-b default
-                maxiter = 15000
-            else:
-                # use SCIPY's bfgs default
-                try:
-                    self.solver_kwargs["maxiter"] = 15000
-                except KeyError:
-                    self.solver_kwargs.update({"maxiter":15000})
+            #if self.precision_update_interval != 0:
+            #    try:
+#           self.solver_kwargs["maxiter"] = self.precision_update_interval
+#               except KeyError:
+#                   self.solver_kwargs.update({"maxiter":self.precision_update_interval})
+#               # SCIPY's l-bfgs-b default
+#               maxiter = 15000
+#           else:
+#               # use SCIPY's bfgs default
+#               try:
+#                   self.solver_kwargs["maxiter"] = 15000
+#               except KeyError:
+#                   self.solver_kwargs.update({"maxiter":15000})
+            if "maxiter" not in self.solver_kwargs.keys():
+                self.solver_kwargs.update({"maxiter":15000})
+
             self._holdout_loss = []
 
             self.OptimizeResult = optimize.minimize(fun=self._loss,x0=self.weights,\
@@ -581,7 +585,7 @@ class MultiLayerPerceptronPotential():
 
     def _loss(self,weights,set_type,log_loss=True):
         import nnp.nn.fortran.nn_f95 as f95_api 
-        
+    
         if np.isnan(weights).any():
             print('{} Nan found in weights array'.format(np.sum(np.isnan(weights))))
        

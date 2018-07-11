@@ -966,6 +966,12 @@ class features():
         # log for loss with optimization
         self._loss_log = []
 
+        # debug
+        self.jac_t = 0.0
+        self.los_t = 0.0
+      
+        # debug
+
         # do optimization 
         self.OptimizeResult = optimize.minimize(fun=self._feature_loss,\
                 jac=self._feature_loss_jacobian,x0=x0,\
@@ -1014,18 +1020,19 @@ class features():
         -------
         Energy squared error : float
         """
+        t1 = time.time()
         # parse new params to feature instances
         self._parse_param_array_to_class(parameters)
-        
+    
         if np.isclose(self.mlpp.hyper_params["forces"],0.0,1e-20,1e-20):
             force_derivatives = False
         else:
             force_derivatives = True
 
-        # write new features to fortran and compute feature values (no derivs)
+        # write new features to fortran and compute feature values (+ derivs if using forces)
         self.calculate(set_type="train",calculate_forces=force_derivatives,scale=True,safe=True,\
-                updating_features=True)
-    
+                        updating_features=True)
+
         loss = self.mlpp._loss(weights=parameters[:self.mlpp.num_weights],set_type="train",\
                 log_loss=False)
 
@@ -1034,7 +1041,7 @@ class features():
 
         # keep loss during optimization
         self._loss_log.append(loss)
-        
+        self.los_t += time.time()-t1
         return loss
 
     def _feature_loss_jacobian(self,parameters):
@@ -1048,13 +1055,19 @@ class features():
             Concacenation of neural net weights and basis function parameters
         """
         import nnp.nn.fortran.nn_f95 as f95_api 
+        t1 = time.time()
 
         # parse features to Python format
         self._parse_param_array_to_class(parameters)
 
-        # write new features to fortran and compute X for loss jacobian
-        #self.calculate(set_type="train",derivatives=False,scale=True,safe=True,\
-        #        updating_features=True)
+        if np.isclose(self.mlpp.hyper_params["forces"],0.0,1e-20,1e-20):
+            force_derivatives = False
+        else:
+            force_derivatives = True
+
+        # write new features to fortran and compute feature values (+ derivs if using forces)
+        self.calculate(set_type="train",calculate_forces=force_derivatives,scale=True,safe=True,\
+                        updating_features=True)
 
         # check not trying to use forces or regularization
         for _hyperparam in ['forces','regularization']:
@@ -1074,6 +1087,7 @@ class features():
         # basis function parameter jacobian
         basis_func_jac = np.zeros(parameters.shape[0]-self.mlpp.num_weights,dtype=np.float64)
 
+        t1 = time.time()
         getattr(f95_api,"f90wrap_loss_feature_jacobian")(flat_weights=net_weights,\
                 set_type=self._set_map["train"],parallel=self.parallel,\
                 scale_features=self.scale_features,jacobian=basis_func_jac) 
@@ -1081,6 +1095,7 @@ class features():
         if np.isnan(basis_func_jac).any() or np.isinf(basis_func_jac).any():
             raise FeaturesError("Nan or Inf raised in loss jacobian wrt. basis func. params")
         
+        self.jac_t += time.time()-t1
         return np.hstack((nn_weight_jac,basis_func_jac))
 
     def _feature_opt_callback(self,parameters):
