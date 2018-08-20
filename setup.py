@@ -35,8 +35,15 @@ if __name__ == "__main__":
         with open('./setup/required_modules.txt','r') as f:
             modules = [_l.strip('\n') for _l in f.readlines()]
         
-                
+            missing_modules = []                
             for _mod in modules:
-                print(importlib.import_module(_mod))
-
+                try:
+                    importlib.import_module(_mod)
+                except ModuleNotFoundError:
+                    missing_modules.append(_mod)
+            
+            if len(missing_modules)!=0:
+                print('The following modules cannot be found:\n\n')
+                print('\n'.join(missing_modules))
+                print('\n\nPlease install before rerunning setup.py')
 
