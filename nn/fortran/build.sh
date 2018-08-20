@@ -99,4 +99,7 @@ $FC -c $f12$suffix $FFLAGS $DEBUG
 $f90wrap -m $modname $fwrap_files -k kind_map -S 12 --only $fwrap_functions
 
 
-$f2py -c -m $modname -L$lapack_dir -llapack -lblas f90wrap_*.f90 *.o --f90flags="-fPIC -fopenmp -llapack -lblas" -lgomp --fcompiler=$FC 
+$f2py -c -m $modname -L$lapack_dir -llapack -lblas f90wrap_*.f90 *.o --f90flags="-fPIC -fopenmp -llapack -lblas" -lgomp --fcompiler=$FC
+
+# tidy up f2py interface files
+rm $modname.py 
