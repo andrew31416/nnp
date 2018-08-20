@@ -1,10 +1,50 @@
 #!/bin/sh
 
+#------------------------------------------------------------------------------#
+# This pre-push performs the following:                                        #
+# 1. Checks required modules for package and updates associated file if        #
+#    if necessary, adding and commiting changes to git.                        #
+# 2. Compiles and runs unit test suite in fortran. If this fails, push will    #
+#    not proceed until all unit tests pass.                                    #
+#------------------------------------------------------------------------------#
+
+#==================#
+# required modules #
+#==================#
+
+
+# setup dir
+modulelist_dir="./setup"
+
+# exec for module list check
+modulelist_exec="./generate_used_modules.py"
+
+# file where files of required modules is kept
+modulelist_file="required_modules.txt"
+
+cd $modulelist_dir
+$modulelist_exec
+
+# return status, 1 means update has occured
+module_check_status=$?
+
+if [ $module_check_stats==1 ]; then
+    git add $modulelist_file
+    git commit -m "automatic commit of update to required modules list"
+fi
+
+# move back to module root
+cd ../
+
+
+#=================#
+# unit test suite #
+#=================#
 
 # build and run fortran unit tests
-dir="./nn/fortran/"
+unittest_dir="./nn/fortran/"
 
-cd $dir
+cd $unittest_dir
 
 unittest="./build_unittest.sh"
 

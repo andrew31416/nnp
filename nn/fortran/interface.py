@@ -1,4 +1,4 @@
-import nn_potential.nn.fortran.nn_f95 as f95
+import nnp.nn.fortran.nn_f95 as f95
 import numpy as np
 
 def train(features,energies,forces,slice_indices,num_nodes,nlf_type):

@@ -7,7 +7,7 @@ Data parsing, page reordering and general interface work is done here.
 Please don't do this in fortran!
 """
 
-import nn_potential.fortran.assorted as assorted
+import nnp.fortran.assorted as assorted
 import numpy as np
 import copy
 from parsers.atomic_data import atomic_number

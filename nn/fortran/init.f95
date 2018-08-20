@@ -31,8 +31,10 @@ module init
             !* total number of net weights
             nwght = total_num_weights() 
 
-            !* initialise NN weights
-            call random_weights()
+            !* zero net weights
+            net_weights%hl1 = 0.0d0 
+            net_weights%hl2 = 0.0d0 
+            net_weights%hl3 = 0.0d0 
 
             call check_input()
         end subroutine initialise_net
@@ -186,7 +188,7 @@ module init
             integer :: seed,conf,atm,ntot,ww
             logical :: need_to_deallocate = .false.
             real(8) :: av_x(1:D)
-
+            
             !* random seed
             call system_clock(seed)
             
