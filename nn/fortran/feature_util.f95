@@ -414,6 +414,7 @@ module feature_util
                     end if
                 end do
 
+
                 allocate(set_neigh_info(conf)%twobody(ii)%dr(cntr))
                 allocate(set_neigh_info(conf)%twobody(ii)%idx(cntr))
                 allocate(set_neigh_info(conf)%twobody(ii)%z(cntr))
@@ -436,7 +437,8 @@ module feature_util
                     if ( (dr2.lt.rtol2).or.(dr2.gt.rcut2) ) then
                         !* same atom or beyond cut off
                         cycle
-                    else 
+                    else
+
                         !* atom-atom distance
                         if (speedup_applies("lookup_tables")) then
                             set_neigh_info(conf)%twobody(ii)%dr(cntr) = access_lookup(dr2,1)

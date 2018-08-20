@@ -1251,7 +1251,7 @@ module feature_selection
 
             !* scratch
             integer :: ii,jj,xx,neigh_idx,ft,ft2
-            real(8) :: const
+            real(8) :: const,const_jjftii
             
             do jj=1,data_sets(set_type)%configs(conf)%n,1
                 do ft=1,feature_params%num_features,1
@@ -1262,15 +1262,20 @@ module feature_selection
                     do neigh_idx=1,data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%n,1
                         ii = data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%idx(neigh_idx)
 
+                        const_jjftii = dot_product(norm_consts(:,ii),&
+                                &data_sets(set_type)%configs(conf)%x_deriv(ft,jj)%vec(:,neigh_idx))
+
                         do ft2=1,feature_params%num_features,1
                             !* need to loop over non-diagonal elements of hessian
-                            do xx=1,3
-                                const = -d2ydxdx(ft2,ft,jj)*norm_consts(xx,ii)*data_sets(set_type)%&
-                                        &configs(conf)%x_deriv(ft,jj)%vec(xx,neigh_idx)
+                            !do xx=1,3
+                                !const = -d2ydxdx(ft2,ft,jj)*norm_consts(xx,ii)*data_sets(set_type)%&
+                                !        &configs(conf)%x_deriv(ft,jj)%vec(xx,neigh_idx)
+
+                                const = -d2ydxdx(ft2,ft,jj)*const_jjftii
 
                                 call add_individual_features(dxdparam(jj)%info(ft2),const,&
                                         &force_contribution%info(ft2))
-                            end do
+                            !end do
                         end do !* end loop over 2nd features
 
                         ! DEBUG d2xdrdp

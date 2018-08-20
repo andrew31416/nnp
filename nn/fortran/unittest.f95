@@ -71,6 +71,7 @@ program unittest
             call init_lookup_tables()
 
             call initialise_net(num_nodes,nlf_type,fD)
+            call random_weights()
 
             !* give biases non zero values
             !call random_number(net_weights%hl1(:,0))

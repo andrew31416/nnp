@@ -124,7 +124,6 @@ def _parse_configs_to_fortran(gip,set_type):
     # fortran is fussy about type casting 
     files = np.array(_files,dtype='c').T
 
-
     # parse all text files into fortran data structures
     getattr(f95_api,"f90wrap_init_configs_from_disk")(files,_set_map[set_type]) 
 
