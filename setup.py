@@ -15,14 +15,19 @@ class DevUserError(Exception):
     pass
 
 def GeneralMessage(message):
-    print(message)
+    print('{}\n{}\n{}\n\n{}'.format(''.join(['*' for ii in range(36)]),'Setup issue with current environment',\
+            ''.join(['*' for ii in range(36)]),message))    
     sys.exit()
 
 class fortran_checks():
     def __init__(self):
         self.compile_dir = "./nn/fortran"
+        self.fortran_api = "nn_f95"
 
         if self.check_compiler() and self.check_f2py():
+            # check for linear algebra libraries
+            self.check_libraries()
+            
             # OK compiler found
             self.compile_fortran() 
 
@@ -66,9 +71,46 @@ class fortran_checks():
         Compile fortran
         """
         os.chdir(self.compile_dir)                
-        
+
         # attempt to compile
-        process = subprocess.run(["./build.sh"])
+        process = subprocess.run(["./build.sh"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        
+        # import_module relies on imported modules being in sys.path
+        sys.path.append(os.getcwd())        
+        
+        try:
+            # attempt import of fortran 
+            importlib.import_module(self.fortran_api)
+        except ModuleNotFoundError:
+            GeneralMessage("Compilation of fortran API has failed. Move to nn/fortran and run ./build.sh for verbose output")
+
+    def check_libraries(self):
+        """
+        check lapack and blas are accessible with gfortran compiler
+        """
+        flines = ['program main\nreal(8),external :: ddot\nreal(8) :: x(1:2),y(1:2)\nreal(8) :: z\nz=ddot(2,x,1,y,1)\nend program']
+        scratch_file = 'scratch.f90'        
+        with open(scratch_file,'w') as f:
+            f.writelines(flines)
+
+        # compile toy main, attempting to link to lapack and blas
+        process = subprocess.run(["gfortran","scratch.f90","-lblas","-llapack"],stdout=subprocess.PIPE,\
+                stderr=subprocess.PIPE)
+        stderr = process.stderr.decode('utf-8')
+    
+        # tidy up scratch files
+        remove_me = [_f for _f in ["a.out",scratch_file] if os.path.exists(_f)]        
+        for _f in remove_me:
+            os.remove(_f)
+        
+        missing_libs = []
+        for _l in stderr.split('\n'):
+            if 'cannot find -l' in _l:
+                missing_libs.append(_l.split()[-1])
+        if len(missing_libs)>0:
+            GeneralMessage("Fortran makes extensive use of linear algebra libraries. Cannot find:\n\n{}\n\n{}".format(\
+                    "\n".join(missing_libs),'Please make these accessible to linker before rerunning setup.py'))
+         
  
 if __name__ == "__main__":
     supported_args = ["dev"]
@@ -101,9 +143,8 @@ if __name__ == "__main__":
                     missing_modules.append(_mod)
             
             if len(missing_modules)!=0:
-                print('The following modules cannot be found:\n\n')
-                print('\n'.join(missing_modules))
-                print('\n\nPlease install before rerunning setup.py')
+                GeneralMessage('The following modules cannot be found:\n\n{}\n\nPlease install before rerunning setup.py'.format(\
+                        '\n'.join(missing_modules)))
 
 
     # check for compatability of fortran components
